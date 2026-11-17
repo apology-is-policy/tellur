@@ -3,8 +3,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const vscode = require('vscode');
 exports.run = async function(root) {
-  const uri=vscode.Uri.file(path.join(root,'recovery.tellur'));
-  const source=await fs.readFile(path.join(__dirname,'../../../playground/recovery.tellur'),'utf8');
+  const uri=vscode.Uri.file(path.join(root,'recovery.vn'));
+  const source=await fs.readFile(path.join(__dirname,'../../../playground/recovery.vn'),'utf8');
   await fs.writeFile(uri.fsPath,source);
   const document=await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

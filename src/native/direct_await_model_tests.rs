@@ -5,7 +5,7 @@ fn compiled_direct_and_cold_awaits_preserve_explicit_handoffs_and_borrowed_resul
     let root = std::env::temp_dir().join(format!("tellur-direct-await-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../playground/direct_await.tellur"),
+        include_str!("../../playground/direct_await.vn"),
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )

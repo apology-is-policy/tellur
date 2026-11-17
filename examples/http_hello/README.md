@@ -2,14 +2,14 @@
 
 This small service uses the shared [loopback HTTP library](../../library/README.md#bounded-loopback-http)
 without the settings application, file storage or JSON adapters. It runs on compiler
-0.76.0. The Tellur source chooses routes, response statuses, request budgets and
+0.76.0. The Villanelle source chooses routes, response statuses, request budgets and
 supervised recovery; the shared Rust module supplies bounded synchronous transport.
 
 From the repository root:
 
 ```sh
-./bin/tellurc check examples/http_hello/main.tellur
-./bin/tellurc build examples/http_hello/main.tellur --release
+./bin/vnc check examples/http_hello/main.vn
+./bin/vnc build examples/http_hello/main.vn --release
 ./examples/http_hello/build/main -- 8080 10 3000
 ```
 
@@ -22,12 +22,12 @@ curl -i http://127.0.0.1:8080/hello
 curl -I http://127.0.0.1:8080/hello
 ```
 
-`GET /hello` returns the UTF-8 greeting `Hello from Tellur 🙂`; `HEAD /hello`
+`GET /hello` returns the UTF-8 greeting `Hello from Villanelle 🙂`; `HEAD /hello`
 returns the same headers without a body. Other methods at that path return 405
 with `Allow: GET, HEAD`; unknown paths return 404. Host must match the printed
 authority exactly. Requests with an Origin header return 403; requests with a body
 at `/hello` return 400. Framing, size and timeout outcomes are mapped explicitly
-in `exchange`. Response policy is ordinary Tellur code and can be edited there.
+in `exchange`. Response policy is ordinary Villanelle code and can be edited there.
 
 Each accepted connection consumes one unit of the budget, including malformed or
 disconnected requests. A normal exchange always completes the connection; both

@@ -2,7 +2,7 @@
 
 [Language reference](../language-reference.md) · [Roadmap](../language-revision.md)
 
-This matrix describes **compiler 0.284.0**, not the full planned language. “Supported”
+This matrix describes **compiler 0.285.0**, not the full planned language. “Supported”
 means implemented within the stated boundary. A feature in one local position does
 not imply it is accepted at every public, generic, collection or loop boundary.
 The linked regression suites give more detailed acceptance and rejection evidence.
@@ -23,7 +23,7 @@ See [owned spawned children](async-execution.md#owned-spawned-children).
 ## Native backends
 
 The distributed compiler embeds static musl packs for Linux x86_64 and arm64.
-Select either Rust target triple with `tellur build --target`.
+Select either Rust target triple with `vnc build --target`.
 
 The macOS arm64, Linux x86_64, Linux arm64 and Windows x64 distributions use
 [direct LLVM emission](llvm-backend.md) by default. Select generated Rust with `--backend rust`. Source builds enable LLVM by default and select it when they embed a pack for the compiler host.
@@ -82,7 +82,7 @@ and, since 0.276, polled operations.
 | Completed outcomes | Capture now, handle later; named and producer-indexed contracts; mandatory handling | Not futures; no implicit structural assignment across unrelated named types | [Outcome tests](../../tests/outcomes.rs), [named contracts](../../tests/named_outcomes.rs) |
 | Payload inference | Private `exits auto` and selected nonempty `label...`; local/pattern `auto` | Explicit public and trait contracts; no general signature wildcard | [Inference tests](../../tests/payload_inference.rs) |
 | Data declarations | Nominal structs, closed variants, wrappers, named/positional struct construction | No recursive layouts, inheritance, defaults or update spreads | [Data tests](../../tests/data_types.rs), [field tests](../../tests/named_fields.rs) |
-| Public control contracts | Explicit labels, payloads and borrowed-result mappings, including unused generics; bounded forwarding/stored-outcome/adapter contributor notes | Loop-carried values, indirect aliases, dynamic collections and cross-call payload dependencies are not traced | [Public contract tests](../../tests/public_contracts.rs), [example](../../playground/public_contracts.tellur) |
+| Public control contracts | Explicit labels, payloads and borrowed-result mappings, including unused generics; bounded forwarding/stored-outcome/adapter contributor notes | Loop-carried values, indirect aliases, dynamic collections and cross-call payload dependencies are not traced | [Public contract tests](../../tests/public_contracts.rs), [example](../../playground/public_contracts.vn) |
 | Diagnostic reports | Versioned `check --json`, expression/token/written field, loop, local, public-interface and named-completion type ranges, named/payload/schema origin brackets, schema storage arrows, duplicate/unused declared group names, public inference clauses, missing public-origin result/completion types and borrowed-result `from` ranges, bounded independent implementation-local, origin-schema, constructor-definition, generic-bound, trait-declaration, public-shape, named-completion, signature, independent-body, statement, disjoint-path and nested-scope errors, authored contributor statement/outcome/declaration-clause ranges, related fallback points and structured CLI/LSP path witnesses | Fault/adapter/header and preparation recovery remain limited; joins touching stalled histories are suppressed; generated whole-contract and contributor locations may still be points | [Report tests](../../tests/diagnostics.rs), [format](diagnostics-and-limits.md#machine-readable-checking) |
 | Modules | Explicit relative imports and namespaces; private by default; public declarations/fields | No package-name resolver or package manager | [Module tests](../../tests/modules.rs) |
 | Generic data | Explicit first-order type parameters and specialization | No argument inference, data bounds or higher-kinded parameters | [Generic data tests](../../tests/generic_data.rs) |
@@ -101,14 +101,14 @@ and, since 0.276, polled operations.
 | Public record origins | Ordered groups, returned mappings, whole-record inputs, `input['group]` | Grouped variants, named outcomes and options compose with records; aggregate trait contracts require explicit mappings | [Origin records](../../tests/origin_records.rs), [record inputs](../../tests/record_inputs.rs) |
 | Carrier reborrows | Shared/exclusive child access, preserved storage guards and last-use restoration | A shared carrier cannot grant exclusive access | [Carrier tests](../../tests/carrier_reborrows.rs) |
 | Opaque splits | Multiple checked independent result permissions from one input anchor | Public anchor remains opaque; independent calls do not imply disjointness | [Split tests](../../tests/opaque_splits.rs) |
-| Local borrowed sums | References in variants/options/outcomes, capture/adapters, arbitrary finite record/tag nesting | Ungrouped sums can be owned or borrowed locally; public boundaries require complete schemas | [Sum tests](../../tests/borrowed_sums.rs), [nested example](../../playground/nested_borrows.tellur) |
-| Public variant origins | Owned grouped variants cross calls and returns; constructor-guarded origins, contained selectors, nested/generic layouts, capture and forwarding | Direct constructor arguments returning contained borrows remain gated | [Public sum tests](../../tests/public_sums.rs), [example](../../playground/public_variants.tellur) |
-| Named-outcome and option origins | Named schemas and completion bindings, inherited option groups, owned calls/results, contained selectors, generic/module composition | Anonymous outcome schemas remain gated; grouped trait contracts require explicit mappings | [Origin tests](../../tests/outcome_origins.rs), [example](../../playground/outcome_origins.tellur) |
+| Local borrowed sums | References in variants/options/outcomes, capture/adapters, arbitrary finite record/tag nesting | Ungrouped sums can be owned or borrowed locally; public boundaries require complete schemas | [Sum tests](../../tests/borrowed_sums.rs), [nested example](../../playground/nested_borrows.vn) |
+| Public variant origins | Owned grouped variants cross calls and returns; constructor-guarded origins, contained selectors, nested/generic layouts, capture and forwarding | Direct constructor arguments returning contained borrows remain gated | [Public sum tests](../../tests/public_sums.rs), [example](../../playground/public_variants.vn) |
+| Named-outcome and option origins | Named schemas and completion bindings, inherited option groups, owned calls/results, contained selectors, generic/module composition | Anonymous outcome schemas remain gated; grouped trait contracts require explicit mappings | [Origin tests](../../tests/outcome_origins.rs), [example](../../playground/outcome_origins.vn) |
 | Collections | Arrays/vectors/maps, explicit bounds outcomes, resources, borrowed element access and local shared-reference elements | Exclusive/nested elements, public collection-origin contracts, slices and iterators remain queued | [Collection tests](../../tests/collections.rs) |
 | Borrowed sum carriers | Whole shared/exclusive inputs, active payload reborrows, nested carriers, retained handling obligations | Complete schemas required at public boundaries; local borrows use concrete provenance | [Sum carrier tests](../../tests/sum_carriers.rs) |
-| Carrier reference results | Direct shared/exclusive results, inferred/declared contained origins, storage retention and forwarding | Local capture and aggregate storage work; aggregate trait results require explicit mappings | [Carrier result tests](../../tests/carrier_results.rs), [example](../../playground/carrier_results.tellur) |
-| Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public schemas map each storage and contained-origin layer; aggregate trait contracts require explicit mappings | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.tellur) |
-| Public nested references | Separate storage arrows and referent brackets; owned/borrowed boundaries, nested tags, capture and forwarding | Bind constructor arguments before selecting nested origins; abstract type-parameter origin shapes remain unsupported | [Public carrier tests](../../tests/public_carriers.rs), [example](../../playground/public_carriers.tellur) |
+| Carrier reference results | Direct shared/exclusive results, inferred/declared contained origins, storage retention and forwarding | Local capture and aggregate storage work; aggregate trait results require explicit mappings | [Carrier result tests](../../tests/carrier_results.rs), [example](../../playground/carrier_results.vn) |
+| Stored carrier references | Local recursive dependency trees, capture/adapters, shared retainers, nested/borrowed unpacking and last use | Public schemas map each storage and contained-origin layer; aggregate trait contracts require explicit mappings | [Stored carrier tests](../../tests/stored_carriers.rs), [example](../../playground/stored_carriers.vn) |
+| Public nested references | Separate storage arrows and referent brackets; owned/borrowed boundaries, nested tags, capture and forwarding | Bind constructor arguments before selecting nested origins; abstract type-parameter origin shapes remain unsupported | [Public carrier tests](../../tests/public_carriers.rs), [example](../../playground/public_carriers.vn) |
 | Resources | Must-complete obligations through aggregates, replacement and explicit draining | No implicit fallible cleanup or abandoned outcome disposal | [Completion tests](../../tests/completion.rs), [ownership tests](../../tests/ownership.rs) |
 
 “Borrowed element access” means obtaining a reference into an owning collection.
@@ -128,7 +128,7 @@ with complete schemas for every nested reference layer.
 | --- | --- | --- |
 | Rust source adapters | Typed wrappers, closed result enums, owned scalar/collection data, direct opaque retained resources, call-duration shared borrows, explicit dependencies, explicit shared source modules and locked builds | No stable binary ABI, foreign returned borrows, exclusive mutation, aggregate resource boundary or async adapters (async host operations are polled after retry delays or descriptor readiness) |
 | [Source library](../../library/README.md) | JSON string-map file controls with explicit limits and distinct missing/invalid/read/encode/write/uncertain outcomes; shared Rust mechanisms | Explicit file imports and project manifest signatures; no implicit prelude, package resolver or crash-durable transaction guarantee |
-| Maintained application | Persistent settings load/get/set/remove CLI and bounded sequential loopback HTTP; Tellur routing/validation/cleanup and Rust mechanisms | Limited HTTP profile; no crash-durable transaction guarantee |
+| Maintained application | Persistent settings load/get/set/remove CLI and bounded sequential loopback HTTP; Villanelle routing/validation/cleanup and Rust mechanisms | Limited HTTP profile; no crash-durable transaction guarantee |
 | CLI and native build | Check, execute, build standalone executable through Rust/Cargo and LLVM; dense per-activation storage | No direct LLVM coroutine lowering |
 | [Formatting](formatting.md) | CLI stdout/check/write and VS Code Format Document; configurable width, multiline lists/conditions, inline label dispositions; token, comment and literal preservation | Whole documents; soft width target, no comment reflow, range formatting or project-wide discovery |
 | VS Code | Highlighting, unsaved diagnostics with related forwarding locations, Outline, declaration, concrete/symbolic constructor and trait, ordinary concrete/symbolic call and supervision contracts, lexical implementation aliases, named result origins, inferred `auto` hover, bounded selected-history hover, build/run | Bounded declaration/body/statement/path diagnostics, including fault contexts, explicit/inferred exit-adapter arms, explicit stored-adapter arms and distinct inferred stored-result labels; constructor-call privacy, generic-bound and trait-declaration batches also preserve phase barriers; headers, uncertain same-label stored arms and fault-context adapter/terminal recovery remain limited; hover requires a successful check. General expression-type hover remains a follow-up; named boundary declarations have no generic parameters |
@@ -150,10 +150,10 @@ The [conformance inventory](../conformance.md) records release validation. The
 for execution order, not a promise that every queued syntax is settled.
 
 Trait origin coverage: [aggregate trait tests](../../tests/aggregate_traits.rs) and
-[the runnable example](../../playground/aggregate_traits.tellur).
+[the runnable example](../../playground/aggregate_traits.vn).
 
 Local shared-reference collections: [tests](../../tests/borrowed_collections.rs),
-[example](../../playground/borrowed_collections.tellur).
+[example](../../playground/borrowed_collections.vn).
 
 ## Runtime development record
 

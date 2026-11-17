@@ -1,11 +1,11 @@
-// Direct async calls currently run sequentially. For local cold tasks, see cold_tasks.tellur.
+// Direct async calls currently run sequentially. For local cold tasks, see cold_tasks.vn.
 // Async I/O remains planned.
 async control greeting(string name) exits ready { string text } {
     exit ready { concat("Hello, ", name) };
 }
 
 async control startup() exits done {
-    delta await greeting("Tellur") {
+    delta await greeting("Villanelle") {
         ready { string text } => ready,
     }
 

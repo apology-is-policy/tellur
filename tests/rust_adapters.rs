@@ -590,7 +590,7 @@ fn retained_file_example_runs_live_and_scripted_failure_paths() {
         &root.join("manifest.json"),
     )
     .unwrap();
-    let p = tellur::compile_file(root.join("main.tellur"), manifest).unwrap();
+    let p = tellur::compile_file(root.join("main.vn"), manifest).unwrap();
     let f = Fixture::new();
     let binary = f.root.join("file");
     p.build_for_test("main", &binary, 0).unwrap();
@@ -659,7 +659,7 @@ fn resource_types_and_operations_can_be_reexported_from_an_explicit_module() {
     )
     .unwrap();
     let p = compile(
-        include_str!("../examples/retained_file/main.tellur"),
+        include_str!("../examples/retained_file/main.vn"),
         f.manifest(&config),
     )
     .unwrap();

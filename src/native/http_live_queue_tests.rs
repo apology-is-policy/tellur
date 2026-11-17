@@ -281,7 +281,7 @@ fn live_http_queue_preserves_repeated_operations_waits_and_owning_faults() {
     let root = std::env::temp_dir().join(format!("tellur-live-http-queue-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_repeated_http.tellur"),
+        include_str!("../../tests/fixtures/native_source_repeated_http.vn"),
         live_manifest(&root),
     )
     .unwrap()

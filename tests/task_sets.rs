@@ -174,7 +174,7 @@ fn empty_sets_drain_immediately_and_sets_are_loop_carried() {
 
 #[test]
 fn faulting_member_settles_its_siblings_before_the_owning_contingency() {
-    let source = include_str!("fixtures/source_task_set_fault.tellur");
+    let source = include_str!("fixtures/source_task_set_fault.vn");
     assert_eq!(
         schedules(source, vec![]),
         ["slow", "broken", "member failed"]
@@ -355,14 +355,11 @@ fn native_task_sets_match_reference() {
     let run = scenario(vec![]);
     fs::write(&input, serde_json::to_vec(&run).unwrap()).unwrap();
     for (label, source) in [
-        ("sets", include_str!("../playground/task_sets.tellur")),
-        (
-            "fault",
-            include_str!("fixtures/source_task_set_fault.tellur"),
-        ),
+        ("sets", include_str!("../playground/task_sets.vn")),
+        ("fault", include_str!("fixtures/source_task_set_fault.vn")),
         (
             "parent_fault",
-            include_str!("fixtures/source_task_set_parent_fault.tellur"),
+            include_str!("fixtures/source_task_set_parent_fault.vn"),
         ),
     ] {
         let p = compile(source, manifest())

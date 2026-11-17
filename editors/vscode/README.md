@@ -1,34 +1,31 @@
-# Tellur Language for VS Code
+# Villanelle Language for VS Code
 
-Experimental editor support for the Tellur compiler.
+Experimental editor support for the Villanelle compiler.
 
 ## Start reading code
 
-1. Download the 0.283.0 VSIX for Apple Silicon macOS, Linux x64, Linux arm64
-   or Windows x64. Run **Extensions: Install from VSIX…** in the Command Palette
-   and select it. Each package includes the compiler and language server.
-   [Tellur release downloads](https://github.com/apology-is-policy/tellur/releases/tag/v0.283.0)
-2. Open `tellur.code-workspace` from the compiler checkout.
-3. Open `playground/hello.tellur` and click **▶** or **Tellur: Build and Run** (`⌘⌥R`).
-   Try `playground/structured_helpers.tellur`, `playground/structured_tasks.tellur`, `playground/sequential_initializers.tellur`, `playground/projected_construction.tellur`, `playground/composed_construction.tellur`, `playground/borrowed_construction.tellur`, `playground/construction.tellur`, `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, and `count.tellur` next.
+1. Install the Villanelle VSIX built from 0.285 or later using **Extensions: Install from VSIX…**. The previous public release (0.283) is branded Tellur and recognizes the older source suffixes. [Release downloads](https://github.com/apology-is-policy/villanelle/releases)
+2. Open `villanelle.code-workspace` from the compiler checkout.
+3. Open `playground/hello.vn` and click **▶** or **Villanelle: Build and Run** (`⌘⌥R`).
+   Try `playground/structured_helpers.vn`, `playground/structured_tasks.vn`, `playground/sequential_initializers.vn`, `playground/projected_construction.vn`, `playground/composed_construction.vn`, `playground/borrowed_construction.vn`, `playground/construction.vn`, `playground/named_outcomes.vn`, `stored_adapters.vn`, `adapters.vn`, `outcomes.vn`, `collections.vn`, `references.vn`, and `count.vn` next.
 4. Read `docs/language-reference.md` for the detailed language reference.
 
-In the 0.284 editor, type a collection name followed by a dot to discover controls from its imports. The suggestion shows whether it borrows or moves the collection. Accept it to insert the qualified Tellur call and select the next argument. [Try all three calls](../../docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
+In the 0.284 editor, type a collection name followed by a dot to discover controls from its imports. The suggestion shows whether it borrows or moves the collection. Accept it to insert the qualified Villanelle call and select the next argument. [Try all three calls](../../docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
 
-The package uses the same executable for `tellur lsp`, `tellur build` and `tellur exec`. It includes the runtime and linker inputs for ordinary Tellur programs on its host. The macOS and Linux packages also accept `--target x86_64-unknown-linux-musl`
+The package uses the same executable for `vnc lsp`, `vnc build` and `vnc exec`. It includes the runtime and linker inputs for ordinary Villanelle programs on its host. The macOS and Linux packages also accept `--target x86_64-unknown-linux-musl`
 and `--target aarch64-unknown-linux-musl` for static Linux builds. Source adapters
 require Rust/Cargo, their locked dependencies and the target standard library.
 Apple Silicon source adapters also use the macOS SDK. Executables are
-standalone. Build/run saves the active file and sends output to **Tellur Build**.
-Use **Tellur: Build Native Program** (`⌘⌥B`) to build without running. Windows/Linux
+standalone. Build/run saves the active file and sends output to **Villanelle Build**.
+Use **Villanelle: Build Native Program** (`⌘⌥B`) to build without running. Windows/Linux
 keybindings use Ctrl instead of Cmd.
 
-`tellurLanguage.entryRegion` defaults to `main`; `tellurLanguage.programArguments` is
+`villanelleLanguage.entryRegion` defaults to `main`; `villanelleLanguage.programArguments` is
 an array of strings. Each item is passed as one argument, without a shell.
-`tellurLanguage.releaseBuild` enables LLVM optimization level 2. Override
-`tellurLanguage.compilerPath` to use a development compiler. Build outputs live in
+`villanelleLanguage.releaseBuild` enables LLVM optimization level 2. Override
+`villanelleLanguage.compilerPath` to use a development compiler. Build outputs live in
 `build/` beside the source and include the executable and LLVM IR. All four packages use LLVM by default.
-From the checkout on Windows, run `tellur.exe exec playground/hello.tellur` to
+From the checkout on Windows, run `vnc.exe exec playground/hello.vn` to
 build and run the same example from the terminal.
 
 Build and Run executes your program, including any declared live file operations.
@@ -39,21 +36,21 @@ squiggle appears at the region declaration; its message includes a structural wi
 Undo the edit and the error clears. Deleting an operation outcome arm reports
 `E_ARMS`. These diagnostics also appear in VS Code's Problems panel.
 
-In `partial_moves.tellur`, insert `duplicate := pair;` after `first := pair.left;`.
+In `partial_moves.vn`, insert `duplicate := pair;` after `first := pair.left;`.
 The compiler reports `E_PARTIAL_MOVE` and names `pair.left`. Reading `pair.label`
 or moving `pair.right` remains valid. Undo the edit to clear the diagnostic.
 
-In `optional_handle.tellur`, the comments suggest two edits: reuse the option after
+In `optional_handle.vn`, the comments suggest two edits: reuse the option after
 its decision (`E_MOVED`), or use the handle on the absent path (`E_UNAVAILABLE`).
 The error names the value and a structural path witness; undo clears it.
 
-The language is named **Tellur**. `.tellur` is the canonical source extension; legacy `.path` files remain supported.
+The language is named **Villanelle**. `.vn` is the canonical source extension; legacy `.path` files remain supported.
 
 ## Features
 
 - TextMate syntax highlighting, including selectors, outcome mappings, `Δ` / `delta`,
   loops, literals, types and comments. It uses your current theme.
-- Live diagnostics for unsaved `.tellur` buffers from the actual Rust compiler.
+- Live diagnostics for unsaved `.vn` buffers from the actual Rust compiler.
 - Hover on `auto` for the full inferred binding type, including references and
   mutability, or the inferred signature for `exits auto`. Updated from unsaved
   source; types are shown only after successful checking.
@@ -61,25 +58,25 @@ The language is named **Tellur**. `.tellur` is the canonical source extension; l
 - Region names and signatures in Outline / Go to Symbol in Editor.
 - Control, decision, selector, optional path-group, scoped-intersection and loop snippets.
 - Bracket matching, automatic closing, indentation and line-comment toggling.
-- **Tellur: Restart Language Server**, plus a **Tellur Language** output channel.
-- Native build/run commands, toolbar button, shortcuts and **Tellur Build** output.
+- **Villanelle: Restart Language Server**, plus a **Villanelle Language** output channel.
+- Native build/run commands, toolbar button, shortcuts and **Villanelle Build** output.
 
 Highlighting works in restricted workspaces. The language server runs after the
 workspace is trusted. It analyzes source; it does not run the source program or
 invoke real primitives.
 
-Try `playground/path_groups.tellur` for optional `[path]: { ... }` grouping.
+Try `playground/path_groups.vn` for optional `[path]: { ... }` grouping.
 The `path_group` snippet ends a selection explicitly without creating a new lifetime
 scope. The ordinary `guard` snippet stays unbraced; `over` creates a lexical scope.
 
 ## Manifests and compilation units
 
 Each entry document and its explicit file imports form a compilation unit, just as with
-`tellurc check`. Other open `.tellur` or `.path` files are not implicitly imported.
+`vnc check`. Other open `.vn` or `.path` files are not implicitly imported.
 Unsaved imported buffers participate in diagnostics. Imports may mix both extensions.
 
 The server looks for the nearest `manifest.json`, starting beside the source file
-and walking toward its workspace root. Set `tellurLanguage.manifestPath` to choose
+and walking toward its workspace root. Set `villanelleLanguage.manifestPath` to choose
 another file; relative paths are resolved against the workspace folder. Manifest
 edits take effect after saving. With no valid manifest, syntax diagnostics still
 work and a warning explains that type/coverage/resource checks did not run.
@@ -97,11 +94,11 @@ Completion, rename and cross-file references are not implemented.
 
 Use VS Code's **Format Document** command or editor context menu. The server uses
 the current unsaved source and your indentation preference (spaces/tabs, width
-1–16), including untitled Tellur buffers. Formatting needs no manifest and works
+1–16), including untitled Villanelle buffers. Formatting needs no manifest and works
 despite type errors or missing imports. Broken syntax produces no formatting edit;
 repair the syntax diagnostic first. Formatting does not save the document.
 
-Set `tellurLanguage.formatWidth` to a preferred width from 40 through 240 (default
+Set `villanelleLanguage.formatWidth` to a preferred width from 40 through 240 (default
 100). It applies to the current document without restarting the server. Long
 signatures, calls, payloads and outcome lists wrap automatically; conditions put
 `&&` and `||` at the start of continuation lines. Width is a soft target measured
@@ -113,11 +110,11 @@ formatter preserves every explicit brace, comment and literal, including multili
 strings, and retains multiline headers and payloads. It does not add
 braces, sort imports or enable format-on-save. Range formatting, on-type formatting
 and comment reflow remain future work. If another formatter is
-active, use **Format Document With…** to select Tellur.
+active, use **Format Document With…** to select Villanelle.
 
 ## Public contract snapshots (0.57)
 
-Run **Tellur: Show Public Contract Snapshot** with a Tellur file active. It checks
+Run **Villanelle: Show Public Contract Snapshot** with a Villanelle file active. It checks
 the current unsaved source and imported buffers, then opens a JSON document with
 the public contracts. Save As can retain a baseline. The view is a fixed snapshot;
 rerun the command after changes. Source files are not saved or modified.
@@ -129,24 +126,19 @@ requirements and copy/clone/drop permissions are recorded; private bodies and fi
 are omitted. The CLI's `contract-diff BEFORE_JSON AFTER_JSON --check` can compare a
 saved baseline. Equal contracts do not prove equal behavior or binary compatibility.
 
-## Migration from Path
+## Migration from Tellur and Path
 
-Both `.tellur` and `.path` files use Tellur highlighting and the same compiler.
-Old `path.*` command IDs and explicitly configured `pathLanguage.*` settings remain
-compatibility aliases. Explicit `tellurLanguage.*` settings take precedence.
-Uninstall the old `path-language-local.path-language` extension when installing this
-new `tellur-language-local.tellur-language` package, then reload the window. See the
-migration notes in `docs/language-reference.md` in the compiler checkout.
+The Villanelle package upgrades the existing `tellur-language-local.tellur-language` extension. Open a `.vn`, `.tellur` or `.path` source file. New commands use `villanelle.*` and settings use `villanelleLanguage.*`. Older command bindings and configured settings continue to work. [Migration guide](../../docs/language-reference.md#villanelle-name-and-migration)
 
 ## Server settings
 
-By default the extension starts its bundled `tellur lsp`. In a development
+By default the extension starts its bundled `vnc lsp`. In a development
 checkout it can also find the executable in `target/debug` or on PATH. A
-configured `tellurLanguage.serverPath` names a standalone stdio server and receives
+configured `villanelleLanguage.serverPath` names a standalone stdio server and receives
 no arguments. Relative overrides resolve against the workspace folder.
 
 Each platform VSIX bundles the compiler for the architecture in its filename.
-For a source-built language server, point `tellurLanguage.serverPath` at the
+For a source-built language server, point `villanelleLanguage.serverPath` at the
 standalone `tellur-lsp` executable.
 
 ## Develop and test
@@ -161,21 +153,21 @@ npm test
 npm run build
 ```
 
-Open the compiler directory in VS Code and run **Develop Tellur extension** with F5.
-The launch task builds the compiler tools and client. Set `tellurLanguage.serverPath`
+Open the compiler directory in VS Code and run **Develop Villanelle extension** with F5.
+The launch task builds the compiler tools and client. Set `villanelleLanguage.serverPath`
 to your checkout’s `target/debug/tellur-lsp` while developing the compiler, so the
 bundled release server does not take precedence. Development dependencies are
 needed only to build/test the extension, not to use the packaged VSIX.
 
 The extension-host integration runner is `test/integration.cjs`; it also compiles
 and runs a native program, so its environment needs Rust/Cargo and compiler support. Give it an isolated
-workspace containing copies of `load.tellur` and `manifest.json`, and configure
-`tellurLanguage.serverPath` there. Launch VS Code with `--extensionDevelopmentPath`
+workspace containing copies of `load.path` and `manifest.json`, and configure
+`villanelleLanguage.serverPath` there. Launch VS Code with `--extensionDevelopmentPath`
 pointing at this directory and `--extensionTestsPath` pointing at that runner. Tests
 temporarily modify those fixture files; do not point the runner at your actual work.
 The main README records the validated test coverage.
 
-For packaging, build the release `tellur` executable and copy it to `server/tellur` (`server/tellur.exe` on Windows), then run `npm run package -- --target PLATFORM`. The build
+For packaging, build the release `vnc` executable and copy it to `server/vnc` (`server/vnc.exe` on Windows), then run `npm run package -- --target PLATFORM`. The build
 bundles the language client; npm dependencies are not shipped separately. Packaging
 does not publish anything to the Marketplace.
 
@@ -186,7 +178,7 @@ The playground now uses `control`, lowercase types, type-first bindings and brac
 outcome patterns. Both old and revised syntax have highlighting and compiler diagnostics.
 Hover over a control declaration name to inspect the checked contract; Outline shows
 inferred `exits auto` contracts too. Snippets use the revised syntax. The setting
-`tellurLanguage.entryRegion` retains its name but selects the entry control.
+`villanelleLanguage.entryRegion` retains its name but selects the entry control.
 
 The remaining ownership/collection/async proposals are tracked separately in
 `docs/language-revision.md`; the shipped checkpoints are listed below.
@@ -196,7 +188,7 @@ The remaining ownership/collection/async proposals are tracked separately in
 `mutable`, shared/exclusive references, dereference, `clone` and `drop` have syntax
 highlighting. Compiler diagnostics report moved values, overlapping loans, invalid
 mutation and reference lifetime restrictions in unsaved buffers. Declaration hover
-keeps `ref string` parameter spelling. `playground/ownership.tellur` is an executable
+keeps `ref string` parameter spelling. `playground/ownership.vn` is an executable
 example. Integration tests exercise live reference diagnostics, repair and native
 mutation in addition to the previous syntax and build/run checks.
 
@@ -204,7 +196,7 @@ mutation in addition to the previous syntax and build/run checks.
 
 Control hover lists checked return lifetime sources. Shared/exclusive calls, returned
 borrows and reborrows are checked in unsaved buffers; local last-use inference removes
-unnecessary explicit drops. `playground/references.tellur` demonstrates these features.
+unnecessary explicit drops. `playground/references.vn` demonstrates these features.
 The integration runner checks local-escape diagnostics, later-use loan conflicts,
 lifetime hover, repair, caller mutation and native execution.
 
@@ -215,7 +207,7 @@ Typed arrays, vectors and maps compile and run from the editor. List literal str
 numbers and names have expression highlighting distinct from single-line path
 selectors. Compiler diagnostics reject conflicting collection mutation while an
 obtained element reference is still in use. Control hover shows returned element
-origins as `values[*]`. `playground/collections.tellur` demonstrates lookup, insertion,
+origins as `values[*]`. `playground/collections.vn` demonstrates lookup, insertion,
 lengths and consuming iteration. The integration runner tests unsaved conflicts,
 last-use repair and native execution. Multiline path selectors may have approximate
 TextMate coloring; compiler parsing and diagnostics support them.
@@ -228,17 +220,17 @@ highlighting for nested adapters, named inline paths and captured results. Contr
 hover infers adapter/forwarding contracts. The language server checks exhaustiveness,
 borrowed result lifetimes, resource transfer and mandatory outcome handling in unsaved
 buffers. The extension-host tests repair an unhandled capture and verify native
-producer-before-later-effect ordering. Try `playground/named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur` and `outcomes.tellur`.
+producer-before-later-effect ordering. Try `playground/named_outcomes.vn`, `stored_adapters.vn`, `adapters.vn` and `outcomes.vn`.
 
 
 Named `outcome` declarations appear in the outline and expose their alternatives and
 handling obligation on declaration hover. A control declared with `exits message`
 shows that name and the checked alternatives. The `outcome_contract` snippet starts
-a declaration. Try `playground/named_outcomes.tellur` for two producers sharing a type.
+a declaration. Try `playground/named_outcomes.vn` for two producers sharing a type.
 
 ## Forwarding and semantic checkpoint in 0.13.0
 
-`playground/forwarding.tellur` demonstrates payload-free call statements,
+`playground/forwarding.vn` demonstrates payload-free call statements,
 `forward operation(...)` and `outcome => forward` adapter arms. Highlighting and
 snippets recognize the new forms; diagnostics reject added alternatives in a bare
 call and incompatible tail forwarding. Inferred contracts and borrowed origins
@@ -271,15 +263,15 @@ code action yet; this release changes compiler tooling without adding source syn
 
 `struct` and `variant` declarations have highlighting, snippets, Outline entries and
 hover with their layouts and Copy/completion properties. Diagnostics follow unsaved
-layout and nominal-type errors. `playground/data_types.tellur` runs directly from the
+layout and nominal-type errors. `playground/data_types.vn` runs directly from the
 editor. Modules, generic data and generic controls are described below.
 
 ## File modules in 0.18.0
 
-Imports use `import "file.tellur" as namespace;`. Highlighting covers imports, qualified
+Imports use `import "file.vn" as namespace;`. Highlighting covers imports, qualified
 types and `pub` declarations/fields. Unsaved dependency errors update importing
-files, with related source locations. Tellur-file changes inside workspace folders
-trigger rechecking alongside manifest changes. Open `playground/modules/main.tellur`
+files, with related source locations. Villanelle-file changes inside workspace folders
+trigger rechecking alongside manifest changes. Open `playground/modules/main.vn`
 to try the private-representation example. See `docs/modules.md` for current limits.
 
 ## Named fields in 0.19.0
@@ -287,13 +279,13 @@ to try the private-representation example. See `docs/modules.md` for current lim
 Named struct construction uses `person { name: "Ada", age: 36 }`. Field labels are
 highlighted, and diagnostics report missing/duplicate/unknown fields, incompatible
 types and ownership errors in the written initializer order. Variant and outcome
-payloads remain positional. See `playground/named_fields.tellur` in the compiler checkout.
+payloads remain positional. See `playground/named_fields.vn` in the compiler checkout.
 
 ## Generic data in 0.20.0
 
 Generic data uses `struct box<item> { item value; }` and explicit construction such
 as `box<string> { value: "Ada" }`. Generic variants and outcomes are supported too.
-Hover shows template parameters; concrete fields determine ownership. Generic controls are described below; trait constraints remain planned. Try `playground/generic_data.tellur`.
+Hover shows template parameters; concrete fields determine ownership. Generic controls are described below; trait constraints remain planned. Try `playground/generic_data.vn`.
 
 ## Generic controls in 0.21.0
 
@@ -301,21 +293,21 @@ Generic controls use `control identity<item>(item value) exits auto` and explici
 such as `identity<string>(text)`. Hover and Outline show the checked parametric exits.
 Unused generic bodies are checked too: unconstrained parameters can be borrowed or
 transferred, while copying/cloning/disposal require capabilities that are still planned.
-Try `playground/generic_controls.tellur`.
+Try `playground/generic_controls.vn`.
 
 ## Generic bounds in 0.22.0
 
 Control parameters accept `item: copy`, `item: clone` and `item: drop` bounds.
 The grammar highlights capability names and hover/outline retain the declared bounds.
 Unsaved definition errors explain missing permissions; concrete argument errors point
-to the call site. `playground/capabilities.tellur` runs through **Tellur: Build and Run**.
+to the call site. `playground/capabilities.vn` runs through **Villanelle: Build and Run**.
 
 ## Concrete traits in 0.23.0
 
 `trait`, `implement ... for ...`, associated `type` declarations and `self` are highlighted.
 Outline shows traits/implementations with associated types and controls as children.
 Declaration hover shows the explicit contract. Unsaved conformance and associated-type
-errors use compiler diagnostics. Run `playground/traits.tellur` with **Tellur: Build and Run**.
+errors use compiler diagnostics. Run `playground/traits.vn` with **Villanelle: Build and Run**.
 Trait-constrained generics are a later checkpoint; concrete calls use `reader<string>.read(...)`.
 
 ## Trait bounds in 0.24.0
@@ -323,7 +315,7 @@ Trait-constrained generics are a later checkpoint; concrete calls use `reader<st
 Generic trait requirements and associated sealed bounds are highlighted. Generic hover
 shows checked projected result types using source import aliases. Missing requirements
 and invalid associated permissions appear while editing; abstract compiler identities
-are hidden. `playground/trait_bounds.tellur` runs through **Tellur: Build and Run**.
+are hidden. `playground/trait_bounds.vn` runs through **Villanelle: Build and Run**.
 
 
 ## Declared borrow origins in 0.25.0
@@ -332,7 +324,7 @@ are hidden. `playground/trait_bounds.tellur` runs through **Tellur: Build and Ru
 reference alive. Trait declarations, implementations and generic controls expose
 this contract in hover. Unsaved diagnostics reject unknown origins, wrong-input
 returns, local escape and incompatible implementation origins. Try
-`playground/borrowed_traits.tellur`, then use **Tellur: Build and Run**.
+`playground/borrowed_traits.vn`, then use **Villanelle: Build and Run**.
 
 
 ## Reference words in 0.26.0
@@ -345,7 +337,7 @@ reference projection. Hover, snippets and highlighting use these words. Previous
 
 ## Local reference fields in 0.27.0
 
-Try `playground/stored_references.tellur` for shared/exclusive references inside local
+Try `playground/stored_references.vn` for shared/exclusive references inside local
 structs, whole-record moves, partial moves and last-use borrowing. Unsaved diagnostics
 report owner conflicts and moved fields. The integration test repairs both errors
 and builds/runs the same example through the installed compiler commands.
@@ -353,14 +345,14 @@ and builds/runs the same example through the installed compiler commands.
 ## Selected payload inference in 0.28.0
 
 `exits ready..., missing` infers a fixed, nonempty payload only for `ready`.
-Try `playground/inferred_payloads.tellur`; hover over `lookup` to see its checked
+Try `playground/inferred_payloads.vn`; hover over `lookup` to see its checked
 payload. Empty inferred payloads produce an unsaved `E_INFER` diagnostic. The
 integration suite checks highlighting separately and verifies hover, diagnostic
 repair and native build/run in VS Code.
 
 ## Grouped record results in 0.29.0
 
-`playground/origin_groups.tellur` demonstrates `struct text_pair['a, 'b]`, reference
+`playground/origin_groups.vn` demonstrates `struct text_pair['a, 'b]`, reference
 field arrows, and `text_pair[a, b]` result bindings. Hover describes the public
 origin groups; Outline retains their spelling. Swapping the result bindings gives
 an `E_LIFETIME` diagnostic. Moving an owner mutation before its field's final use
@@ -374,7 +366,7 @@ is inferred while the reference mode remains explicit; ownership checks are unch
 
 ## Record inputs in 0.30.0
 
-`playground/record_inputs.tellur` distinguishes a carrier's own storage from its
+`playground/record_inputs.vn` distinguishes a carrier's own storage from its
 contained references. Contracts use `from input['heading]`; grouped results can
 use `view[input['heading]]`. Hover preserves these public selectors. Unsaved
 unknown-group and wrong-origin errors are checked, and the integration test runs
@@ -383,7 +375,7 @@ shared reference fields; carriers with exclusive fields can be passed by value.
 
 ## Exclusive carrier reborrows in 0.31.0
 
-`playground/carrier_reborrows.tellur` reads exclusive fields through a shared carrier,
+`playground/carrier_reborrows.vn` reads exclusive fields through a shared carrier,
 then borrows both fields exclusively and restores parent access at their individual
 last uses. Hover notes when a returned reference retains carrier authorization.
 The integration suite checks that explanation, unsaved parent conflicts, repair and
@@ -391,7 +383,7 @@ native execution. No new source syntax is required.
 
 ## Opaque owner splits in 0.32.0
 
-`playground/opaque_splits.tellur` returns two exclusive references from one owner,
+`playground/opaque_splits.vn` returns two exclusive references from one owner,
 uses them together and restores owner access after their last use. Hover explains
 that exclusive results have checked disjoint access even when their lifetime origins
 coincide. Unsaved edits diagnose duplicate exclusive results and premature owner
@@ -399,7 +391,7 @@ access. The integration suite checks repair and native execution as well.
 
 ## Local borrowed outcomes in 0.33.0
 
-`playground/borrowed_outcomes.tellur` captures a borrowed lookup, adapts it to a named
+`playground/borrowed_outcomes.vn` captures a borrowed lookup, adapts it to a named
 outcome, handles it and then mutates the owner after the last use of the reference.
 Named outcome hover displays reference payloads. Unsaved edits diagnose premature
 owner access and unhandled borrowed outcomes. The integration suite exercises repair
@@ -409,7 +401,7 @@ record payloads follow the same checked storage rules.
 
 ## Nested borrowed storage in 0.34.0
 
-Open `playground/nested_borrows.tellur`: a completed outcome contains a record whose
+Open `playground/nested_borrows.vn`: a completed outcome contains a record whose
 field is another outcome carrying two mutable references. Hover `auto` on the
 payload bindings to inspect their types. The title can be used again after its
 reference's last use while the body stays protected. Moving the owner mutation
@@ -419,7 +411,7 @@ owned strings. Public borrowed-sum call boundaries remain a later checkpoint.
 
 ## Public grouped variants in 0.35.0
 
-Try `playground/public_variants.tellur`. Grouped variants and nested records now cross
+Try `playground/public_variants.vn`. Grouped variants and nested records now cross
 owned control boundaries while retaining alternative-specific borrow dependencies.
 Variant declaration hover displays group and field mappings; control hover explains
 guarded dependencies; `auto` hover displays received aggregate types. Moving an owner
@@ -429,7 +421,7 @@ borrows and named-outcome/option schemas remain queued.
 
 ## Named outcome and option origins (0.37)
 
-Open `playground/outcome_origins.tellur`. Hover over `text_result` to see its ordered
+Open `playground/outcome_origins.vn`. Hover over `text_result` to see its ordered
 origin groups and payload mappings, or over `lookup_text` to see the completion
 binding `exits text_result[title, body]`. The optional result inherits those groups.
 Assigning `title` before its final reference use reports `E_LOAN`; after its last
@@ -442,12 +434,12 @@ and absent results work in native build/run. Whole-sum borrows remain gated.
 parameters inspect the active alternative without consuming its owner. Hover on
 `auto` shows shared/exclusive payload references, including directly reborrowed
 reference payloads. Diagnostics catch early owner/carrier mutation and moving a
-payload through a borrow. Try `playground/sum_carriers.tellur` in the workspace.
+payload through a borrow. Try `playground/sum_carriers.vn` in the workspace.
 
 
 ### Returned carrier references (0.39)
 
-`playground/carrier_results.tellur` returns references to a reference-bearing record
+`playground/carrier_results.vn` returns references to a reference-bearing record
 and option. Control hover lists storage and contained-source lifetimes; `auto` hover
 shows the inferred outer reference mode. Unsaved edits report premature carrier
 release or conflicting access to its external sources. Build and Run exercises the
@@ -456,7 +448,7 @@ same rules in the native backend.
 
 ### Locally stored carrier references (0.40)
 
-`playground/stored_carriers.tellur` captures a carrier reference, moves the completed
+`playground/stored_carriers.vn` captures a carrier reference, moves the completed
 outcome, then edits through it after unpacking. It also stores a reference in a local
 job record inside an option and borrows that option before consuming it. Hover on
 `auto` shows container and nested reference types; premature carrier release is an
@@ -469,12 +461,12 @@ Hover on a data declaration shows both the referent's bracket mapping and the
 reference field's storage arrow. Control hover reports the independently mapped
 result groups; `auto` hover reports captured outcomes and returned containers.
 The integration suite checks unsaved premature-drop errors, repair and native
-execution using `playground/public_carriers.tellur`.
+execution using `playground/public_carriers.vn`.
 
 
 ## Aggregate trait origin contracts in 0.42.0
 
-Open `playground/aggregate_traits.tellur` to follow grouped lifetimes through an
+Open `playground/aggregate_traits.vn` to follow grouped lifetimes through an
 associated type, a named completion contract, generic dispatch and capture. Hover
 `auto job` to see `edit_job<string>`; editing the implementation's origin mappings
 reports conformance diagnostics immediately. The compiler and language server in
@@ -483,7 +475,7 @@ this package both support these contracts.
 
 ## Local shared-reference collections in 0.43.0
 
-Open `playground/borrowed_collections.tellur`. Arrays, vectors and maps can store
+Open `playground/borrowed_collections.vn`. Arrays, vectors and maps can store
 direct shared references locally, and lookups expose the referent directly. Hover
 `auto word` to see `ref string`; editing an owner while the reference remains live
 reports a loan conflict. Removal and replacement preserve possible source dependencies.
@@ -498,16 +490,16 @@ public annotation produces `E_PUBLIC_CONTRACT`, including in unused generic cont
 For incompatible direct forwarding and missing direct-call arms, the Problems view
 includes related producing and forwarding locations. Notes follow unsaved buffers
 and imports; repairing the source clears the diagnostic. Stored values and adapters
-are covered below. Try `playground/public_contracts.tellur`.
+are covered below. Try `playground/public_contracts.vn`.
 
 ## Rust adapter projects (since 0.45.0)
 
 Manifests may declare a Rust source adapter and locked dependencies. Adapter paths
 resolve beside the manifest, even when the workspace root is elsewhere. Diagnostics
-check Tellur contracts without reading or executing Rust. Build and Run compiles the
+check Villanelle contracts without reading or executing Rust. Build and Run compiles the
 wrappers through Cargo with the committed lockfile. Resolve dependency changes
-explicitly using `tellurc lock-native` in a terminal. Try the maintained
-`applications/settings/main.tellur`; its README describes entry and argument settings.
+explicitly using `vnc lock-native` in a terminal. Try the maintained
+`applications/settings/main.vn`; its README describes entry and argument settings.
 
 ## Stored outcome diagnostics (since 0.46.0)
 
@@ -516,26 +508,26 @@ exit, capture and intervening adapters. Moving a completed value or placing it i
 a local record/sum retains known lineage; merged labels retain their contributing
 alternatives. Notes update with unsaved changes and clear after repair. These are
 bounded structural locations, not feasible-input proofs. See the
-[coverage limits](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md).
+[coverage limits](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/diagnostics-and-limits.md).
 
 ## Structured checking (0.47.0)
 
-The bundled compiler supports `tellurc check SOURCE [MANIFEST] --json`. It prints
+The bundled compiler supports `vnc check SOURCE [MANIFEST] --json`. It prints
 one versioned JSON result to stdout and exits with 0 for success or 1 for failure.
 Source points use one-based Unicode scalar columns; LSP ranges keep their standard
 zero-based UTF-16 encoding. Path-related LSP diagnostics additionally carry a
 `structural_may_reach` witness in diagnostic data. See the
-[report format](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#machine-readable-checking).
+[report format](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/diagnostics-and-limits.md#machine-readable-checking).
 
 ## Settings HTTP service in 0.50
 
 The maintained settings application now includes a bounded loopback HTTP server.
-Open `applications/settings/main.tellur`, select entry `serve`, and supply the data
+Open `applications/settings/main.vn`, select entry `serve`, and supply the data
 path, port, connection budget and idle timeout in milliseconds. Use a known port
 with Build and Run, which captures output until completion; launching the built
 program in the integrated terminal shows its listening URL immediately.
 
-The [service guide](https://github.com/apology-is-policy/tellur/blob/main/applications/settings/README.md#run-the-http-service)
+The [service guide](https://github.com/apology-is-policy/villanelle/blob/main/applications/settings/README.md#run-the-http-service)
 includes curl requests and the exact HTTP/cleanup limits. Unsaved diagnostics still
 enforce explicit resource completion across the server's imported controls.
 
@@ -543,19 +535,19 @@ enforce explicit resource completion across the server's imported controls.
 
 The compiler now supports manifest-bound opaque Rust owners across calls, with
 shared borrowing and explicit consuming operations. Open
-[`examples/retained_file/main.tellur`](https://github.com/apology-is-policy/tellur/blob/main/examples/retained_file/main.tellur)
+[`examples/retained_file/main.vn`](https://github.com/apology-is-policy/villanelle/blob/main/examples/retained_file/main.vn)
 to try it. Removing `file_release(file);` produces an unsaved resource diagnostic;
-repairing it permits a native build with the bundled compiler. No new Tellur
+repairing it permits a native build with the bundled compiler. No new Villanelle
 syntax is required. See the
-[adapter reference](https://github.com/apology-is-policy/tellur/blob/main/docs/rust-adapters.md#retained-resources-049).
+[adapter reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/rust-adapters.md#retained-resources-049).
 
 ## Process status contracts in 0.48
 
 Named outcome alternatives support `@exit N` highlighting, annotation diagnostics,
 and declaration hover listing status defaults. Build and Run propagates the final
-entry's configured status. Migrated `.tellur` playgrounds declare their entry policy;
+entry's configured status. Migrated `.vn` playgrounds declare their entry policy;
 older programs need explicit annotations or manifest mappings before native build.
-See [process entry contracts](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/process-entry.md).
+See [process entry contracts](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/process-entry.md).
 
 
 ## Expression diagnostics in 0.51
@@ -584,7 +576,7 @@ An ordinary delta arm can finish its control with `missing => exit absent` or
 `ready { auto value } => exit done { value }`. Terminating payloads have private
 arm scopes; continuing arms keep their path labels and bindings. Highlighting,
 inferred `auto` hover, unsaved diagnostics and native build/run support the syntax.
-Try `playground/arm_exits.tellur`. Arm separators are commas, without a statement
+Try `playground/arm_exits.vn`. Arm separators are commas, without a statement
 semicolon inside the arm; multi-statement arm bodies remain unsupported.
 
 ## Selected-history hover (0.55)
@@ -593,17 +585,17 @@ Hover over `[path]:`, a `path` alias, a delta arm, or an executable statement to
 its resolved structural selection. Enclosing group intersections and aliases are
 included. `auto` and declaration hovers retain their type/contract information.
 Decision-arm locations distinguish the contributing facts; duplicate names gain
-explanatory `@line:column` suffixes. These suffixes are not Tellur syntax.
+explanatory `@line:column` suffixes. These suffixes are not Villanelle syntax.
 
 The display describes possible structural histories, not proven input values.
 Loop context means one iteration, with entry conditions already inherited. Large
 conditions/origin lists are bounded and explicitly marked when incomplete. Comments
 and whitespace have no selection hover. Invalid source, including broken unsaved
-imports, suppresses stale information. Try `playground/history_hover.tellur`.
+imports, suppresses stale information. Try `playground/history_hover.vn`.
 
 ## Outcome absorption (0.58)
 
-**Tellur: Show Outcome Absorption Snapshot** opens checked public contracts together
+**Villanelle: Show Outcome Absorption Snapshot** opens checked public contracts together
 with bounded internal contributor evidence. It uses current unsaved source and
 imports. The JSON includes source locations, distinct call sites, explicit analysis
 limitations and truncation flags. Failed checking opens no partial or stale result.
@@ -611,40 +603,40 @@ Save As can retain the snapshot; rerun the command to refresh it.
 
 The terminal `absorption-diff` command compares these artifacts, reporting public
 contract changes separately from internal contributor changes. Try
-`playground/outcome_absorption.tellur`; its `unavailable` public outcome absorbs two
-different private outcomes. See [the reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/outcome-absorption.md)
+`playground/outcome_absorption.vn`; its `unavailable` public outcome absorbs two
+different private outcomes. See [the reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/outcome-absorption.md)
 for the exact scope and baseline workflow.
 
 
 ## Path and outcome explanations (0.59)
 
-**Tellur: Explain Path Selection at Cursor** opens the checked selection at the
-cursor. **Tellur: Explain Outcome Contributors** offers a picker of the active
+**Villanelle: Explain Path Selection at Cursor** opens the checked selection at the
+cursor. **Villanelle: Explain Outcome Contributors** offers a picker of the active
 file's ordinary concrete controls and their outcomes, including private controls.
 Both open editable Markdown reports with source links; Markdown preview renders
 the links. Rerun after editing: these are fixed reports, using current unsaved
 sources and imports. Invalid checking produces an error instead of stale evidence.
 
-Try `playground/path_explanations.tellur`. Generic/trait source selections work;
+Try `playground/path_explanations.vn`. Generic/trait source selections work;
 generic/trait outcome roots remain unavailable. Conditions, decision origins and
 contributors have explicit bounds. These are structural facts, not concrete-input
-proofs. See [the query reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/explanations.md)
+proofs. See [the query reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/explanations.md)
 for terminal commands, JSON, coordinate conventions and remaining analysis gaps.
 
 
 ## Execution failure reports (0.60)
 
-**Tellur: Build and Run** now shows observed control activations and source sites
-for returned execution failures. Use `playground/execution_faults.tellur` with
-`"tellurLanguage.programArguments": ["--json", "--fuel", "40"]` to observe the
+**Villanelle: Build and Run** now shows observed control activations and source sites
+for returned execution failures. Use `playground/execution_faults.vn` with
+`"villanelleLanguage.programArguments": ["--json", "--fuel", "40"]` to observe the
 second worker invocation exhausting its budget. The report goes to stderr and the
 program returns 1; it does not invent a declared outcome. Clear these arguments
 when returning to other programs.
 
 There is no local catch-and-resume or async execution. Source faults and synchronous
 request boundaries are described below. Normal host teardown is distinct from a resource's declared completion
-protocol. See [execution failures](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/execution-failures.md)
-and the [activation plan](https://github.com/apology-is-policy/tellur/blob/main/docs/faults-and-activations.md).
+protocol. See [execution failures](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/execution-failures.md)
+and the [activation plan](https://github.com/apology-is-policy/villanelle/blob/main/docs/faults-and-activations.md).
 
 Source faults (0.62): `fault`/`faults` are highlighted; declaration hover and Outline
 show inferred permissions. Public/trait fault contracts and retained-resource
@@ -660,14 +652,14 @@ Unsaved diagnostics check transitive call permission, retained-resource availabi
 and illegal ordinary calls to boundaries. Snippets `boundary` and
 `control_contingent` provide starting points.
 
-Try `playground/contingency.tellur` with entry `main` and no program arguments. It
+Try `playground/contingency.vn` with entry `main` and no program arguments. It
 handles one source fault, then runs another request. The updated settings server
 uses the same mechanism for per-request isolation. Faults never become ordinary
-outcomes. See [the full reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/contingency.md).
+outcomes. See [the full reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/contingency.md).
 
 ## Statement diagnostics in 0.73
 
-Open `playground/diagnostics.tellur` and change `count = 3` to `count = true`,
+Open `playground/diagnostics.vn` and change `count = 3` to `count = true`,
 and `subtitle = "Ready"` to `subtitle = 7`. Problems shows both initializer errors.
 The dependent use of `count` does not produce a follow-on error. Repair either
 initializer to remove its diagnostic; repair both to restore inferred `auto` hover.
@@ -676,11 +668,11 @@ Recovery uses fresh compiler state and stops at decisions, nested scopes, loops,
 boundaries and exits. Whole-state fault-resource checks can also stop recovery.
 The 32-error budget is shared across statements and controls; no partial checked
 program or inferred hover escapes a failed check. See the
-[precise recovery limits](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#statement-recovery).
+[precise recovery limits](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/diagnostics-and-limits.md#statement-recovery).
 
 ## Path and scope diagnostics in 0.74
 
-Open `playground/path_diagnostics.tellur`. Change `count = 3` to `count = true`
+Open `playground/path_diagnostics.vn`. Change `count = 3` to `count = true`
 and `summary = "Brief"` to `summary = 7`: both path-local initializer errors appear,
 including the one inside the nested group. Repair either independently; inferred
 `auto` hover returns only after the complete program checks again.
@@ -689,21 +681,21 @@ Recovery also works inside lexical scopes, statement arms and loop bodies. It ke
 full path selectors: a join touching a stalled history is suppressed, not narrowed.
 Fault boundaries/contingencies, inline adapters, decision headers and scope/loop
 setup or completion retain conservative limits. See the
-[path recovery reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
+[path recovery reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
 
 
 ## Shared source libraries in 0.75
 
 The bundled compiler supports explicit Rust adapter modules and the new JSON file
-source library. The maintained settings service and `examples/json_file/main.tellur`
+source library. The maintained settings service and `examples/json_file/main.vn`
 share storage code with distinct application policy. Module metadata is checked
 without loading Rust code; Build and Run reads the configured sources and checks
 the generated Rust interface. Paths resolve from the manifest, including when the
-native output is placed elsewhere. See the [library guide](https://github.com/apology-is-policy/tellur/blob/main/library/README.md).
+native output is placed elsewhere. See the [library guide](https://github.com/apology-is-policy/villanelle/blob/main/library/README.md).
 
 ## Call-site contract hover in 0.76
 
-Hover over `json_file.load` in `examples/json_file/main.tellur` to see checked
+Hover over `json_file.load` in `examples/json_file/main.vn` to see checked
 parameter types, its named completion contract and alternatives, followed by the
 selected histories. Local/imported controls, concrete explicit generic calls and
 manifest primitives are supported. Borrow origins, inferred private return lifetimes,
@@ -715,7 +707,7 @@ suppress stale hover. The callee range excludes value arguments; other positions
 retain their existing feedback. Constructor calls gain contracts in 0.79 below,
 concrete trait calls in 0.80, and named boundaries in 0.82. Abstract generic-body
 calls retain selected-history feedback for now. See the
-[call-site reference](https://github.com/apology-is-policy/tellur/blob/main/docs/language-reference.md#call-site-contract-hover).
+[call-site reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/language-reference.md#call-site-contract-hover).
 
 ## Declaration diagnostics in 0.77
 
@@ -724,14 +716,14 @@ including imported and generic declarations. Each preparation phase reports at m
 one error per control within the 32-error budget. Later phases and bodies wait until
 the failed declarations are repaired; inferred and call-site hover remain unavailable
 while the program is invalid. Shared type/trait preparation retains conservative
-stopping points. Try `playground/declaration_diagnostics.tellur`, or see the
-[phase rules](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/diagnostics-and-limits.md#control-declaration-batches).
+stopping points. Try `playground/declaration_diagnostics.vn`, or see the
+[phase rules](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/diagnostics-and-limits.md#control-declaration-batches).
 
 ## Named completion bindings in 0.78
 
 Wrong origin-argument counts in separate control declarations now appear together,
 after their shared outcome schemas validate. Try changing both `exits view[input]`
-bindings in `playground/contract_binding_diagnostics.tellur` to `exits view[input, input]`.
+bindings in `playground/contract_binding_diagnostics.vn` to `exits view[input, input]`.
 Repairing one removes its diagnostic; repairing both restores checked call contracts
 and `auto` hover. The existing 32-error budget and dependent-phase barriers apply.
 Shared schema failures remain conservative, and valid programs keep their existing
@@ -744,7 +736,7 @@ signature, including concrete generic inputs, ordered result-origin groups and
 fault/contingency permission. It uses current unsaved definitions and the import
 alias at the call, and does not list private fields. Invalid source suppresses stale
 contracts. Try `text_pair(...)` and `editable_text(...)` in
-`playground/borrowed_construction.tellur`; selected histories remain underneath.
+`playground/borrowed_construction.vn`; selected histories remain underneath.
 Concrete trait calls gain contracts in 0.80 below, and named boundaries in 0.82.
 Abstract generic-body calls retain their existing selected-history feedback.
 
@@ -757,7 +749,7 @@ chosen binding names stay out of the hover. Unsaved edits refresh the contract, 
 invalid source suppresses stale results. Concrete associated-type selections also
 resolve in call targets and explicit type arguments. Generic-body calls remain
 abstract even if a real type has the same name as a type parameter. Try
-`playground/traits.tellur`; named boundaries gain contracts in 0.82 below. Abstract
+`playground/traits.vn`; named boundaries gain contracts in 0.82 below. Abstract
 calls retain selected-history feedback.
 
 ## Lexical call types and named results in 0.81
@@ -767,8 +759,8 @@ including sibling aliases, before looking up module types. Same-named nominal ty
 do not override that lexical meaning. Generic helper calls also retain named result
 contracts after associated-type substitution, including explicit origin mappings on
 their alternatives. Unsaved edits refresh both views; invalid source suppresses stale
-contracts. Try `playground/trait_aliases.tellur` and `prepare<text_editor>(...)` in
-`playground/aggregate_traits.tellur`. Named boundaries gain contracts in 0.82 below;
+contracts. Try `playground/trait_aliases.vn` and `prepare<text_editor>(...)` in
+`playground/aggregate_traits.vn`. Named boundaries gain contracts in 0.82 below;
 abstract generic calls retain their existing selected-history feedback.
 
 ## Named supervision contracts in 0.82
@@ -779,7 +771,7 @@ handled faults do not add `faults` to this interface. The hover explains that
 supervision produces no outcome or fault value, and that escaping contingency
 abandons the supervisor continuation. Imported aliases and unsaved declarations
 refresh normally; invalid source suppresses stale contracts. Try both supervision
-sites in `playground/contingency.tellur`.
+sites in `playground/contingency.vn`.
 
 ## Named boundary diagnostic recovery in 0.83
 
@@ -787,7 +779,7 @@ Independent local errors in named boundary work and contingency bodies now appea
 together. Disjoint paths retain their own checks; dependent values and uncertain
 retained-owner/fault-resource checks stay suppressed. A failed handler suppresses
 its dependent work and supervisors until repaired. The 32-error budget is shared.
-Try two invalid local initializers in `playground/contingency.tellur`; repairs clear
+Try two invalid local initializers in `playground/contingency.vn`; repairs clear
 errors independently, and hover returns only after the complete source checks.
 Lexical work gains recovery in 0.84 below; lexical handlers gain recovery in 0.85 below; inline adapters remain conservative
 recovery barriers.
@@ -798,7 +790,7 @@ Independent local errors inside `fault boundary` work now appear together, inclu
 nested work, paths and ordinary scopes. An uncertain work body stalls its entire
 boundary history before handler and outer continuation checks; independent outer
 paths keep their checks. Capture headers retain first-error limits; lexical handlers
-gain recovery in 0.85 below. Try two invalid initializers in `playground/recovery.tellur`; inferred hover
+gain recovery in 0.85 below. Try two invalid initializers in `playground/recovery.vn`; inferred hover
 returns only after every error is repaired. Native fault/recovery behavior is unchanged.
 
 ## Lexical contingency diagnostics in 0.85
@@ -807,7 +799,7 @@ After lexical work checks cleanly, independent errors inside its contingency now
 appear together. Fault-mode permissions, capture access, immutable `@fault` and
 resource obligations remain enforced. An uncertain handler stalls the whole boundary
 history while preserving disjoint outer checks. Try two invalid initializers in the
-handler of `playground/recovery.tellur`; partial repairs clear errors independently,
+handler of `playground/recovery.vn`; partial repairs clear errors independently,
 and inferred hover refreshes only after every error is repaired.
 
 ## Explicit exit-adapter diagnostics in 0.86
@@ -816,7 +808,7 @@ Independent terminal arms of `exit delta` now report errors together when the
 control has a fully explicit result shape. Nested arms preserve their own guards,
 ownership and borrow checks. Stored adapters, inferred results and decision headers
 retain conservative barriers. Try two bad payload expressions in the explicit
-`main` adapter of `playground/adapters.tellur`; repairs clear errors independently
+`main` adapter of `playground/adapters.vn`; repairs clear errors independently
 and call hover returns only after the complete source checks.
 
 ## Explicit stored-adapter diagnostics in 0.87
@@ -824,12 +816,12 @@ and call hover returns only after the complete source checks.
 A stored adapter with a declared outcome type can report independent arm errors
 in one batch. Its uncertain result and continuation stay suppressed until repaired;
 clean arms retain their resource and lifetime checks. Try invalid payloads in both
-arms of the `message_result message` binding in `playground/stored_adapters.tellur`.
+arms of the `message_result message` binding in `playground/stored_adapters.vn`.
 Inferred stored types, headers and fault-context adapters remain conservative.
 
 ## Symbolic ordinary generic call contracts in 0.88
 
-Hover `identity<item>(value)` inside `playground/generic_controls.tellur`: the
+Hover `identity<item>(value)` inside `playground/generic_controls.vn`: the
 contract retains `item`, independently of concrete callers. It includes declared
 bounds, named result origins, inferred payloads and private checked return lifetimes.
 Anonymous payloads use bounded type rendering without internal compiler names.
@@ -838,7 +830,7 @@ releases add symbolic trait and constructor calls below.
 
 ## Symbolic trait call contracts in 0.89
 
-Hover `reader<r>.peek(input)` inside `playground/borrowed_traits.tellur`. The trait's
+Hover `reader<r>.peek(input)` inside `playground/borrowed_traits.vn`. The trait's
 names, associated projections, origins and fault permissions remain abstract and
 independent of concrete implementations. Named results retain their alternatives
 and nested origin mappings. Edits refresh the interface; invalid bounds or
@@ -847,7 +839,7 @@ contracts suppress it. Symbolic constructors follow in 0.90.
 ## Symbolic constructor contracts in 0.90
 
 Hover `box<item>(move input)` or `view<item>(input)` inside
-`playground/generic_construction.tellur`. The checked contract preserves abstract
+`playground/generic_construction.vn`. The checked contract preserves abstract
 types, shared/exclusive input modes, ordered result origins and permissions. Calls
 inside constructors and nested or associated-type arguments work the same way.
 Private fields and compiler-generated completion names are hidden. Unsaved
@@ -857,7 +849,7 @@ concrete supervision hover remains available in generic bodies.
 
 ## Constructor access diagnostics in 0.91
 
-Open `playground/constructor_access/main.tellur` and `messages.tellur`. Removing
+Open `playground/constructor_access/main.vn` and `messages.vn`. Removing
 `pub` from both constructors reports both inaccessible callers together. Restore
 one modifier to leave the other diagnostic; restore both to recover checked hover.
 Unsaved dependency edits participate immediately. One error is reported per prepared
@@ -875,7 +867,7 @@ and later type/ownership checks remain blocked while the bound phase is invalid.
 
 ## Inferred stored-adapter diagnostics in 0.93
 
-The first `auto saved` adapter in `playground/stored_adapters.tellur` now supports
+The first `auto saved` adapter in `playground/stored_adapters.vn` now supports
 independent errors in distinct result labels. For example, invalid expressions in
 both `ready` and `empty` payloads report together. Later occurrences of an uncertain
 label stay suppressed because they may depend on its missing inferred payload shape.
@@ -886,7 +878,7 @@ retain conservative barriers.
 
 ## Inferred exit-adapter diagnostics in 0.94
 
-The inferred `successor` helper in `playground/adapters.tellur` now reports independent
+The inferred `successor` helper in `playground/adapters.vn` now reports independent
 payload errors across its terminal arms. This also applies to selected `ready...`
 contracts and repeated exit labels. Payload expressions infer independently; no
 partial exit contract or inferred hover is published while errors remain. Imported
@@ -901,7 +893,7 @@ origins are checked one error per trait, under the shared 32-error budget. Share
 identity/schema failures still stop earlier; implementations and all later checks
 wait until declarations are valid. Unsaved repairs update imported locations and
 restore call/inferred hover only after a complete successful check. The editor
-regression uses `playground/traits.tellur` with a second independent interface.
+regression uses `playground/traits.vn` with a second independent interface.
 
 ## Constructor-definition diagnostics in 0.96
 
@@ -913,7 +905,7 @@ loading still stops at the first failing file. Later initialization and ownershi
 checks keep their existing phase boundaries.
 
 The isolated editor regression uses `playground/constructor_access`: two unsaved
-invalid field initializations in `messages.tellur` produce separate diagnostics in
+invalid field initializations in `messages.vn` produce separate diagnostics in
 the caller, with related locations in the dependency. Repairing each definition
 updates diagnostics; constructor contracts return only when the checked program is
 valid. The repaired program builds and runs through the normal editor command.
@@ -928,7 +920,7 @@ Whole-contract/origin checks, some later validation and contributor notes still 
 point locations. Error codes and checking order are unchanged.
 
 The isolated regression changes a constructor parameter in
-`playground/constructor_access/messages.tellur` to an invalid multiline type, then a
+`playground/constructor_access/messages.vn` to an invalid multiline type, then a
 compact equivalent. It verifies both exact related ranges, unavailable stale hover,
 repair and native execution from the caller.
 
@@ -952,7 +944,7 @@ Invalid loop parameter types now select their full written annotation instead of
 an absent or loop-wide location. Multiline types, imported unsaved files, generic
 substitution and legacy fields retain their original endpoints. Initializer errors
 stay on their expressions. The isolated editor test derives an imported counter from
-`playground/count.tellur`, checks exact multiline/compact ranges and fresh hover after
+`playground/count.vn`, checks exact multiline/compact ranges and fresh hover after
 repair, then builds and runs it to emit 1 through 5. No source async syntax is enabled.
 
 ## Local type diagnostics in 0.101
@@ -996,8 +988,8 @@ named contract, repairs it, then builds and runs the importing counter.
 Callee hover preserves `async control`; diagnostics reject missing or mismatched
 invocation permission, including unsaved imported contracts. The compiler supports
 sequential calls; local owned cold tasks are added in 0.106. Try
-[`playground/async_entry.tellur`](https://github.com/apology-is-policy/tellur/blob/main/playground/async_entry.tellur) and the
-[async reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/async-execution.md).
+[`playground/async_entry.vn`](https://github.com/apology-is-policy/villanelle/blob/main/playground/async_entry.vn) and the
+[async reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/async-execution.md).
 
 
 ## Local cold tasks in 0.106
@@ -1006,8 +998,8 @@ sequential calls; local owned cold tasks are added in 0.106. Try
 shows `task<producer>`; this describes the inferred internal type rather than a
 public writable type. Diagnostics reject forgotten or reused tasks, borrowed
 captures and escaping task results. Unsaved repair refreshes checked hover.
-Try [cold_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/cold_tasks.tellur)
-and the [reference](https://github.com/apology-is-policy/tellur/blob/main/docs/reference/async-execution.md).
+Try [cold_tasks.vn](https://github.com/apology-is-policy/villanelle/blob/main/playground/cold_tasks.vn)
+and the [reference](https://github.com/apology-is-policy/villanelle/blob/main/docs/reference/async-execution.md).
 
 
 ## Direct borrowed cold captures in 0.107
@@ -1015,7 +1007,7 @@ and the [reference](https://github.com/apology-is-policy/tellur/blob/main/docs/r
 Task hover and diagnostics now cover retained shared/exclusive borrows. Conflicting
 access before await is rejected, including after a task move; unsaved repair restores
 checked type hover. The isolated editor fixture builds and runs
-[borrowed_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/borrowed_tasks.tellur).
+[borrowed_tasks.vn](https://github.com/apology-is-policy/villanelle/blob/main/playground/borrowed_tasks.vn).
 Contained captures and borrowed result delivery remain separate follow-ups.
 
 ## Borrowed task completions in 0.108
@@ -1023,7 +1015,7 @@ Contained captures and borrowed result delivery remain separate follow-ups.
 Awaited reference payloads now show their inferred type on `auto`. Unsaved edits
 that mutate a still-borrowed source report `E_LOAN`, and repair restores checked
 hover. The isolated editor fixture builds and runs
-[task_results.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/task_results.tellur),
+[task_results.vn](https://github.com/apology-is-policy/villanelle/blob/main/playground/task_results.vn),
 showing one capture released at await and the returned borrow released after its
 last use. Existing windows are not reloaded during release installation.
 
@@ -1032,7 +1024,7 @@ last use. Existing windows are not reloaded during release installation.
 The checker and inferred-type hover support task captures containing shared or
 exclusive references. Dropping another shared copy does not release the task's
 borrow; diagnostics and repair track this in unsaved buffers. The isolated fixture
-builds and runs [contained_tasks.tellur](https://github.com/apology-is-policy/tellur/blob/main/playground/contained_tasks.tellur).
+builds and runs [contained_tasks.vn](https://github.com/apology-is-policy/villanelle/blob/main/playground/contained_tasks.vn).
 
 
 ## Whole borrowed carrier captures in 0.110
@@ -1041,7 +1033,7 @@ Cold tasks can borrow an entire reference-bearing record or sum. The task retain
 both its storage and the references inside it. Awaited results preserve separate
 storage and contained-origin contracts, including nested carriers and tagged sums.
 A shared outer borrow cannot grant exclusive access to an inner reference.
-Try `./bin/tellurc exec playground/carrier_tasks.tellur`; hover `auto` to inspect
+Try `./bin/vnc exec playground/carrier_tasks.vn`; hover `auto` to inspect
 the pending task and its detached borrowed completion. Public/escaping tasks,
 nested task storage and scheduling remain separate work.
 
@@ -1377,7 +1369,7 @@ Fresh local reborrows can now carry complete conservative holder dependencies th
 native capture and result delivery. Whole borrowed holder ancestors remain protected;
 copied shared fields gain no invented holder guard. Indirect guards, returned permission
 families and conditional/contained proof gaps remain partial. Try
-`./bin/tellurc exec playground/local_guarded_tasks.tellur`.
+`./bin/vnc exec playground/local_guarded_tasks.vn`.
 
 ## Local borrowed carrier coverage in 0.154
 
@@ -1386,7 +1378,7 @@ coverage when every leaf has unconditional checked provenance. Nested records an
 local field projections are supported; aliases, indirect holders, returned permission
 families and reference-to-carrier leaves remain partial. Runtime capture still requires
 complete incoming formation evidence for every reachable reference. Try
-`./bin/tellurc exec playground/local_carrier_tasks.tellur`.
+`./bin/vnc exec playground/local_carrier_tasks.vn`.
 
 ## Local carrier aliases in 0.155
 
@@ -1394,7 +1386,7 @@ Erased local carrier aliases can retain complete dependencies through moves and
 projected reborrows. Every broad borrowed ancestor and all its stored owners remain
 covered, even owners outside the projected runtime value. Conditional/received carriers,
 permission families, tagged contents and references to carriers remain partial. Try
-`./bin/tellurc exec playground/aliased_carrier_tasks.tellur`.
+`./bin/vnc exec playground/aliased_carrier_tasks.vn`.
 
 ## Incoming record-leaf evidence in 0.156
 
@@ -1409,7 +1401,7 @@ Singleton shared input leaves preserve complete incoming dependency coverage thr
 reborrows, local aliases and projections. Broad pointee ancestry remains protected, while
 copying a shared field does not retain its record holder. Partial caller evidence and
 unsupported permission cases remain conservative. Try
-`./bin/tellurc exec playground/incoming_leaf_tasks.tellur`.
+`./bin/vnc exec playground/incoming_leaf_tasks.vn`.
 
 ## Native holder snapshots in 0.158
 
@@ -1424,28 +1416,28 @@ Supported singleton exclusive input leaves retain their original pointee and the
 borrowed holder, including other stored owners. Direct and local aliased reborrows carry
 an explicit checked relationship; partial or invalid runtime evidence stays conservative.
 Shared field copies remain holder-free. Try
-`./bin/tellurc exec playground/guarded_input_tasks.tellur`.
+`./bin/vnc exec playground/guarded_input_tasks.vn`.
 
 ## Incoming carrier dependencies in 0.160
 
 Whole incoming ordinary carriers retain their full original aggregate and every stored owner
 through direct forwarding, projected reborrows and local aliases. Partial or changed caller
 metadata stays conservative, including evidence outside the selected projection. Run
-`./bin/tellurc exec playground/incoming_carrier_tasks.tellur`.
+`./bin/vnc exec playground/incoming_carrier_tasks.vn`.
 
 ## Checked cold-await preparation in 0.161
 
 Native host support can advance checked local work to a consuming cold await while retained
 children remain live. Handle and wait-capacity validation precedes source changes; an explicit
 handoff stops preparation before the child runs. Source execution remains sequential. Run
-`./bin/tellurc exec playground/owner_await_progress.tellur` for the maintained source example.
+`./bin/vnc exec playground/owner_await_progress.vn` for the maintained source example.
 
 ## Direct-await handoffs in 0.162
 
 Direct await now retains its caller and hands off explicitly through the existing task
 completion machinery. Nested direct and cold awaits preserve borrowed storage and owning
 fault cleanup. Source execution remains sequential. Run
-`./bin/tellurc exec playground/direct_await.tellur` for the maintained source example.
+`./bin/vnc exec playground/direct_await.vn` for the maintained source example.
 
 ## Retained started-task joins in 0.163
 
@@ -1510,28 +1502,28 @@ repair restores result hover, and the borrowed-result example runs natively.
 
 Release 0.173 supports flat record spawn captures with direct reference fields. Hover
 explains retained leaf loans; unsaved capture conflicts report `E_LOAN`, and repair
-restores result hover and native build/run. Try `playground/carrier_spawn.tellur`.
+restores result hover and native build/run. Try `playground/carrier_spawn.vn`.
 Nested/borrowed capture carriers and reference-bearing result carriers remain gated.
 
 Release 0.174 supports flat record spawn results with declared contained origins.
 Hover describes selected result leaf loans, and unsaved origin/shape edits refresh
-caller diagnostics. Try `playground/carrier_spawn_results.tellur`; conflicting access
+caller diagnostics. Try `playground/carrier_spawn_results.vn`; conflicting access
 before a returned field's final use reports `E_LOAN`. Nested/borrowed carriers stay gated.
 
 Release 0.175 supports nested owned record spawn captures/results. Hover explains the
 reference-leaf boundary; unsaved imported origin edits and conflicts after partial
-moves refresh diagnostics. Try `playground/nested_spawn.tellur`. Borrowed carriers and
+moves refresh diagnostics. Try `playground/nested_spawn.vn`. Borrowed carriers and
 reference-bearing tagged/collection payloads remain gated.
 
 Release 0.176 supports owned option/closed-variant spawn captures/results, including
 nested records. Hover describes the reference-leaf boundary; unsaved imported tag-origin
-changes and selected payload conflicts refresh diagnostics. Try `playground/tagged_spawn.tellur`.
+changes and selected payload conflicts refresh diagnostics. Try `playground/tagged_spawn.vn`.
 The editor checks repair and native execution for both present and empty alternatives.
 Reference-bearing outcome payloads, borrowed carriers and collections remain gated.
 
 Release 0.177 supports named outcome spawn captures/results with declared origins.
 Hover explains mandatory handling; unsaved imported origin edits refresh permission
-checks. Try `playground/outcome_spawn.tellur`: discarding the nested outcome reports
+checks. Try `playground/outcome_spawn.vn`: discarding the nested outcome reports
 `E_RESOURCE`, repair restores hover, and native execution covers active/empty alternatives.
 Anonymous reference-bearing contracts and borrowed carriers retain their existing limits.
 
@@ -1776,8 +1768,8 @@ Compiler 0.222 adds task sets. Hover `tasks`, `into` (in `spawn … into set;`) 
 `next` (in `await next set`) for their rules. The grammar highlights `into` and `next`
 only in those positions.
 
-Compiler 0.223 builds task sets natively, so **Tellur: Build and Run** works on
-`playground/task_sets.tellur`.
+Compiler 0.223 builds task sets natively, so **Villanelle: Build and Run** works on
+`playground/task_sets.vn`.
 
 Compiler 0.224 accepts async host operations that return resources. In the HTTP
 example and settings service, `accept` is async and is entered with `run`.
@@ -1788,7 +1780,7 @@ and `reply_failure` there.
 
 Compiler 0.226 serves the settings application concurrently. Build and Run the
 `serve` entry as before; hover `tasks`, `into` and `next` in
-`applications/settings/server.tellur` for the task-set rules.
+`applications/settings/server.vn` for the task-set rules.
 
 Compiler 0.227 admits `run`, `defer`, `spawn` and `spawn … into` of manifest async
 host operations. Hovering an operation describes these forms; diagnostics name the
@@ -1821,7 +1813,7 @@ language server share version 0.276.0; Rust remains the default. Task sets follo
 
 Compiler 0.261 adds task sets to the opt-in LLVM backend, including bounded feeding,
 completion-order reaping and cancellation of current members. Try
-`playground/llvm_task_sets.tellur` with a job count. The bundled compiler/LSP report
+`playground/llvm_task_sets.vn` with a job count. The bundled compiler/LSP report
 0.276.0. Existing task-set ownership and reference-free capture/result rules apply;
 Rust remains the default backend.
 

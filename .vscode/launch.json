@@ -1,4 +1,4 @@
 {
   "version": "0.2.0",
-  "configurations": [{ "name": "Develop Tellur extension", "type": "extensionHost", "request": "launch", "runtimeExecutable": "${execPath}", "args": ["--extensionDevelopmentPath=${workspaceFolder}/editors/vscode", "${workspaceFolder}/tellur.code-workspace"], "preLaunchTask": "Prepare Tellur extension host", "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"] }]
+  "configurations": [{ "name": "Develop Villanelle extension", "type": "extensionHost", "request": "launch", "runtimeExecutable": "${execPath}", "args": ["--extensionDevelopmentPath=${workspaceFolder}/editors/vscode", "${workspaceFolder}/villanelle.code-workspace"], "preLaunchTask": "Prepare Villanelle extension host", "outFiles": ["${workspaceFolder}/editors/vscode/dist/**/*.js"] }]
 }

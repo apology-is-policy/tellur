@@ -129,7 +129,7 @@ exports.run = async function () {
     await waitFor(() => diagnostics().some(d => code(d) === 'E_ARMS'), 'diagnostics after server restart');
     await replace(document, original);
     await waitFor(() => diagnostics().length === 0, 'repair after server restart');
-    const ownership = await fs.readFile(path.join(__dirname, '../../../examples/partial_moves.tellur'), 'utf8');
+    const ownership = await fs.readFile(path.join(__dirname, '../../../examples/partial_moves.vn'), 'utf8');
     await replace(document, ownership);
     await waitFor(async () => {
       const outline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider', uri);
@@ -141,7 +141,7 @@ exports.run = async function () {
       await replace(document, ownership);
       await waitFor(() => diagnostics().length === 0, 'field ownership diagnostic clears');
     }
-    const optional = await fs.readFile(path.join(__dirname, '../../../examples/optional_handle.tellur'), 'utf8');
+    const optional = await fs.readFile(path.join(__dirname, '../../../examples/optional_handle.vn'), 'utf8');
     await replace(document, optional);
     await waitFor(async () => {
       const outline = await vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider', uri);
@@ -156,11 +156,11 @@ exports.run = async function () {
       await replace(document, optional);
       await waitFor(() => diagnostics().length === 0, 'variant diagnostic clears');
     }
-    const buildUri = vscode.Uri.file(path.join(root, 'editor build.tellur'));
+    const buildUri = vscode.Uri.file(path.join(root, 'editor build.vn'));
     const revised = 'control main(string message) exits auto { [entry]: delta (message == "") { true => empty, false => text } [empty]: exit empty; [text]: string output = message; emit(output); exit done; }';
     await fs.writeFile(buildUri.fsPath, revised);
     const buildDocument = await vscode.workspace.openTextDocument(buildUri);
-    assert.equal(buildDocument.languageId, 'tellur');
+    assert.equal(buildDocument.languageId, 'villanelle');
     await vscode.window.showTextDocument(buildDocument);
     const revisedDiagnostics = () => vscode.languages.getDiagnostics(buildUri).filter(d => d.source === 'tellur');
     await waitFor(async () => {
@@ -323,7 +323,7 @@ exports.run = async function () {
     assert.equal(await vscode.commands.executeCommand('tellur.explainOutcome', { control: 'lookup', outcome: 'failed' }), null);
     assert.equal(vscode.window.activeTextEditor.document.uri.toString(), buildUri.toString());
     console.log('TELLUR_EXPLAIN_EDITOR_TESTS_PASSED: cursor and UTF-16, Markdown source links, real private-outcome picker, fresh unsaved contributors, limits and failed-check refusal');
-    const groups = await fs.readFile(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8');
+    const groups = await fs.readFile(path.join(__dirname, '../../../playground/path_groups.vn'), 'utf8');
     await replace(buildDocument, groups);
     const headingLine = groups.split('\n').findIndex(line => line.includes('auto heading'));
     await waitFor(async () => {
@@ -340,7 +340,7 @@ exports.run = async function () {
     assert.equal(groupsRun.code, 0, groupsRun.stderr);
     assert.equal(groupsRun.stdout.trim(), 'Full details\nAvailable\nDescription complete\nUnavailable\nDescription complete\ndone');
     console.log('TELLUR_PATH_GROUPS_EDITOR_TESTS_PASSED: inferred hover, selection error, repair and native shared continuation');
-    const historySource = await fs.readFile(path.join(__dirname, '../../../playground/history_hover.tellur'), 'utf8');
+    const historySource = await fs.readFile(path.join(__dirname, '../../../playground/history_hover.vn'), 'utf8');
     const selectionHover = async marker => {
       const at = buildDocument.getText().indexOf(marker);
       assert.ok(at >= 0, marker);
@@ -368,7 +368,7 @@ exports.run = async function () {
     const armManifestBefore = await fs.readFile(manifestPath, 'utf8');
     await fs.writeFile(manifestPath, await fs.readFile(path.join(__dirname, '../../../playground/manifest.json'), 'utf8'));
     try {
-      const armExits = await fs.readFile(path.join(__dirname, '../../../playground/arm_exits.tellur'), 'utf8');
+      const armExits = await fs.readFile(path.join(__dirname, '../../../playground/arm_exits.vn'), 'utf8');
       await replace(buildDocument, armExits);
       const armAutoLine = armExits.split('\n').findIndex(line => line.includes('auto value'));
       await waitFor(async () => {
@@ -529,7 +529,7 @@ exports.run = async function () {
     const genericControlRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','generic-controls')}, {"done": 0});
     assert.equal(genericControlRun.code,0,genericControlRun.stderr);assert.ok(genericControlRun.stdout.includes('Generic control Ada'));
     console.log('TELLUR_GENERIC_CONTROLS_EDITOR_TESTS_PASSED: parametric hover, universal ownership diagnostic, repair, native execution');
-    const bounded = await fs.readFile(path.join(__dirname, '../../../playground/capabilities.tellur'), 'utf8');
+    const bounded = await fs.readFile(path.join(__dirname, '../../../playground/capabilities.vn'), 'utf8');
     await replace(buildDocument, bounded);
     let boundedState;
     await waitFor(async () => {
@@ -549,7 +549,7 @@ exports.run = async function () {
     assert.equal(boundedRun.stdout.trim(),'Ada\ndone');
     console.log('TELLUR_CAPABILITIES_EDITOR_TESTS_PASSED: bounds hover, definition permissions, concrete requirements, repair, native execution');
 
-    const traitSource=await fs.readFile(path.join(__dirname,'../../../playground/traits.tellur'),'utf8');
+    const traitSource=await fs.readFile(path.join(__dirname,'../../../playground/traits.vn'),'utf8');
     await replace(buildDocument,traitSource);
     await waitFor(async()=>{
       const h=await vscode.commands.executeCommand('vscode.executeHoverProvider',buildUri,new vscode.Position(7,8));
@@ -566,7 +566,7 @@ exports.run = async function () {
     assert.equal(traitRun.code,0,traitRun.stderr);assert.equal(traitRun.stdout.trim(),'Hello through a trait\ndone');
     console.log('TELLUR_TRAITS_EDITOR_TESTS_PASSED: trait hover and outline, ownership conformance, associated types, repair, native execution');
 
-    const traitBoundSource=await fs.readFile(path.join(__dirname,'../../../playground/trait_bounds.tellur'),'utf8');
+    const traitBoundSource=await fs.readFile(path.join(__dirname,'../../../playground/trait_bounds.vn'),'utf8');
     await replace(buildDocument,traitBoundSource);
     await waitFor(async()=>{
       const h=await vscode.commands.executeCommand('vscode.executeHoverProvider',buildUri,new vscode.Position(14,10));
@@ -582,7 +582,7 @@ exports.run = async function () {
     assert.equal(traitBoundRun.code,0,traitBoundRun.stderr);assert.equal(traitBoundRun.stdout.trim(),'Hello through a generic trait\ndone');
     console.log('TELLUR_TRAIT_BOUNDS_EDITOR_TESTS_PASSED: generic trait hover, missing bound, associated permissions, repair, native execution');
 
-    const borrowedTraitSource=await fs.readFile(path.join(__dirname,'../../../playground/borrowed_traits.tellur'),'utf8');
+    const borrowedTraitSource=await fs.readFile(path.join(__dirname,'../../../playground/borrowed_traits.vn'),'utf8');
     await replace(buildDocument,borrowedTraitSource);
     await waitFor(async()=>{
       const h=await vscode.commands.executeCommand('vscode.executeHoverProvider',buildUri,new vscode.Position(16,10));
@@ -598,7 +598,7 @@ exports.run = async function () {
     assert.equal(borrowedTraitRun.code,0,borrowedTraitRun.stderr);assert.equal(borrowedTraitRun.stdout.trim(),'Hello through a borrowed trait\ndone');
     console.log('TELLUR_BORROWED_TRAITS_EDITOR_TESTS_PASSED: origin hover, unknown owner, local escape, repair, native execution');
 
-    const wordSource=await fs.readFile(path.join(__dirname,'../../../playground/ownership.tellur'),'utf8');
+    const wordSource=await fs.readFile(path.join(__dirname,'../../../playground/ownership.vn'),'utf8');
     await replace(buildDocument,wordSource);
     await waitFor(()=>revisedDiagnostics().length===0,'word-spelled exclusive reference and dereference');
     await replace(buildDocument,wordSource.replace('ref mutable string edit','ref string edit'));
@@ -611,7 +611,7 @@ exports.run = async function () {
     assert.equal(wordRun.code,0,wordRun.stderr);assert.ok(wordRun.stdout.includes('after'));
     console.log('TELLUR_REFERENCE_WORDS_EDITOR_TESTS_PASSED: word syntax, exclusive types, loan conflicts, repair, native execution');
 
-    const storedReferenceSource=await fs.readFile(path.join(__dirname,'../../../playground/stored_references.tellur'),'utf8');
+    const storedReferenceSource=await fs.readFile(path.join(__dirname,'../../../playground/stored_references.vn'),'utf8');
     await replace(buildDocument,storedReferenceSource);
     await waitFor(()=>revisedDiagnostics().length===0,'stored reference records');
     await replace(buildDocument,storedReferenceSource.replace('message_view second = first;','original.text="bad";message_view second = first;'));
@@ -635,7 +635,7 @@ exports.run = async function () {
     assert.equal(referenceAutoRun.code,0,referenceAutoRun.stderr);assert.ok(referenceAutoRun.stdout.includes('inferred mutable reference'));
     console.log('TELLUR_REFERENCE_AUTO_EDITOR_TESTS_PASSED: inferred referent, mode mismatch, repair, native execution');
 
-    const inferredPayloadSource=await fs.readFile(path.join(__dirname,'../../../playground/inferred_payloads.tellur'),'utf8');
+    const inferredPayloadSource=await fs.readFile(path.join(__dirname,'../../../playground/inferred_payloads.vn'),'utf8');
     await replace(buildDocument,inferredPayloadSource);
     await waitFor(async()=>{
       const hover=await vscode.commands.executeCommand('vscode.executeHoverProvider',buildUri,new vscode.Position(0,10));
@@ -649,7 +649,7 @@ exports.run = async function () {
     assert.equal(inferredPayloadRun.code,0,inferredPayloadRun.stderr);assert.ok(inferredPayloadRun.stdout.includes('Hello through an inferred payload'));
     console.log('TELLUR_INFERRED_PAYLOADS_EDITOR_TESTS_PASSED: inferred hover, nonempty contract, repair, native execution');
 
-    const originGroupSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/origin_groups.tellur'),'utf8');
+    const originGroupSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/origin_groups.vn'),'utf8');
     await replace(buildDocument,originGroupSource);
     await waitFor(async()=>{
       const hover=await vscode.commands.executeCommand('vscode.executeHoverProvider',buildUri,new vscode.Position(5,10));
@@ -665,7 +665,7 @@ exports.run = async function () {
     assert.equal(originGroupRun.code,0,originGroupRun.stderr);assert.ok(originGroupRun.stdout.includes('The left source is available again'));assert.ok(originGroupRun.stdout.includes('The right source is available again'));
     console.log('TELLUR_ORIGIN_GROUPS_EDITOR_TESTS_PASSED: grouped hover, contract and loan diagnostics, field last use, repair, native execution');
 
-    const recordInputSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/record_inputs.tellur'),'utf8');
+    const recordInputSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/record_inputs.vn'),'utf8');
     await replace(buildDocument,recordInputSource);
     const recordInputLine=recordInputSource.split('\n').findIndex(l=>l.startsWith('control heading_of'));
     await waitFor(async()=>{
@@ -682,7 +682,7 @@ exports.run = async function () {
     assert.equal(recordInputRun.code,0,recordInputRun.stderr);assert.ok(recordInputRun.stdout.includes('Content survives its carrier'));assert.ok(recordInputRun.stdout.includes('Heading is available again'));
     console.log('TELLUR_RECORD_INPUTS_EDITOR_TESTS_PASSED: contained-origin hover, unsaved errors, repair, native execution');
 
-    const carrierSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/carrier_reborrows.tellur'),'utf8');
+    const carrierSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/carrier_reborrows.vn'),'utf8');
     await replace(buildDocument,carrierSource);
     const carrierLine=carrierSource.split('\n').findIndex(l=>l.startsWith('control reborrow'));
     await waitFor(async()=>{
@@ -699,7 +699,7 @@ exports.run = async function () {
     assert.equal(carrierRun.code,0,carrierRun.stderr);assert.ok(carrierRun.stdout.includes('First child edit'));assert.ok(carrierRun.stdout.includes('Second child edit'));
     console.log('TELLUR_CARRIER_REBORROWS_EDITOR_TESTS_PASSED: authorization hover, mode and carrier diagnostics, repair, native execution');
 
-    const splitSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/opaque_splits.tellur'),'utf8');
+    const splitSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/opaque_splits.vn'),'utf8');
     await replace(buildDocument,splitSource);
     const splitLine=splitSource.split('\n').findIndex(l=>l.startsWith('control edit'));
     await waitFor(async()=>{
@@ -716,7 +716,7 @@ exports.run = async function () {
     assert.equal(splitRun.code,0,splitRun.stderr);assert.ok(splitRun.stdout.includes('A new body'));assert.ok(splitRun.stdout.includes('Final title'));
     console.log('TELLUR_OPAQUE_SPLITS_EDITOR_TESTS_PASSED: permissions hover, alias and owner diagnostics, repair, native execution');
 
-    const borrowedSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/borrowed_outcomes.tellur'),'utf8');
+    const borrowedSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/borrowed_outcomes.vn'),'utf8');
     await replace(buildDocument,borrowedSource);
     const borrowedLine=borrowedSource.split('\n').findIndex(l=>l.startsWith('outcome first_word'));
     await waitFor(async()=>{
@@ -733,7 +733,7 @@ exports.run = async function () {
     assert.equal(borrowedRun.code,0,borrowedRun.stderr);assert.ok(borrowedRun.stdout.includes('A borrowed word'));assert.ok(borrowedRun.stdout.includes('"value":2'));
     console.log('TELLUR_BORROWED_OUTCOMES_EDITOR_TESTS_PASSED: payload hover, owner and obligation diagnostics, repair, native execution');
 
-    const outcomeOrigins = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/outcome_origins.tellur'), 'utf8');
+    const outcomeOrigins = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/outcome_origins.vn'), 'utf8');
     await replace(buildDocument, outcomeOrigins);
     const outcomeLine = outcomeOrigins.split('\n').findIndex(l => l.startsWith('outcome text_result'));
     await waitFor(async () => {
@@ -751,7 +751,7 @@ exports.run = async function () {
     assert.equal(outcomeRun.code, 0, outcomeRun.stderr);
     assert.ok(outcomeRun.stdout.includes('title released independently') && outcomeRun.stdout.includes('edited body'));
     console.log('TELLUR_OUTCOME_ORIGINS_EDITOR_TESTS_PASSED: schemas, completion bindings, owner conflicts, repair and native execution');
-    const sumCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/sum_carriers.tellur'), 'utf8');
+    const sumCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/sum_carriers.vn'), 'utf8');
     await replace(buildDocument, sumCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'borrowed sum carrier source');
     for (const [binding, expected] of [['auto preview', 'ref string preview'], ['auto editable', 'ref mutable string editable']]) {
@@ -770,7 +770,7 @@ exports.run = async function () {
     assert.equal(sumRun.code, 0, sumRun.stderr);
     assert.ok(sumRun.stdout.includes('before') && sumRun.stdout.includes('after'));
     console.log('TELLUR_SUM_CARRIERS_EDITOR_TESTS_PASSED: reborrow mode hover, owner conflicts, repair and native execution');
-    const carrierResults = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/carrier_results.tellur'), 'utf8');
+    const carrierResults = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/carrier_results.vn'), 'utf8');
     await replace(buildDocument, carrierResults);
     const lendLine = carrierResults.split('\n').findIndex(l => l.startsWith('control lend('));
     await waitFor(async () => {
@@ -790,7 +790,7 @@ exports.run = async function () {
     assert.equal(resultRun.code, 0, resultRun.stderr);
     assert.ok(resultRun.stdout.includes('edited through returned view') && resultRun.stdout.includes('edited through returned option'));
     console.log('TELLUR_CARRIER_RESULTS_EDITOR_TESTS_PASSED: both lifetime layers, auto hover, storage conflict, repair and native execution');
-    const storedCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/stored_carriers.tellur'), 'utf8');
+    const storedCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/stored_carriers.vn'), 'utf8');
     await replace(buildDocument, storedCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'stored carrier source');
     for (const [binding, expected] of [['auto view', 'ref mutable text_view view'], ['auto job', 'ref mutable edit_job job'], ['auto transferred', 'outcome<lend> transferred']]) {
@@ -817,7 +817,7 @@ exports.run = async function () {
     }
     await fs.writeFile(manifestPath, JSON.stringify(publicContractManifest));
     try {
-      const publicContracts = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_contracts.tellur'), 'utf8');
+      const publicContracts = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_contracts.vn'), 'utf8');
       await replace(buildDocument, publicContracts);
       await waitFor(() => revisedDiagnostics().length === 0, 'explicit public contract');
       await replace(buildDocument, publicContracts.replace('exits ready { u32 value }, invalid', 'exits auto'));
@@ -831,7 +831,7 @@ exports.run = async function () {
       assert.ok(publicContractRun.stdout.includes('42'));
       console.log('TELLUR_PUBLIC_CONTRACTS_EDITOR_TESTS_PASSED: explicit public contracts, contributor locations, repair and native execution');
     } finally { await fs.writeFile(manifestPath, manifest); }
-    const borrowedCollections = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/borrowed_collections.tellur'), 'utf8');
+    const borrowedCollections = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/borrowed_collections.vn'), 'utf8');
     await replace(buildDocument, borrowedCollections);
     await waitFor(() => revisedDiagnostics().length === 0, 'borrowed collection source');
     const borrowedWordLine = borrowedCollections.split('\n').findIndex(l => l.includes('auto word'));
@@ -847,7 +847,7 @@ exports.run = async function () {
     assert.equal(borrowedCollectionRun.code, 0, borrowedCollectionRun.stderr);
     assert.ok(borrowedCollectionRun.stdout.includes('first released') && borrowedCollectionRun.stdout.includes('second released'));
     console.log('TELLUR_BORROWED_COLLECTIONS_EDITOR_TESTS_PASSED: direct reference hover, retained sources, repair and native execution');
-    const aggregateTraits = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/aggregate_traits.tellur'), 'utf8');
+    const aggregateTraits = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/aggregate_traits.vn'), 'utf8');
     await replace(buildDocument, aggregateTraits);
     await waitFor(() => revisedDiagnostics().length === 0, 'aggregate trait contracts');
     const aggregateJobLine = aggregateTraits.split('\n').findIndex(l => l.includes('auto job'));
@@ -863,7 +863,7 @@ exports.run = async function () {
     assert.equal(aggregateRun.code, 0, aggregateRun.stderr);
     assert.ok(aggregateRun.stdout.includes('edited through a trait contract') && aggregateRun.stdout.includes('released after the job'));
     console.log('TELLUR_AGGREGATE_TRAITS_EDITOR_TESTS_PASSED: associated generic contracts, inferred hover, conformance repair and native execution');
-    const publicCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_carriers.tellur'), 'utf8');
+    const publicCarriers = await fs.readFile(path.join(__dirname, '../../../tests/fixtures/public_carriers.vn'), 'utf8');
     await replace(buildDocument, publicCarriers);
     await waitFor(() => revisedDiagnostics().length === 0, 'public carrier source');
     for (const [binding, expected] of [['auto job', 'edit_job job'], ['struct edit_job', "ref mutable text_view['text] target <- 'storage"]]) {
@@ -882,7 +882,7 @@ exports.run = async function () {
     assert.equal(publicCarrierRun.code, 0, publicCarrierRun.stderr);
     assert.ok(publicCarrierRun.stdout.includes('edited through public contract'));
     console.log('TELLUR_PUBLIC_CARRIERS_EDITOR_TESTS_PASSED: public schemas, nested reference hover, retained storage, repair and native execution');
-    const publicSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/public_variants.tellur'),'utf8');
+    const publicSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/public_variants.vn'),'utf8');
     await replace(buildDocument,publicSource);
     const publicLine=publicSource.split('\n').findIndex(l=>l.startsWith('variant lookup'));
     await waitFor(async()=>{
@@ -896,7 +896,7 @@ exports.run = async function () {
     const publicRun=await buildWithStatus('tellur.buildAndRun',{output:path.join(root,'native output','public-variants')}, {"done": 0});
     assert.equal(publicRun.code,0,publicRun.stderr);assert.ok(publicRun.stdout.includes('edited body'));assert.ok(publicRun.stdout.includes('title released independently'));
     console.log('TELLUR_PUBLIC_VARIANTS_EDITOR_TESTS_PASSED: grouped schema hover, owner conflict, repair, native execution');
-    const nestedSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/nested_borrows.tellur'),'utf8');
+    const nestedSource=await fs.readFile(path.join(__dirname,'../../../tests/fixtures/nested_borrows.vn'),'utf8');
     await replace(buildDocument,nestedSource);
     const nestedLine=nestedSource.split('\n').findIndex(l=>l.includes('auto values'));
     const nestedColumn=nestedSource.split('\n')[nestedLine].indexOf('auto');
@@ -984,7 +984,7 @@ exports.run = async function () {
     }, 'legacy language ID works after legacy restart command');
     console.log('TELLUR_MIGRATION_EDITOR_TESTS_PASSED: both extensions, legacy language ID and commands, canonical default output name');
     console.log('TELLUR_NATIVE_EDITOR_TESTS_PASSED: build, run, argument boundaries, paths with spaces, LLVM output');
-    const faultSource = await fs.readFile(path.join(__dirname, '../../../playground/execution_faults.tellur'), 'utf8');
+    const faultSource = await fs.readFile(path.join(__dirname, '../../../playground/execution_faults.vn'), 'utf8');
     await replace(buildDocument, faultSource);
     await vscode.window.showTextDocument(buildDocument);
     const faultRun = await vscode.commands.executeCommand('tellur.buildAndRun', {arguments:['--json','--fuel','40'],output:path.join(root,'native output','execution-failure')});
@@ -1021,14 +1021,14 @@ control main() exits done {
     await waitFor(() => revisedDiagnostics().length === 0, 'stored contributor repair');
     console.log('TELLUR_STORED_CONTRIBUTORS_EDITOR_TESTS_PASSED: capture, adapter, related source locations, unsaved repair');
     await buildDocument.save();
-    const jsonCheck = await require('node:util').promisify(require('node:child_process').execFile)(path.join(__dirname, process.platform === 'win32' ? '../server/tellur.exe' : '../server/tellur'), ['check', buildUri.fsPath, '--json']);
+    const jsonCheck = await require('node:util').promisify(require('node:child_process').execFile)(path.join(__dirname, process.platform === 'win32' ? '../server/vnc.exe' : '../server/vnc'), ['check', buildUri.fsPath, '--json']);
     const checkReport = JSON.parse(jsonCheck.stdout);
     assert.equal(checkReport.schema, 'tellur.check.v1');
     assert.equal(checkReport.ok, true);
     assert.deepEqual(checkReport.diagnostics, []);
     assert.equal(jsonCheck.stderr, '');
     console.log('TELLUR_JSON_CHECK_EDITOR_TESTS_PASSED: bundled compiler versioned report and clean stdout');
-    const routingSource = await fs.readFile(path.join(__dirname, '../../../playground/identity_deltas.tellur'), 'utf8');
+    const routingSource = await fs.readFile(path.join(__dirname, '../../../playground/identity_deltas.vn'), 'utf8');
     await replace(buildDocument, routingSource);
     await waitFor(() => revisedDiagnostics().length === 0, 'identity routing and grouped arms');
     const routingLines = routingSource.split('\n');
@@ -1058,15 +1058,15 @@ control main() exits done {
     await require('./lexical-checkpoint.cjs').run(root);
     const settingsFolder = path.join(root, 'shared-library', 'applications', 'settings');
     await fs.mkdir(settingsFolder, {recursive:true});
-    for (const file of ['main.tellur', 'settings.tellur', 'server.tellur', 'http.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
+    for (const file of ['main.vn', 'settings.vn', 'server.vn', 'http.vn', 'manifest.json', 'host.rs', 'Cargo.lock']) {
       await fs.copyFile(path.join(__dirname, '../../../applications/settings', file), path.join(settingsFolder, file));
     }
-    for (const file of ['json_file.tellur', 'loopback_http.tellur', 'host/text_file.rs', 'host/json_string_map.rs', 'host/loopback_http.rs']) {
+    for (const file of ['json_file.vn', 'loopback_http.vn', 'host/text_file.rs', 'host/json_string_map.rs', 'host/loopback_http.rs']) {
       const destination = path.join(root, 'shared-library', 'library', file);
       await fs.mkdir(path.dirname(destination), {recursive:true});
       await fs.copyFile(path.join(__dirname, '../../../library', file), destination);
     }
-    const settingsUri = vscode.Uri.file(path.join(settingsFolder, 'main.tellur'));
+    const settingsUri = vscode.Uri.file(path.join(settingsFolder, 'main.vn'));
     const settingsDocument = await vscode.workspace.openTextDocument(settingsUri);
     await vscode.window.showTextDocument(settingsDocument);
     const settingsDiagnostics = () => vscode.languages.getDiagnostics(settingsUri).filter(d => d.source === 'tellur');
@@ -1098,7 +1098,7 @@ control main() exits done {
     assert.equal(settingsMissing.stderr, '');
     console.log('TELLUR_EXIT_CODES_EDITOR_TESTS_PASSED: annotation hover, unsaved diagnostic, repair, exact nonzero status and JSON outcome');
     console.log('TELLUR_RUST_SETTINGS_EDITOR_TESTS_PASSED: manifest-relative Rust adapter, unsaved checking, repair, locked build, persistent update and reload');
-    const serverUri = vscode.Uri.file(path.join(settingsFolder, 'server.tellur'));
+    const serverUri = vscode.Uri.file(path.join(settingsFolder, 'server.vn'));
     const serverDocument = await vscode.workspace.openTextDocument(serverUri);
     await vscode.window.showTextDocument(serverDocument);
     const serverSource = serverDocument.getText();
@@ -1130,10 +1130,10 @@ control main() exits done {
     console.log('TELLUR_HTTP_SERVER_EDITOR_TESTS_PASSED: listener obligation, unsaved repair, build/run, live HTTP and bounded shutdown');
     const resourceFolder = path.join(root, 'retained-file');
     await fs.mkdir(resourceFolder, {recursive:true});
-    for (const file of ['main.tellur', 'manifest.json', 'host.rs', 'Cargo.lock']) {
+    for (const file of ['main.vn', 'manifest.json', 'host.rs', 'Cargo.lock']) {
       await fs.copyFile(path.join(__dirname, '../../../examples/retained_file', file), path.join(resourceFolder, file));
     }
-    const resourceUri = vscode.Uri.file(path.join(resourceFolder, 'main.tellur'));
+    const resourceUri = vscode.Uri.file(path.join(resourceFolder, 'main.vn'));
     const resourceDocument = await vscode.workspace.openTextDocument(resourceUri);
     await vscode.window.showTextDocument(resourceDocument);
     const resourceSource = resourceDocument.getText();

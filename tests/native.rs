@@ -71,7 +71,7 @@ fn rebuilding_native_outputs_preserves_existing_executable_images() {
     fs::create_dir_all(&root).unwrap();
     let output = root.join("program");
     let retained = root.join("retained");
-    let source_file = root.join("main.tellur");
+    let source_file = root.join("main.vn");
     let report = |path: &Path| {
         let result = Command::new(path).arg("--json").output().unwrap();
         assert!(result.status.success(), "{result:?}");
@@ -137,12 +137,12 @@ fn native_and_llvm_match_reference_before_and_after_expansion_and_optimization()
             .collect(),
     });
     let mut source = [
-        include_str!("../examples/refresh.tellur"),
-        include_str!("../examples/port.tellur"),
-        include_str!("../examples/fetch_retry.tellur"),
-        include_str!("../examples/partial_moves.tellur"),
-        include_str!("../examples/optional_handle.tellur"),
-        include_str!("../examples/owned_variant.tellur"),
+        include_str!("../examples/refresh.vn"),
+        include_str!("../examples/port.vn"),
+        include_str!("../examples/fetch_retry.vn"),
+        include_str!("../examples/partial_moves.vn"),
+        include_str!("../examples/optional_handle.vn"),
+        include_str!("../examples/owned_variant.vn"),
     ]
     .join("\n");
     source.push_str("region forever() exits Done { loop L() { [Entry]: again L(); } }\n");
@@ -353,9 +353,9 @@ fn live_adapters_execute_real_inputs_and_enforce_contracts() {
     fs::create_dir_all(&root).unwrap();
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
     let source=[
-        include_str!("../playground/count.tellur").replace("control main()","control count_main()").replace("process_result","count_process_result"),
-        include_str!("../playground/port.tellur").replace("control main()","control port_main()").replace("process_result","port_process_result"),
-        include_str!("../playground/read_file.tellur").replace("control main()","control file_main()").replace("process_result","file_process_result"),
+        include_str!("../playground/count.vn").replace("control main()","control count_main()").replace("process_result","count_process_result"),
+        include_str!("../playground/port.vn").replace("control main()","control port_main()").replace("process_result","port_process_result"),
+        include_str!("../playground/read_file.vn").replace("control main()","control file_main()").replace("process_result","file_process_result"),
         "region divide(a: U32,b: U32) exits done(n: U32), Zero { [Entry]: delta checked_div(a,b) -> [quotient(n) => Q,zero_divisor => Z]; [Q]: exit done(n); [Z]: exit Zero; }".into(),
         "region arithmetic(a: U32,b: U32) exits sum(n: U32), overflow { [Entry]: delta checked_add(a,b) -> [sum(n) => S,overflow => O]; [S]: exit sum(n); [O]: exit overflow; }".into(),
         "region text() exits done(text: String), Bad { [Entry]: delta concat(\"é\",\"😀\") -> [text(s) => T]; delta decode_utf8(bytes\"ff\") -> [text(unused) => V,invalid => I]; [T & I]: exit done(s); [V]: exit Bad; }".into(),

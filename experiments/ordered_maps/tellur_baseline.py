@@ -1,4 +1,4 @@
-"""Conformance and whole-process timings for the current Tellur implementation."""
+"""Conformance and whole-process timings for the current Villanelle implementation."""
 import argparse
 import json
 from pathlib import Path
@@ -8,7 +8,7 @@ import tempfile
 from time import perf_counter_ns
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "baseline.tellur"
+SOURCE = HERE / "baseline.vn"
 
 
 def scenario(entry, keys):

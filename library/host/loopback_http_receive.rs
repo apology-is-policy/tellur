@@ -1,5 +1,5 @@
 // Polled request reception for the bounded loopback HTTP profile. The awaiting
-// Tellur task parks while the socket would block; other tasks keep running. The
+// Villanelle task parks while the socket would block; other tasks keep running. The
 // profile, limits and the single two-second deadline match the blocking baseline.
 use super::http::Connection;
 use crate::rust_api::{self, http_receive_outcome::*};

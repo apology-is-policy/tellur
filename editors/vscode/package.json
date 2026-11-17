@@ -1,8 +1,8 @@
 {
   "name": "tellur-language",
-  "displayName": "Tellur Language (Experimental)",
-  "description": "Tellur controls, inline adapters, owned outcomes, diagnostics and native build/run",
-  "version": "0.284.0",
+  "displayName": "Villanelle Language (Experimental)",
+  "description": "Villanelle controls, inline adapters, owned outcomes, diagnostics and native build/run",
+  "version": "0.285.0",
   "publisher": "tellur-language-local",
   "license": "Apache-2.0",
   "engines": {
@@ -13,6 +13,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onLanguage:villanelle",
     "onLanguage:tellur",
     "onLanguage:path"
   ],
@@ -25,9 +26,20 @@
   "contributes": {
     "languages": [
       {
+        "id": "villanelle",
+        "aliases": [
+          "Villanelle",
+          "villanelle"
+        ],
+        "extensions": [
+          ".vn"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
         "id": "tellur",
         "aliases": [
-          "Tellur",
+          "Tellur (legacy language ID)",
           "tellur"
         ],
         "extensions": [
@@ -46,6 +58,11 @@
     ],
     "grammars": [
       {
+        "language": "villanelle",
+        "scopeName": "source.tellur",
+        "path": "./syntaxes/tellur.tmLanguage.json"
+      },
+      {
         "language": "tellur",
         "scopeName": "source.tellur",
         "path": "./syntaxes/tellur.tmLanguage.json"
@@ -58,6 +75,10 @@
     ],
     "snippets": [
       {
+        "language": "villanelle",
+        "path": "./snippets/tellur.json"
+      },
+      {
         "language": "tellur",
         "path": "./snippets/tellur.json"
       },
@@ -68,50 +89,52 @@
     ],
     "commands": [
       {
-        "command": "tellur.restartServer",
-        "title": "Tellur: Restart Language Server"
+        "command": "villanelle.restartServer",
+        "title": "Villanelle: Restart Language Server"
       },
       {
-        "command": "tellur.build",
-        "title": "Tellur: Build Native Program",
+        "command": "villanelle.build",
+        "title": "Villanelle: Build Native Program",
         "icon": "$(tools)"
       },
       {
-        "command": "tellur.buildAndRun",
-        "title": "Tellur: Build and Run",
+        "command": "villanelle.buildAndRun",
+        "title": "Villanelle: Build and Run",
         "icon": "$(play)"
       },
       {
-        "command": "tellur.showContractSnapshot",
-        "title": "Tellur: Show Public Contract Snapshot"
+        "command": "villanelle.showContractSnapshot",
+        "title": "Villanelle: Show Public Contract Snapshot"
       },
       {
-        "command": "tellur.showAbsorptionSnapshot",
-        "title": "Tellur: Show Outcome Absorption Snapshot"
+        "command": "villanelle.showAbsorptionSnapshot",
+        "title": "Villanelle: Show Outcome Absorption Snapshot"
       },
       {
-        "command": "tellur.explainSelection",
-        "title": "Tellur: Explain Path Selection at Cursor"
+        "command": "villanelle.explainSelection",
+        "title": "Villanelle: Explain Path Selection at Cursor"
       },
       {
-        "command": "tellur.explainOutcome",
-        "title": "Tellur: Explain Outcome Contributors"
+        "command": "villanelle.explainOutcome",
+        "title": "Villanelle: Explain Outcome Contributors"
       }
     ],
     "configuration": {
-      "title": "Tellur Language",
+      "title": "Villanelle Language",
       "properties": {
         "tellurLanguage.serverPath": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to a standalone language server started without arguments. Empty starts the bundled tellur lsp."
+          "description": "Path to a standalone language server started without arguments. Empty starts the bundled vnc lsp.",
+          "deprecationMessage": "Use villanelleLanguage.serverPath instead."
         },
         "tellurLanguage.manifestPath": {
           "type": "string",
           "default": "",
           "scope": "window",
-          "description": "Primitive manifest file, absolute or relative to the workspace folder. Empty discovers the nearest manifest.json for each source file."
+          "description": "Primitive manifest file, absolute or relative to the workspace folder. Empty discovers the nearest manifest.json for each source file.",
+          "deprecationMessage": "Use villanelleLanguage.manifestPath instead."
         },
         "tellurLanguage.trace.server": {
           "type": "string",
@@ -121,18 +144,21 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Trace communication with the Tellur language server."
+          "description": "Trace communication with the Villanelle language server.",
+          "deprecationMessage": "Use villanelleLanguage.trace.server instead."
         },
         "tellurLanguage.compilerPath": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to a Tellur compiler. Empty uses the bundled tellur executable."
+          "description": "Path to a Villanelle compiler. Empty uses the bundled vnc executable.",
+          "deprecationMessage": "Use villanelleLanguage.compilerPath instead."
         },
         "tellurLanguage.entryRegion": {
           "type": "string",
           "default": "main",
-          "description": "Control to run when building the active file (setting name retained for compatibility)."
+          "description": "Control to run when building the active file (setting name retained for compatibility).",
+          "deprecationMessage": "Use villanelleLanguage.entryRegion instead."
         },
         "tellurLanguage.programArguments": {
           "type": "array",
@@ -140,26 +166,28 @@
             "type": "string"
           },
           "default": [],
-          "description": "Native program arguments. Each item is passed as one argument, without shell expansion."
+          "description": "Native program arguments. Each item is passed as one argument, without shell expansion.",
+          "deprecationMessage": "Use villanelleLanguage.programArguments instead."
         },
         "tellurLanguage.releaseBuild": {
           "type": "boolean",
           "default": false,
-          "description": "Optimize native programs with LLVM at level 2."
+          "description": "Optimize native programs with LLVM at level 2.",
+          "deprecationMessage": "Use villanelleLanguage.releaseBuild instead."
         },
         "pathLanguage.serverPath": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to a standalone language server started without arguments. Empty starts the bundled tellur lsp.",
-          "deprecationMessage": "Use tellurLanguage.serverPath instead."
+          "description": "Path to a standalone language server started without arguments. Empty starts the bundled vnc lsp.",
+          "deprecationMessage": "Use villanelleLanguage.serverPath instead."
         },
         "pathLanguage.manifestPath": {
           "type": "string",
           "default": "",
           "scope": "window",
           "description": "Primitive manifest file, absolute or relative to the workspace folder. Empty discovers the nearest manifest.json for each source file.",
-          "deprecationMessage": "Use tellurLanguage.manifestPath instead."
+          "deprecationMessage": "Use villanelleLanguage.manifestPath instead."
         },
         "pathLanguage.trace.server": {
           "type": "string",
@@ -169,21 +197,21 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Trace communication with the Tellur language server.",
-          "deprecationMessage": "Use tellurLanguage.trace.server instead."
+          "description": "Trace communication with the Villanelle language server.",
+          "deprecationMessage": "Use villanelleLanguage.trace.server instead."
         },
         "pathLanguage.compilerPath": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path to a Tellur compiler. Empty uses the bundled tellur executable.",
-          "deprecationMessage": "Use tellurLanguage.compilerPath instead."
+          "description": "Path to a Villanelle compiler. Empty uses the bundled vnc executable.",
+          "deprecationMessage": "Use villanelleLanguage.compilerPath instead."
         },
         "pathLanguage.entryRegion": {
           "type": "string",
           "default": "main",
           "description": "Control to run when building the active file (setting name retained for compatibility).",
-          "deprecationMessage": "Use tellurLanguage.entryRegion instead."
+          "deprecationMessage": "Use villanelleLanguage.entryRegion instead."
         },
         "pathLanguage.programArguments": {
           "type": "array",
@@ -192,13 +220,13 @@
           },
           "default": [],
           "description": "Native program arguments. Each item is passed as one argument, without shell expansion.",
-          "deprecationMessage": "Use tellurLanguage.programArguments instead."
+          "deprecationMessage": "Use villanelleLanguage.programArguments instead."
         },
         "pathLanguage.releaseBuild": {
           "type": "boolean",
           "default": false,
           "description": "Optimize native programs with LLVM at level 2.",
-          "deprecationMessage": "Use tellurLanguage.releaseBuild instead."
+          "deprecationMessage": "Use villanelleLanguage.releaseBuild instead."
         },
         "tellurLanguage.formatWidth": {
           "type": "integer",
@@ -206,29 +234,84 @@
           "minimum": 40,
           "maximum": 240,
           "scope": "resource",
-          "description": "Preferred line width for Tellur formatting. Long lists and conditions wrap at syntax boundaries; comments and literals are preserved."
+          "description": "Preferred line width for Villanelle formatting. Long lists and conditions wrap at syntax boundaries; comments and literals are preserved.",
+          "deprecationMessage": "Use villanelleLanguage.formatWidth instead."
+        },
+        "villanelleLanguage.serverPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path to a standalone language server started without arguments. Empty starts the bundled vnc lsp."
+        },
+        "villanelleLanguage.manifestPath": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Primitive manifest file, absolute or relative to the workspace folder. Empty discovers the nearest manifest.json for each source file."
+        },
+        "villanelleLanguage.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace communication with the Villanelle language server."
+        },
+        "villanelleLanguage.compilerPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path to a Villanelle compiler. Empty uses the bundled vnc executable."
+        },
+        "villanelleLanguage.entryRegion": {
+          "type": "string",
+          "default": "main",
+          "description": "Control to run when building the active file (setting name retained for compatibility)."
+        },
+        "villanelleLanguage.programArguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Native program arguments. Each item is passed as one argument, without shell expansion."
+        },
+        "villanelleLanguage.releaseBuild": {
+          "type": "boolean",
+          "default": false,
+          "description": "Optimize native programs with LLVM at level 2."
+        },
+        "villanelleLanguage.formatWidth": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 40,
+          "maximum": 240,
+          "scope": "resource",
+          "description": "Preferred line width for Villanelle formatting. Long lists and conditions wrap at syntax boundaries; comments and literals are preserved."
         }
       }
     },
     "keybindings": [
       {
-        "command": "tellur.build",
+        "command": "villanelle.build",
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b",
-        "when": "editorLangId == tellur || editorLangId == path"
+        "when": "editorLangId == villanelle || editorLangId == tellur || editorLangId == path"
       },
       {
-        "command": "tellur.buildAndRun",
+        "command": "villanelle.buildAndRun",
         "key": "ctrl+alt+r",
         "mac": "cmd+alt+r",
-        "when": "editorLangId == tellur || editorLangId == path"
+        "when": "editorLangId == villanelle || editorLangId == tellur || editorLangId == path"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "tellur.buildAndRun",
-          "when": "resourceLangId == tellur || resourceLangId == path",
+          "command": "villanelle.buildAndRun",
+          "when": "resourceLangId == villanelle || resourceLangId == tellur || resourceLangId == path",
           "group": "navigation@90"
         }
       ]
@@ -251,7 +334,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/apology-is-policy/tellur.git",
+    "url": "https://github.com/apology-is-policy/villanelle.git",
     "directory": "editors/vscode"
   }
 }

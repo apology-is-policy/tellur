@@ -12,10 +12,10 @@ import zipfile
 
 
 def unpack(dist, directory, version, digest):
-    basename = f"tellur-{version}-win32-x64"
-    compiler = directory / "tellur.exe"
+    basename = f"villanelle-{version}-win32-x64"
+    compiler = directory / "vnc.exe"
     with zipfile.ZipFile(dist / f"{basename}.zip") as archive:
-        with archive.open("tellur.exe") as source, compiler.open("wb") as output:
+        with archive.open("vnc.exe") as source, compiler.open("wb") as output:
             shutil.copyfileobj(source, output)
         assert archive.read("LICENSE")
     with zipfile.ZipFile(dist / f"{basename}.vsix") as vsix:
@@ -24,7 +24,7 @@ def unpack(dist, directory, version, digest):
         assert identity is not None and identity.get("TargetPlatform") == "win32-x64"
         assert identity.get("Version") == version
         assert json.loads(vsix.read("extension/package.json"))["version"] == version
-        with vsix.open("extension/server/tellur.exe") as server, compiler.open("rb") as cli:
+        with vsix.open("extension/server/vnc.exe") as server, compiler.open("rb") as cli:
             assert digest(server) == digest(cli), "VSIX and CLI ship different executables"
     return compiler
 
@@ -34,7 +34,7 @@ def qualify(dist, directory):
     version = json.loads(Path("editors/vscode/package.json").read_text())["version"]
     compiler = unpack(dist, directory, version, checks["digest"])
     target = "x86_64-pc-windows-gnu"
-    settings = "applications/settings/main.tellur"
+    settings = "applications/settings/main.vn"
     adapter = directory / "settings.adapter"
     build_env = {**os.environ, "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS":
                  "-Cdlltool=" + os.environ["TELLUR_WINDOWS_DLLTOOL"]}
@@ -46,9 +46,9 @@ def qualify(dist, directory):
     assert subprocess.check_output([compiler, "--version"], text=True).split()[1] == version
     checks["check_lsp"](compiler, version)
     hello = directory / "hello.exe"
-    subprocess.run([compiler, "build", "playground/hello.tellur", "--out", hello], check=True)
+    subprocess.run([compiler, "build", "playground/hello.vn", "--out", hello], check=True)
     report = json.loads(subprocess.check_output([hello, "--json"], timeout=15))
-    assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"
+    assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Villanelle!"
     service = directory / "settings.exe"
     subprocess.run([compiler, "build", consumer, "--adapter-pack", adapter, "--out", service],
                    check=True)

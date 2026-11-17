@@ -1,5 +1,5 @@
 // Explicit independent-root test driver for shared native contexts.
-/// Explicit harness schedule, not a Tellur task scheduler. Each job is an
+/// Explicit harness schedule, not a Villanelle task scheduler. Each job is an
 /// independent root with separately supplied arguments, never a cloned owner.
 pub fn drive_contexts(
     host: &mut Host,

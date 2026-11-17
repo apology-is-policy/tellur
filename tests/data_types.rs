@@ -26,7 +26,7 @@ fn rejects(source: &str, code: &str) {
 }
 #[test]
 fn source_records_variants_and_wrapper_example_execute() {
-    let p = compile(include_str!("../playground/data_types.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/data_types.vn"), m()).unwrap();
     assert!(matches!(
         p.manifest().type_def("person"),
         Some(TypeDef::Record { .. })
@@ -38,7 +38,7 @@ fn source_records_variants_and_wrapper_example_execute() {
     assert!(p.manifest().is_copy("user_id"));
     assert!(!p.manifest().is_copy("person"));
     assert!(!p.manifest().linear("contact"));
-    run(include_str!("../playground/data_types.tellur"), vec![]);
+    run(include_str!("../playground/data_types.vn"), vec![]);
 }
 #[test]
 fn nominal_wrappers_and_records_never_convert_by_shape() {
@@ -156,7 +156,7 @@ fn native_source_types_match_reference_and_expansion_at_o0_o2() {
     use std::{fs, process::Command};
     let source = format!(
         "{}\n{}",
-        include_str!("../playground/data_types.tellur"),
+        include_str!("../playground/data_types.vn"),
         r#"
 control sample(bool flag) exits auto {
     exit delta flag {

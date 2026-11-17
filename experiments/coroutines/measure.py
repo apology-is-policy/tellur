@@ -23,7 +23,7 @@ def run(args, **kwargs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--compiler', type=Path, default=Path('bin/tellurc'))
+    parser.add_argument('--compiler', type=Path, default=Path('bin/vnc'))
     parser.add_argument('--clang', type=Path, default=Path('/opt/homebrew/opt/llvm@22/bin/clang'))
     parser.add_argument('--iterations', type=int, default=100000)
     parser.add_argument('--samples', type=int, default=5)

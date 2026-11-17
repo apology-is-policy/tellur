@@ -41,16 +41,16 @@ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=../../work/path-build/target \
   cargo test --offline --test reference_manual
 ```
 
-The suite checks every `tellur` fence in the main reference and Markdown files in
+The suite checks every `villanelle` fence in the main reference and Markdown files in
 this directory. Each needs one of these HTML comments immediately before its fence:
 
 | Annotation | Check |
 | --- | --- |
-| `<!-- tellur:check -->` | Compile as a standalone source unit using the playground manifest |
-| `<!-- tellur:body -->` | Wrap in `control main() exits auto`, append `[entry]: exit done;`, then compile |
-| `<!-- tellur:tail -->` | Wrap in `control main() exits auto` without appending an exit, then compile |
-| `<!-- tellur:reject E_CODE -->` | Compile the complete source and require the specified diagnostic code |
-| `<!-- tellur:fragment reason -->` | Exclude from standalone compilation; require a meaningful reason and a visible context-fragment label |
+| `<!-- villanelle:check -->` | Compile as a standalone source unit using the playground manifest |
+| `<!-- villanelle:body -->` | Wrap in `control main() exits auto`, append `[entry]: exit done;`, then compile |
+| `<!-- villanelle:tail -->` | Wrap in `control main() exits auto` without appending an exit, then compile |
+| `<!-- villanelle:reject E_CODE -->` | Compile the complete source and require the specified diagnostic code |
+| `<!-- villanelle:fragment reason -->` | Exclude from standalone compilation; require a meaningful reason and a visible context-fragment label |
 
 Prefer a complete example or a body wrapper. Use fragments only when the text
 intentionally relies on declarations, paths or imports shown elsewhere; explain
@@ -63,12 +63,12 @@ the main version marker to agree with Cargo's package version. It does not fetch
 external URLs, validate shell commands, mechanically prove the EBNF, or establish
 that prose fully matches semantics. Changes still need a semantic read-through.
 
-Use `tellur` fences for executable examples. Use `ebnf` for grammar and ordinary
+Use `villanelle` fences for executable examples. Use `ebnf` for grammar and ordinary
 inline code for short schematic forms. Do not evade checks by relabeling a complete
-Tellur example as plain text. Unsupported proposals belong in separately identified
+Villanelle example as plain text. Unsupported proposals belong in separately identified
 design notes, not in the executable manual examples.
 
-Canonical source fixtures and examples use `.tellur`, and Rust/editor regression
+Canonical source fixtures and examples use `.vn`, and Rust/editor regression
 suites should read those copies. Preserved `.path` playground files are migration
 snapshots, not synchronized mirrors. Keep dedicated legacy filename/command tests;
 do not silently redirect modern regression coverage back to the snapshots.

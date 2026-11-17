@@ -1,16 +1,14 @@
-# Tellur compiler and playground
+# Villanelle compiler and playground
 
 [Current language roadmap and next proposed checkpoint](docs/language-revision.md#active-checkpoint-queue)
 
-Try the [collection discovery example](examples/collection_discovery/main.tellur) in the 0.284 editor. Type `headers.` to discover membership or `values.` to see which controls borrow or consume the vector. [Walkthrough](docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
+Villanelle is a language for writing controls with explicit, named outcomes. A `delta` routes each outcome to a path. Several decisions can arrive at the same path and share its disposition.
 
-The language is now named **Tellur** (formerly the Path placeholder). Release 0.36
-introduced `.tellur` sources and `tellur.code-workspace`. The `tellur` executable
-provides the compiler and the stdio language server (`tellur lsp`). Existing
-`.path` programs and the `pathc` / `path-lsp` commands remain supported. See the
-[migration notes](docs/language-reference.md#tellur-name-and-migration).
+Write programs in **`.vn`** files. Run `vnc exec playground/hello.vn` to compile and run one, or open `villanelle.code-workspace` in VS Code. The same executable runs the language server with `vnc lsp`. Villanelle was previously called Tellur. [Migration guide](docs/language-reference.md#villanelle-name-and-migration)
 
-Compiler **0.284.0** implements the v0.1 checked core and the current language
+Try the [collection discovery example](examples/collection_discovery/main.vn). Type `headers.` to discover membership or `values.` to see which controls borrow or consume the vector. [Walkthrough](docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
+
+Compiler **0.285.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
@@ -23,12 +21,12 @@ delivered features from the remaining reference, slice, outcome-expression and a
 fluid; this is an experimental implementation, not a production compiler.
 
 The Apple Silicon distribution also builds static Linux executables. For example,
-`tellur build playground/hello.tellur --target x86_64-unknown-linux-musl --out build/hello`
+`vnc build playground/hello.vn --target x86_64-unknown-linux-musl --out build/hello`
 produces a program you can copy to x86_64 Linux. Use `aarch64-unknown-linux-musl`
 for arm64 Linux.
 
 The Apple Silicon macOS, Linux x86_64, Linux arm64 and Windows x64 distributions use direct
-LLVM emission by default. Run `tellur exec playground/hello.tellur` on any of
+LLVM emission by default. Run `vnc exec playground/hello.vn` on any of
 these hosts to compile and run Hello with the embedded toolchain. Use `--backend rust` to select generated Rust.
 Compilers built without the LLVM feature continue to use Rust. Both backends
 passed the application suite, including concurrent settings requests, graceful
@@ -103,20 +101,20 @@ before admission; the Rust backend remains default.
 Release 0.263 admits [retained named supervision](docs/reference/llvm-backend.md#generated-retained-named-supervision-0263)
 in the LLVM backend. Yielding request work preserves retained owners, source fault
 domains and outcome-free contingency settlement. The runnable example is
-[`llvm_async_supervision.tellur`](playground/llvm_async_supervision.tellur).
+[`llvm_async_supervision.vn`](playground/llvm_async_supervision.vn).
 Lexical recovery across handoffs remains a separate checkpoint. Rust stays default.
 
 Release 0.261 adds LLVM task sets: exact-producer construction, spawn-into,
 completion-order `await next`, immediate empty selection and set cancellation.
 Loop-carried remainders support bounded feeding and draining. Try the
-[bounded task-set example](playground/llvm_task_sets.tellur) with an item count;
+[bounded task-set example](playground/llvm_task_sets.vn) with an item count;
 [profile details](docs/reference/llvm-backend.md#generated-task-sets-0261) retain the
 existing ownership and reference-free member restrictions. Rust stays default.
 
 Release 0.260 adds retained LLVM loops, including repeated awaits, cold/spawned
 children, host readiness and expanded looping helpers. Iteration parameters transfer
 simultaneously and local path facts reset while outer locals remain live. See the
-[async loop example](playground/llvm_async_loops.tellur) and
+[async loop example](playground/llvm_async_loops.vn) and
 [profile details](docs/reference/llvm-backend.md#retained-loops-0260).
 Task-set source lowering follows in 0.261; retained boundaries remain next.
 
@@ -127,18 +125,18 @@ scheduler and ownership checks. Source task-set admission follows in 0.261; see 
 Release 0.258 lowers scripted async host operations through the same LLVM task
 frames as async controls. `run`, `await`, `defer` and `spawn` retain source scheduling,
 owned captures, borrowed resources and explicit cancellation alternatives. See the
-[scripted host example](playground/llvm_host.tellur) and [run instructions](docs/reference/llvm-backend.md#scripted-async-host-operations-0258).
+[scripted host example](playground/llvm_host.vn) and [run instructions](docs/reference/llvm-backend.md#scripted-async-host-operations-0258).
 Task sets follow in 0.261; polled Rust adapters and parity remain upcoming.
 
 Release 0.257 adds `cancel child;` to the bounded LLVM control profile. Requests
 remain sticky, preserve the original handle and do not yield or replace the join.
 Children without cancellable host operations finish normally. See the
-[cancellation request example](playground/llvm_cancel.tellur). Async host observation follows in 0.258; task sets follow in 0.261.
+[cancellation request example](playground/llvm_cancel.vn). Async host observation follows in 0.258; task sets follow in 0.261.
 
 Release 0.256 adds LLVM spawned control tasks and consuming joins. Spawned frames
 use the runtime arena; direct children remain by value. Spawn queues without a
 handoff, and joining preserves original task ownership and completion origins.
-See [the spawned LLVM example](playground/llvm_spawn.tellur). Rust remains default.
+See [the spawned LLVM example](playground/llvm_spawn.vn). Rust remains default.
 
 Release 0.255 adds private arena storage for compiled task frames. Inline children
 pin their parent's allocation until retirement; repeated frames reuse aligned
@@ -146,13 +144,13 @@ storage. Source LLVM admission remains the 0.254 profile while spawn/join is wir
 
 Release 0.254 adds LLVM cold task capture, local moves and option wrappers, and
 consuming `await`. Captures keep their original runtime ownership; the producer
-starts at await with its frame inside the caller. See [the cold task example](playground/llvm_cold.tellur).
+starts at await with its frame inside the caller. See [the cold task example](playground/llvm_cold.vn).
 Rust stays the default; spawned tasks and async host I/O remain next.
 
 Release 0.253 emits typed LLVM resume frames for a bounded `run`/direct `await`/`yield`
 profile, including owned and borrowed payloads, guarded paths, faults and exact fuel
 reports. Direct children live inside parent frames; the established runtime schedules
-and settles them. See [the LLVM async example](playground/llvm_async.tellur).
+and settles them. See [the LLVM async example](playground/llvm_async.vn).
 Rust remains the default; cold handles, spawned tasks and async host I/O follow.
 
 Release 0.252 connects retained ABI callbacks to the existing task runtime and source
@@ -177,23 +175,23 @@ Release 0.249 adds lexical fault boundaries, supervised recovery and entry-only
 process termination to direct LLVM emission. Work and contingency share their
 checked frame; outward exits and loop jumps finalize every scope they cross.
 Retained captures, structured `@fault` reports and fuel retain existing behavior.
-Try the [recovery example](playground/llvm_recovery.tellur). Rust remains default.
+Try the [recovery example](playground/llvm_recovery.vn). Rust remains default.
 
 Release 0.248 adds named synchronous fault supervision to direct LLVM emission.
 Retained owners move into contingency only after failed work retires; settlement
 returns no outcome to the supervisor. Nested escalation and resource cleanup retain
-existing fault reports and fuel behavior. Try the [supervision example](playground/llvm_supervision.tellur).
+existing fault reports and fuel behavior. Try the [supervision example](playground/llvm_supervision.vn).
 Lexical boundaries and supervised recovery follow; Rust remains the default.
 
 Release 0.247 adds synchronous declared constructors to direct LLVM emission.
 Completed records go straight into caller storage, preserving nested ownership,
 borrowed result origins, written evaluation order and partial-initialization faults.
-The [constructor example](playground/llvm_constructors.tellur) combines an owning
+The [constructor example](playground/llvm_constructors.vn) combines an owning
 message and a borrowed view. Rust remains the default backend.
 
 Release 0.246 adds synchronous loops to direct LLVM emission. Simultaneous owner
 transfers, fresh iteration facts and expanded helper completions retain Rust behavior,
-including exact faults and fuel. The [loop example](playground/llvm_loops.tellur)
+including exact faults and fuel. The [loop example](playground/llvm_loops.vn)
 swaps string owners and updates an outer counter. Rust remains the default backend.
 
 Release 0.245 bounds LLVM temporary storage: consumed value/outcome cells are
@@ -203,19 +201,19 @@ prepares loop lowering; the admitted source profile and default backend are unch
 
 Release 0.244 adds arrays, vectors and maps to direct LLVM emission, including
 collection literals, lengths, mutation, element borrows, local shared-reference
-elements and resource transfers. The [collection example](playground/llvm_collections.tellur)
+elements and resource transfers. The [collection example](playground/llvm_collections.vn)
 uses helper-returned borrows and deterministic map removal. Loops and boundaries
 remain later slices; Rust remains the default backend.
 
 Release 0.243 adds opaque/resource values and returning synchronous borrowed host
-operations to direct LLVM emission. The [resource example](playground/llvm_resources.tellur)
+operations to direct LLVM emission. The [resource example](playground/llvm_resources.vn)
 passes a file owner through a record, borrows it for reading, and consumes it when
 closing. Scripted and live host behavior share the existing runtime. Async host
 operations and Rust adapters remain later slices; Rust remains the default backend.
 
 Release 0.242 adds reference-bearing records, options, variants and named outcomes
 to the direct LLVM backend, including whole borrowed carriers and guarded leaf
-reborrows. The [carrier example](playground/llvm_carriers.tellur) returns a nested
+reborrows. The [carrier example](playground/llvm_carriers.vn) returns a nested
 carrier, edits a returned exclusive leaf and restores parent access. Rust stays the default backend.
 
 Release 0.240 gives LLVM locals stable activation storage shared across nested
@@ -225,23 +223,23 @@ changing the admitted source profile.
 
 Release 0.239 adds owned synchronous primitive calls to direct LLVM emission,
 sharing the existing host runtime's live/scripted behavior, tracing and diagnostics.
-The [primitive example](playground/llvm_primitives.tellur) parses, adds, multiplies
+The [primitive example](playground/llvm_primitives.vn) parses, adds, multiplies
 and decodes UTF-8. Borrowed/async primitive signatures remain later slices.
 
 Release 0.238 adds options, variants and named outcome values to direct LLVM
 emission, including captured outcomes and selected payload decisions. The
-[tagged-value example](playground/llvm_tagged.tellur) combines these through nested
+[tagged-value example](playground/llvm_tagged.vn) combines these through nested
 calls. Rust remains the default while references, resources, loops and boundaries
 are brought across.
 
 Release 0.237 adds owned records to the direct LLVM backend: nested and generic
 records, written-order initialization, partial field moves, reassignment and temporary
-projection. The [record example](playground/llvm_records.tellur) exercises those operations
+projection. The [record example](playground/llvm_records.vn) exercises those operations
 through nested helper calls. References and tagged aggregates remain later slices.
 
 Release 0.236 adds synchronous scalar control calls to the direct LLVM backend,
 including nested/private helpers, outcome routing and transferred payloads.
-The [call example](playground/llvm_calls.tellur) runs with `--backend llvm` at O0/O2.
+The [call example](playground/llvm_calls.vn) runs with `--backend llvm` at O0/O2.
 
 Release 0.235 begins direct LLVM emission for synchronous scalar controls.
 `build` and `exec` accept `--backend llvm`; the Rust backend remains the default.
@@ -263,7 +261,7 @@ cancelled task set and a sibling fault match the reference executor on every tes
 schedule at O0 and O2. Native executables still use the existing backend.
 
 Release 0.231 runs the Milestone 5 acceptance specimen,
-[playground/cancellation.tellur](playground/cancellation.tellur): two concurrent
+[playground/cancellation.vn](playground/cancellation.vn): two concurrent
 receives through borrowed handles, cancellation of the slower one, joins before the
 handles close, and visible close failures, with the same results in every executor.
 
@@ -451,7 +449,7 @@ Release 0.190 selects written schema field origin mappings in diagnostics, inclu
 separate storage arrows and referent brackets through imports and unsaved editor changes.
 Origin semantics and shared preparation order are unchanged.
 
-Release 0.189 adds [boundary helpers with explicit handoffs](playground/boundary_handoff_tasks.tellur).
+Release 0.189 adds [boundary helpers with explicit handoffs](playground/boundary_handoff_tasks.vn).
 Named and lexical helpers may yield or await beside live children when retained
 owners permit fault settlement. Children keep their original invocation and fault
 boundary; local recovery, returned borrows and required joins retain their rules.
@@ -459,85 +457,85 @@ Direct parent boundaries still require joining children first.
 
 Release 0.188 keeps local fault recovery in the owning execution chain: native
 execution no longer selects an unrelated sibling between fault settlement and its
-contingency. The [local recovery example](playground/local_recovery_tasks.tellur)
+contingency. The [local recovery example](playground/local_recovery_tasks.vn)
 checks this through an awaited helper. Existing explicit handoff and contingency
 restrictions remain unchanged; inline boundary-bearing helper handoffs stay gated.
 
-Release 0.187 adds [uninterrupted boundary helpers](playground/boundary_helpers.tellur):
+Release 0.187 adds [uninterrupted boundary helpers](playground/boundary_helpers.vn):
 local named and lexical recovery can run beside live children without moving their
 handles or changing handoffs. Direct parent boundaries and boundary-bearing helpers
 that can hand off remain gated. Generic dependency checking now retains named
 contingencies, including their calls and diagnostics.
 
-Release 0.186 adds [named-outcome reference chains](playground/outcome_chain_spawn.tellur).
+Release 0.186 adds [named-outcome reference chains](playground/outcome_chain_spawn.vn).
 Borrowed results retain holder storage and selected origins while the owning caller
 still handles every active, empty or nested outcome. Owned carriers transfer their
 handling obligations through consuming joins.
 
-Release 0.185 adds [option and closed-variant reference chains](playground/tagged_chain_spawn.tellur).
+Release 0.185 adds [option and closed-variant reference chains](playground/tagged_chain_spawn.vn).
 Active and empty tags retain every intermediate holder; selected suppliers and exclusive
 guards survive consuming join. Deeper named-outcome nodes remain the next bounded audit.
 
-Release 0.184 adds [reference chains through records](playground/record_chain_spawn.tellur)
+Release 0.184 adds [reference chains through records](playground/record_chain_spawn.vn)
 for spawned captures and results. Every intermediate holder, selected supplier origin
 and exclusive ancestor remains protected through joins and fault settlement. Tagged
 nodes in deeper reference chains remain the next bounded audit.
 
-Release 0.183 adds [whole borrowed named-outcome results](playground/borrowed_outcome_spawn_results.tellur).
+Release 0.183 adds [whole borrowed named-outcome results](playground/borrowed_outcome_spawn_results.vn).
 Joining retains holder storage and contained permissions. The owning caller still handles
 every outcome, including empty alternatives, after borrowed inspection. Deeper reference
 pointees remain the next admission audit.
 
-Release 0.182 adds [whole borrowed option and variant results](playground/borrowed_tagged_spawn_results.tellur).
+Release 0.182 adds [whole borrowed option and variant results](playground/borrowed_tagged_spawn_results.vn).
 Empty results retain their holder storage without inventing supplier loans; active tags
 preserve contained origins, exclusive guards and nested outcome handling. Whole borrowed
 named-outcome results remain the next bounded audit.
 
-Release 0.181 adds [whole borrowed record results](playground/borrowed_record_spawn_results.tellur).
+Release 0.181 adds [whole borrowed record results](playground/borrowed_record_spawn_results.vn).
 Joining a child preserves both holder storage authority and contained reference origins,
 including projected records, shared copies and exclusive guards. Caller outcome handling
 and resource settlement remain checked. Whole borrowed tagged results remain separate.
 
-Release 0.180 adds [borrowed named outcome captures](playground/borrowed_outcome_spawn.tellur).
+Release 0.180 adds [borrowed named outcome captures](playground/borrowed_outcome_spawn.vn).
 A spawned reader retains the outcome holder while its caller keeps the obligation to
 handle that outcome, including empty and nested values. Selected supplier origins and
 exclusive holder guards remain checked. Whole borrowed-carrier results and deeper
 reference pointees remain separate admission work.
 
-Release 0.179 adds [borrowed option and variant captures](playground/borrowed_tagged_spawn.tellur).
+Release 0.179 adds [borrowed option and variant captures](playground/borrowed_tagged_spawn.vn).
 Borrowed holders may contain nested records, options and closed variants with direct
 reference leaves. Selected and empty alternatives preserve ordinary origin permissions,
 exclusive guards and resource retirement. Reference-bearing outcome borrows and whole
 borrowed-carrier results remain separate admission work.
 
-Release 0.178 adds [borrowed record captures](playground/borrowed_record_spawn.tellur).
+Release 0.178 adds [borrowed record captures](playground/borrowed_record_spawn.vn).
 Spawned children retain holder storage and its contained reference leaves until join.
 Selected results retain ordinary supplier loans and detached exclusive holder guards.
 Borrowed tagged captures, deeper reference pointees and whole borrowed-carrier results
 remain separate admission work.
 
-Release 0.177 adds [named outcome spawn payloads](playground/outcome_spawn.tellur).
+Release 0.177 adds [named outcome spawn payloads](playground/outcome_spawn.vn).
 Capturing and returning a named outcome transfers its mandatory handling obligation,
 including empty/shared payloads and nested values. Declared origins, guards and resource
 retirement remain checked. Anonymous reference-bearing contracts and borrowed carriers
 retain their existing limits.
 
-Release 0.176 adds [owned tagged spawn payloads](playground/tagged_spawn.tellur).
+Release 0.176 adds [owned tagged spawn payloads](playground/tagged_spawn.vn).
 Options and closed variants may nest with records in captures/results. Selected tag
 origins, empty alternatives, exclusive guards and retained resource obligations remain
 checked. Reference-bearing outcomes, borrowed carriers and collections stay gated.
 
-Release 0.175 adds [nested owned record spawn payloads](playground/nested_spawn.tellur).
+Release 0.175 adds [nested owned record spawn payloads](playground/nested_spawn.vn).
 Captured and returned records retain full borrowed-field paths through partial moves
 and consuming joins. Reference leaves still point to reference-free storage; borrowed
 carriers and reference-bearing tagged/collection payloads remain gated.
 
-Release 0.174 adds [flat record spawn results](playground/carrier_spawn_results.tellur).
+Release 0.174 adds [flat record spawn results](playground/carrier_spawn_results.vn).
 Returned records retain declared origins for each borrowed field, alongside ordinary
 owned fields. Consuming joins preserve selected loans, guarded authority and completion
 retirement. Nested and borrowed carriers remain gated.
 
-Release 0.173 adds [flat record spawn captures](playground/carrier_spawn.tellur).
+Release 0.173 adds [flat record spawn captures](playground/carrier_spawn.vn).
 Records may carry direct shared/exclusive references and reference-free owned fields.
 Leaf loans remain until consuming join, and selected result origins remain borrowed
 through final use. Nested/borrowed capture carriers and result carriers stay gated.
@@ -545,12 +543,12 @@ through final use. Nested/borrowed capture carriers and result carriers stay gat
 Release 0.170 admits synchronous helpers that reach explicit handoffs through `run`,
 provided their inline call chain stays outside fault boundaries and suspended owners
 permit fault settlement. `run` enters inline; only a reached `await` or `yield`
-switches siblings. See [cooperative helpers](playground/cooperative_helpers.tellur).
+switches siblings. See [cooperative helpers](playground/cooperative_helpers.vn).
 
 Release 0.169 admits cold/direct awaits while owned spawned children remain live.
 Awaited work may borrow parent storage; sibling faults restore the owning continuation
 and retire awaited borrowers before its contingency. See the runnable
-[parent await example](playground/parent_await.tellur).
+[parent await example](playground/parent_await.vn).
 
 Release 0.168 checks resource settlement inside spawned producers and their callees.
 Owners held across a handoff need a fault disposition, including owners retained
@@ -560,24 +558,24 @@ an owner before the handoff keeps it admissible; sequential use remains availabl
 Release 0.167 admits checked synchronous helpers while spawned children remain live.
 Helpers without transitive task handoffs or fault boundaries run uninterrupted,
 including borrowed parent inputs, constructors and concrete generic/trait calls.
-Try `./bin/tellurc exec playground/structured_helpers.tellur playground/manifest.json`.
+Try `./bin/vnc exec playground/structured_helpers.vn playground/manifest.json`.
 
 Release 0.166 adds [owned source scheduling](docs/reference/async-execution.md#owned-spawned-children):
 `spawn` queues invocation-owned children, and `await`/`yield` explicitly hand off
-execution. Try [structured_tasks.tellur](playground/structured_tasks.tellur) with
-`./bin/tellurc exec playground/structured_tasks.tellur playground/manifest.json`.
+execution. Try [structured_tasks.vn](playground/structured_tasks.vn) with
+`./bin/vnc exec playground/structured_tasks.vn playground/manifest.json`.
 The current reference describes the admitted profile; earlier versioned notes below
 record the limits at those historical checkpoints.
 
 Release 0.79 adds checked constructor contracts at call sites: concrete input types,
 ordered result origins, fault permission and selected histories. Try hovering over
 `text_pair(...)` or `editable_text(...)` in
-[borrowed_construction.tellur](playground/borrowed_construction.tellur).
+[borrowed_construction.vn](playground/borrowed_construction.vn).
 
 Release 0.80 adds concrete trait-call contracts, preserving the trait's names and
 origins while resolving associated types. Unsaved declarations refresh the contract;
 generic trait calls retain their abstract associated projections. Try `reader<text_source>.read`
-in [traits.tellur](playground/traits.tellur).
+in [traits.vn](playground/traits.vn).
 
 The [settings CLI](applications/settings/README.md#remove-a-setting) now supports
 key removal through `--entry remove -- FILE KEY`, using the shared JSON-file library
@@ -631,11 +629,11 @@ unused definitions and duplicate requirements reached through different import a
 
 Release 0.91 batches inaccessible constructor calls across independent bodies,
 with imported source locations, separate repairs and no partial checked program.
-Try [constructor_access/main.tellur](playground/constructor_access/main.tellur).
+Try [constructor_access/main.vn](playground/constructor_access/main.vn).
 
 Release 0.90 adds symbolic constructor contracts inside generic bodies, preserving
 abstract input types, borrow modes, ordered origins and checked permissions. Try
-[generic_construction.tellur](playground/generic_construction.tellur).
+[generic_construction.vn](playground/generic_construction.vn).
 
 Release 0.89 adds symbolic trait-call [hover](docs/language-reference.md#call-site-contract-hover):
 associated types, declared names, origin groups and fault permissions stay tied to
@@ -667,24 +665,24 @@ checks stay conservative, and failed handlers suppress their dependent work and 
 
 Release 0.82 adds named boundary contracts at `supervise` calls: owned inputs,
 retained parameters and permission for faults to escape contingency. Hover makes
-outcome-free completion explicit. Try [contingency.tellur](playground/contingency.tellur).
+outcome-free completion explicit. Try [contingency.vn](playground/contingency.vn).
 
 Release 0.81 resolves implementation-local `self` and associated aliases in call
 hover, and preserves named generic result contracts with their origin mappings.
-Try [trait_aliases.tellur](playground/trait_aliases.tellur) and the helper call in
-[aggregate_traits.tellur](playground/aggregate_traits.tellur).
+Try [trait_aliases.vn](playground/trait_aliases.vn) and the helper call in
+[aggregate_traits.vn](playground/aggregate_traits.vn).
 
 Release 0.78 extends [control-declaration diagnostics](docs/reference/diagnostics-and-limits.md#control-declaration-batches)
 to independent named completion bindings. Public shapes, origin bindings and concrete
 signatures have bounded batches; invalid shared preparation still stops its dependent
-phases. Try [contract_binding_diagnostics.tellur](playground/contract_binding_diagnostics.tellur)
-or [declaration_diagnostics.tellur](playground/declaration_diagnostics.tellur).
+phases. Try [contract_binding_diagnostics.vn](playground/contract_binding_diagnostics.vn)
+or [declaration_diagnostics.vn](playground/declaration_diagnostics.vn).
 
 Release 0.76 adds [call-site contract hover](docs/language-reference.md#call-site-contract-hover):
 hover over a control or manifest primitive call to see its checked inputs, outcomes,
 borrow contracts and fault permission alongside the selected histories. Imported
 contracts follow unsaved dependency edits; invalid source suppresses stale information.
-Try `json_file.load` in [the independent library example](examples/json_file/main.tellur).
+Try `json_file.load` in [the independent library example](examples/json_file/main.vn).
 
 The source library also provides [bounded loopback HTTP](library/README.md#bounded-loopback-http)
 on the existing 0.76 compiler: shared transport contracts, retained connections and
@@ -693,43 +691,43 @@ The settings service now uses both shared libraries while keeping its own policy
 
 Release 0.75 starts the [shared source library](library/README.md): JSON string-map
 file loading/replacement, explicit failure contracts and reusable Rust adapter modules.
-The settings service and an [independent program](examples/json_file/main.tellur)
+The settings service and an [independent program](examples/json_file/main.vn)
 share the implementation. Module paths resolve from the manifest; native builds keep
 the existing type checks and locked dependencies.
 
 Release 0.74 extends diagnostic recovery across disjoint paths, grouped and lexical
 scopes, statement arms and loop bodies. Errors on one path no longer hide independent
 errors on another; joins touching stalled histories remain conservative. Try
-[path_diagnostics.tellur](playground/path_diagnostics.tellur) and the
+[path_diagnostics.vn](playground/path_diagnostics.vn) and the
 [path recovery rules](docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
 
 Release 0.73 reports independent errors within straight-line control code, alongside
 errors from independent controls. Dependent statements are suppressed, with a shared
 32-error budget and no partial inferred hover. Try editing the two initializers in
-[diagnostics.tellur](playground/diagnostics.tellur); the
+[diagnostics.vn](playground/diagnostics.vn); the
 [recovery rules](docs/reference/diagnostics-and-limits.md#statement-recovery) describe
 where checking stops conservatively.
 
 Release 0.72 checks initializer accesses in written order: a completed constructor
 releases its nonescaping call borrows before the next initializer. Returned references
 and pending resources stay protected. Try
-[sequential_initializers.tellur](playground/sequential_initializers.tellur) and the
+[sequential_initializers.vn](playground/sequential_initializers.vn) and the
 [initializer lifetime rules](docs/reference/construction.md#initializer-borrow-lifetimes).
 
 Release 0.71 supports direct fields of fresh borrowed results: `text_view(borrow owner).text`.
 External origins, shared/mutable permissions and unselected completion obligations
-remain checked. Try [projected_construction.tellur](playground/projected_construction.tellur)
+remain checked. Try [projected_construction.vn](playground/projected_construction.vn)
 and [fresh result projections](docs/reference/construction.md#projecting-fresh-results).
 
 Release 0.70 lets constructor calls compose inside raw borrowed records, options,
 variants and named outcomes. Written evaluation order, loans and pending resources
-remain checked. Try [composed_construction.tellur](playground/composed_construction.tellur)
+remain checked. Try [composed_construction.vn](playground/composed_construction.vn)
 and the [construction reference](docs/reference/construction.md#composing-borrowed-storage).
 
 Release 0.69 adds [reference-bearing constructors](docs/reference/construction.md#reference-bearing-results).
 Write `constructor(ref string input)[input]` to map the result's origin groups.
 Shared and mutable borrows, nested fields and path-sensitive initialization use the
-existing ownership rules. Try [borrowed_construction.tellur](playground/borrowed_construction.tellur).
+existing ownership rules. Try [borrowed_construction.vn](playground/borrowed_construction.vn).
 
 Release 0.68 improves constructor lowering: completed values enter caller storage
 without an intermediate outcome payload, and owned temporary projections transfer
@@ -739,7 +737,7 @@ only their local value/decision storage. Source syntax stays the same.
 Release 0.67 adds [declared struct constructors](docs/reference/construction.md):
 checked field initialization, nested owning calls, generic forwarding and partial-fault
 cleanup. Public fields still permit raw brace construction. VS Code shows constructors
-in the outline and inferred types on `auto`. Try [construction.tellur](playground/construction.tellur).
+in the outline and inferred types on `auto`. Try [construction.vn](playground/construction.vn).
 
 Release 0.66 adds [lexical fault boundaries and supervised recovery](docs/reference/contingency.md):
 attached contingency blocks, retained owners, immutable `@fault`, preserved loop
@@ -749,13 +747,13 @@ Normal outcomes and administrative recovery remain separate in both engines.
 Release 0.65 adds [owning expressions and borrowed temporary arguments](docs/reference/ownership-expressions.md):
 explicit `move`, generic owning forwarding, and anonymous call-duration storage
 when a borrowed temporary cannot escape. Try
-[owning_expressions.tellur](playground/owning_expressions.tellur).
+[owning_expressions.vn](playground/owning_expressions.vn).
 
 Release 0.64 adds [implicit delta routing and named decisions](docs/reference/delta-routing.md):
 `received = delta request();` imports outcome paths and payload names. Select
 `[received.ready]`, or use a short path while it is unambiguous. Grouped arm
 statements can introduce values for later use on that path. Try
-[identity_deltas.tellur](playground/identity_deltas.tellur). The
+[identity_deltas.vn](playground/identity_deltas.vn). The
 [accepted control-flow revision](docs/control-flow-revision.md) tracks the remaining
 ownership, lexical supervision and constructor checkpoints.
 
@@ -763,12 +761,12 @@ Release 0.62 adds [source faults](docs/reference/execution-failures.md):
 `fault "reason";` terminates an invocation, public and trait contracts declare
 `faults`, and private controls infer it. Fault-only controls omit `exits`.
 Live must-complete resources need explicit fault dispositions. Try
-`./bin/tellurc exec playground/source_faults.tellur -- --json -- false`.
+`./bin/vnc exec playground/source_faults.vn -- --json -- false`.
 
 Release 0.61 adopts the author's server layout in the [formatter](docs/reference/formatting.md):
 short label dispositions remain inline, and long lists and conditions wrap at a
-configurable width. Use **Format Document**, set `tellurLanguage.formatWidth`, or
-run `./bin/tellurc format SOURCE --width 100 --write`.
+configurable width. Use **Format Document**, set `villanelleLanguage.formatWidth`, or
+run `./bin/vnc format SOURCE --width 100 --write`.
 
 The [active checkpoint queue](docs/language-revision.md#active-checkpoint-queue) now
 prioritizes stable public interfaces, diagnostics, readable paths and a sustained
@@ -776,15 +774,15 @@ application with Rust library adapters. Further reference expansion is deferred;
 first-class async and direct LLVM coroutine lowering remain architectural targets.
 Release 0.46 adds [outcome contributor diagnostics](docs/reference/diagnostics-and-limits.md)
 through stored values, adapters and merged path labels. Release 0.47 adds
-`tellurc check SOURCE --json` and structured path witnesses for tools.
+`vnc check SOURCE --json` and structured path witnesses for tools.
 Release 0.48 adds [explicit process exit contracts](docs/reference/process-entry.md):
 `@exit N` on named alternatives, checked entry overrides, and exact status propagation
-through `tellurc exec`. Runnable playgrounds now declare their status policy.
+through `vnc exec`. Runnable playgrounds now declare their status policy.
 Release 0.49 adds [retained Rust resources](docs/rust-adapters.md#retained-resources-049):
 opaque owners survive between calls, with checked borrowing and explicit consumption.
 Try the [file adapter](examples/retained_file/README.md) in VS Code or the terminal.
 Release 0.50 adds the [loopback HTTP settings service](applications/settings/README.md#run-the-http-service),
-with Tellur routing, validation and cleanup, bounded socket I/O and explicit shutdown
+with Villanelle routing, validation and cleanup, bounded socket I/O and explicit shutdown
 through connection budgets or idle timeouts.
 Release 0.51 adds [precise expression diagnostics](docs/reference/diagnostics-and-limits.md#expression-locations)
 to the compiler and VS Code: bad arguments, initializers and field accesses select
@@ -794,70 +792,70 @@ Release 0.52 adds [independent-body error reporting](docs/reference/diagnostics-
 failed controls. Inferred hover remains unavailable until the current program checks.
 Release 0.53 adds [optional path grouping](docs/language-reference.md#labels-and-optional-grouping):
 `[path]: { ... }` gives a selection an explicit end without creating a new value or
-lifetime scope. Ordinary labels stay unbraced. Try [path_groups.tellur](playground/path_groups.tellur).
+lifetime scope. Ordinary labels stay unbraced. Try [path_groups.vn](playground/path_groups.vn).
 
 Release 0.54 adds [direct arm exits](docs/language-reference.md#direct-arm-exits):
 `missing => exit absent` immediately completes that history without a throwaway path
 label. The settings application now uses them for validation and storage failures.
-Try [arm_exits.tellur](playground/arm_exits.tellur).
+Try [arm_exits.vn](playground/arm_exits.vn).
 
 Release 0.55 adds [selected-history hover](docs/language-reference.md#selected-history-hover):
 hover over selected code to see resolved paths, enclosing intersections, and decision
-origins. Try [history_hover.tellur](playground/history_hover.tellur). Existing `auto`
+origins. Try [history_hover.vn](playground/history_hover.vn). Existing `auto`
 hover keeps showing inferred types.
 
 Release 0.56 adds [source formatting](docs/reference/formatting.md): use VS Code's
-**Format Document**, or `./bin/tellurc format SOURCE [--check | --write]`.
+**Format Document**, or `./bin/vnc format SOURCE [--check | --write]`.
 Labels, explicit groups, comments and literal spelling are preserved. Formatting
 works on unsaved buffers and needs no manifest.
 
 Release 0.57 adds [public contract snapshots and diffs](docs/reference/contract-snapshots.md):
-`tellurc contract-snapshot` exports checked public interfaces, and `contract-diff`
-compares them for review or CI. VS Code's **Tellur: Show Public Contract Snapshot**
+`vnc contract-snapshot` exports checked public interfaces, and `contract-diff`
+compares them for review or CI. VS Code's **Villanelle: Show Public Contract Snapshot**
 uses current unsaved sources. The settings library now carries a checked baseline.
 
 Release 0.58 adds [outcome absorption snapshots and diffs](docs/reference/outcome-absorption.md):
 review changes to bounded internal contributors even when the public contract stays
-equal. Use `absorption-snapshot`, `absorption-diff`, or VS Code's **Tellur: Show
+equal. Use `absorption-snapshot`, `absorption-diff`, or VS Code's **Villanelle: Show
 Outcome Absorption Snapshot**. The settings application includes an evidence baseline;
-`playground/outcome_absorption.tellur` is a small runnable example.
+`playground/outcome_absorption.vn` is a small runnable example.
 
 Release 0.59 adds [path and outcome explanations](docs/reference/explanations.md).
-Use `tellurc explain` at a source position or for one control outcome, including
-private controls. VS Code provides **Tellur: Explain Path Selection at Cursor** and
-**Tellur: Explain Outcome Contributors**, with readable reports and source links.
-Try `playground/path_explanations.tellur`.
+Use `vnc explain` at a source position or for one control outcome, including
+private controls. VS Code provides **Villanelle: Explain Path Selection at Cursor** and
+**Villanelle: Explain Outcome Contributors**, with readable reports and source links.
+Try `playground/path_explanations.vn`.
 
 Release 0.60 starts [faults and activation boundaries](docs/faults-and-activations.md):
 returned execution failures now identify the actual control invocations and source
-sites in reference/native reports. Try `playground/execution_faults.tellur` with
+sites in reference/native reports. Try `playground/execution_faults.vn` with
 `--fuel 40`. The [reference](docs/reference/execution-failures.md) distinguishes
 boundary failure, resource teardown and normal outcomes. Source fault syntax is available in 0.62;
 isolated tasks remain subsequent work.
 
 The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
 ownership transfer, behavioral equivalence and provenance. Executable law tests and
-`tellurc compare` provide finite scenario evidence; they do not establish general equivalence.
+`vnc compare` provide finite scenario evidence; they do not establish general equivalence.
 Expansion now also carries [independently checked rewrite certificates](docs/expansion-certificates.md).
 Every expanded execution/build passes this validator; artifacts can be exported and checked separately.
 The [simulation argument](docs/expansion-simulation.md) records its semantic premises.
-Try [explicit public contracts and private forwarding](playground/public_contracts.tellur),
-[local shared-reference collections](playground/borrowed_collections.tellur),
-[aggregate trait origin contracts](playground/aggregate_traits.tellur),
-[public nested-reference contracts](playground/public_carriers.tellur),
-[stored carrier references](playground/stored_carriers.tellur),
-[returned carrier references](playground/carrier_results.tellur),
-[whole sum borrowing](playground/sum_carriers.tellur),
-[named outcome and option origins](playground/outcome_origins.tellur),
-[public variant contracts](playground/public_variants.tellur),
-[borrowed outcomes](playground/borrowed_outcomes.tellur),
-[opaque owner splits](playground/opaque_splits.tellur),
-[exclusive carrier reborrows](playground/carrier_reborrows.tellur),
-[record inputs and contained origins](playground/record_inputs.tellur),
-[inferred exit payloads](playground/inferred_payloads.tellur),
-[stored reference fields](playground/stored_references.tellur),
-[borrowed trait contracts](playground/borrowed_traits.tellur),
-[named struct construction](playground/named_fields.tellur) for readable nested data
+Try [explicit public contracts and private forwarding](playground/public_contracts.vn),
+[local shared-reference collections](playground/borrowed_collections.vn),
+[aggregate trait origin contracts](playground/aggregate_traits.vn),
+[public nested-reference contracts](playground/public_carriers.vn),
+[stored carrier references](playground/stored_carriers.vn),
+[returned carrier references](playground/carrier_results.vn),
+[whole sum borrowing](playground/sum_carriers.vn),
+[named outcome and option origins](playground/outcome_origins.vn),
+[public variant contracts](playground/public_variants.vn),
+[borrowed outcomes](playground/borrowed_outcomes.vn),
+[opaque owner splits](playground/opaque_splits.vn),
+[exclusive carrier reborrows](playground/carrier_reborrows.vn),
+[record inputs and contained origins](playground/record_inputs.vn),
+[inferred exit payloads](playground/inferred_payloads.vn),
+[stored reference fields](playground/stored_references.vn),
+[borrowed trait contracts](playground/borrowed_traits.vn),
+[named struct construction](playground/named_fields.vn) for readable nested data
 and [file modules](docs/modules.md) for public interfaces and private representations.
 
 [Protocol analysis](docs/protocol-analysis.md) now provides finite structural models,
@@ -867,15 +865,15 @@ forgets data and cannot establish concrete program equivalence.
 its ownership and public contracts; it is a conservative refactoring, not a proof.
 
 The maintained [settings service](applications/settings/README.md) now provides a
-working persistent CLI and sequential loopback HTTP server. Its Tellur modules use
+working persistent CLI and sequential loopback HTTP server. Its Villanelle modules use
 [typed Rust adapters](docs/rust-adapters.md) for file, JSON and socket operations,
 with explicit Cargo dependencies and locked builds.
-This starts library reuse while keeping first-class Tellur async and direct LLVM
+This starts library reuse while keeping first-class Villanelle async and direct LLVM
 coroutine lowering open.
 
 ## Native release builds
 
-The [Native release workflow](.github/workflows/release.yml) builds Tellur and its
+The [Native release workflow](.github/workflows/release.yml) builds Villanelle and its
 VS Code extension on Apple Silicon macOS, Ubuntu 24.04 x86_64 and arm64, and Windows x64.
 Each job caches its pinned static LLVM/LLD 22.1.8 installation. The qualification
 step compares the compiler inside the VSIX with the standalone archive, starts
@@ -886,12 +884,9 @@ before running the compiler test suite. The Windows job runs the suite natively.
 once with LLVM and once with generated Rust. Each target uses the same test
 executable for both passes.
 
-Version 0.283 adds Windows x64 to the release. Each platform has a CLI archive
-and a VSIX containing the same compiler and language server. From a Windows
-checkout, run `tellur.exe exec playground/hello.tellur` to compile and run
-Hello with embedded LLVM. Pass `--backend rust` to use generated Rust.
-[Release packages](https://github.com/apology-is-policy/tellur/releases/tag/v0.283.0) ·
-[Windows parity results](https://github.com/apology-is-policy/tellur/actions/runs/43791913439)
+The last public cross-platform release, 0.283, shipped as Tellur. Its archives contain `tellur` or `tellur.exe`. The 0.285 source and packaging workflow use `vnc` or `vnc.exe` and recognize `.vn` files.
+[Release packages](https://github.com/apology-is-policy/villanelle/releases/tag/v0.283.0) ·
+[Windows parity results](https://github.com/apology-is-policy/villanelle/actions/runs/43791913439)
 
 ## Build from a fresh clone
 
@@ -905,27 +900,27 @@ For a Rust-only bootstrap, add `--no-default-features` to the Cargo build below.
 To use a prebuilt compiler, download the release package for your host.
 
 ```sh
-git clone https://github.com/apology-is-policy/tellur.git
-cd tellur
-cargo build --locked --release --bins
-./target/release/tellur check playground/hello.tellur
-./target/release/tellur exec playground/hello.tellur
-./target/release/tellur build playground/hello.tellur --release
+git clone https://github.com/apology-is-policy/villanelle.git
+cd villanelle
+cargo build --locked --release --bin vnc
+./target/release/vnc check playground/hello.vn
+./target/release/vnc exec playground/hello.vn
+./target/release/vnc build playground/hello.vn --release
 ./playground/build/hello
 ```
 
-Generated binaries and VSIX packages are not committed. Use `target/release/tellur`
-in place of `bin/tellurc` in the examples below, or copy the release binaries into
+Generated binaries and VSIX packages are not committed. Use `target/release/vnc`
+in place of `bin/vnc` in the examples below, or copy the release binaries into
 `bin/`. To build the editor extension, follow the
 [VS Code development guide](editors/vscode/README.md). The project is licensed under
 [Apache 2.0](LICENSE).
 
 ## Try programming
 
-1. Open `tellur.code-workspace` in VS Code.
-2. Open `playground/hello.tellur`.
-3. Click **▶** or run **Tellur: Build and Run** (`⌘⌥R`).
-4. Read the **Tellur Build** output, then try `stored_references.tellur`, `generic_controls.tellur`, `generic_data.tellur`, `named_fields.tellur`, `modules/main.tellur`, `data_types.tellur`, `forwarding.tellur`, `named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, `ownership.tellur`, `count.tellur`, `port.tellur`, or `read_file.tellur`.
+1. Open `villanelle.code-workspace` in VS Code.
+2. Open `playground/hello.vn`.
+3. Click **▶** or run **Villanelle: Build and Run** (`⌘⌥R`).
+4. Read the **Villanelle Build** output, then try `stored_references.vn`, `generic_controls.vn`, `generic_data.vn`, `named_fields.vn`, `modules/main.vn`, `data_types.vn`, `forwarding.vn`, `named_outcomes.vn`, `stored_adapters.vn`, `adapters.vn`, `outcomes.vn`, `collections.vn`, `references.vn`, `ownership.vn`, `count.vn`, `port.vn`, or `read_file.vn`.
 
 Hover over a control declaration name to see its checked exit contract, including
 inferred payload types. The [detailed language reference](docs/language-reference.md) explains the syntax,
@@ -941,7 +936,7 @@ build commands.
 
 The playground uses **real** parsing, arithmetic, text and read-only file operations.
 The broader `examples/` directory also includes scripted network/retry cases and
-negative-edit suggestions. An entry `.tellur` file and its explicit imports form a
+negative-edit suggestions. An entry `.vn` file and its explicit imports form a
 compilation; helpers can live in that file or in imported modules. Put new files beside `playground/manifest.json` to use
 its types and primitive contracts.
 
@@ -950,26 +945,26 @@ its types and primitive contracts.
 From this directory, use the supplied binaries:
 
 ```sh
-./bin/tellurc check playground/hello.tellur
-./bin/tellurc exec playground/forwarding.tellur
-./bin/tellurc exec playground/adapters.tellur
-./bin/tellurc exec playground/outcomes.tellur
-./bin/tellurc exec playground/collections.tellur
-./bin/tellurc exec playground/count.tellur
-./bin/tellurc exec playground/port.tellur --entry parse_port -- 443
-./bin/tellurc build playground/hello.tellur --release
+./bin/vnc check playground/hello.vn
+./bin/vnc exec playground/forwarding.vn
+./bin/vnc exec playground/adapters.vn
+./bin/vnc exec playground/outcomes.vn
+./bin/vnc exec playground/collections.vn
+./bin/vnc exec playground/count.vn
+./bin/vnc exec playground/port.vn --entry parse_port -- 443
+./bin/vnc build playground/hello.vn --release
 ./playground/build/hello
-./bin/tellurc expand examples/refresh.tellur examples/manifest.json refresh
-./bin/tellurc certify-expansion playground/forwarding.tellur playground/manifest.json main > expansion.json
-./bin/tellurc verify-expansion playground/forwarding.tellur playground/manifest.json expansion.json
-./bin/tellurc protocol playground/read_file.tellur playground/manifest.json show_file playground/protocol/read_failed.json
-./bin/tellurc run examples/load.tellur examples/manifest.json examples/double-failure.json
+./bin/vnc expand examples/refresh.vn examples/manifest.json refresh
+./bin/vnc certify-expansion playground/forwarding.vn playground/manifest.json main > expansion.json
+./bin/vnc verify-expansion playground/forwarding.vn playground/manifest.json expansion.json
+./bin/vnc protocol playground/read_file.vn playground/manifest.json show_file playground/protocol/read_failed.json
+./bin/vnc run examples/load.vn examples/manifest.json examples/double-failure.json
 ```
 
 `build` writes a standalone executable and its LLVM IR (`name.ll`). The direct
 backend emits `name.tellur-build/program.ll` and links the program with embedded
 LLVM/LLD 22.1.8. On Apple Silicon the compiler carries the precompiled runtime
-and a libSystem link stub. An ordinary build needs only the `tellur` executable.
+and a libSystem link stub. An ordinary build needs only the `vnc` executable.
 Manifests with Rust source adapters also use Cargo, rustc and the macOS SDK.
 Set `TELLUR_NATIVE_TARGET_DIR` to share the native cache between builds.
 Explicit `--backend rust` builds produce `name.tellur-build/src/main.rs` and use
@@ -1022,8 +1017,8 @@ before/after expansion and O0/O2 optimization, live host adapters, and actual ed
 build/run. This is finite evidence, not a soundness or termination proof.
 
 The [VS Code development guide](editors/vscode/README.md) describes the extension
-and its integration runner. The installed release bundles one `tellur` executable. The editor launches `tellur lsp` for language services
-and `tellur build` or `tellur exec` for native commands.
+and its integration runner. The installed release bundles one `vnc` executable. The editor launches `vnc lsp` for language services
+and `vnc build` or `vnc exec` for native commands.
 
 ## Design and boundaries
 
@@ -1055,7 +1050,7 @@ coverage or resource obligations. The editor reports bounded independent-control
 See [generic control checking](docs/generic-controls.md) for the definition/specialization
 boundary and the implemented capability rules.
 [Concrete traits](docs/traits.md) add coherent implementations and explicitly selected
-static calls; try `playground/traits.tellur` and `playground/trait_bounds.tellur`.
+static calls; try `playground/traits.vn` and `playground/trait_bounds.vn`.
 Generic bodies are checked against declared trait operations and associated permissions.
 
 ## Code map
@@ -1075,7 +1070,7 @@ Generic bodies are checked against declared trait operations and associated perm
 | `tests/` | Conformance, regressions, generated/differential tests and live host tests |
 | `playground/` | Small live programs to edit and run |
 
-The latest borrowing example is [origin_groups.tellur](playground/origin_groups.tellur).
+The latest borrowing example is [origin_groups.vn](playground/origin_groups.vn).
 It demonstrates separate returned-field dependencies and inferred forwarding.
 
 The 0.63 checkpoint adds [contingency and supervised boundaries](docs/reference/contingency.md):
@@ -1085,7 +1080,7 @@ isolation in the settings server. General annotation policies remain deferred.
 ### Direct async calls in 0.105
 
 `async control`, `run` and direct `await` are available in the sequential execution
-profile. Try `./bin/tellurc exec playground/async_entry.tellur` or read the
+profile. Try `./bin/vnc exec playground/async_entry.vn` or read the
 [reference chapter](docs/reference/async-execution.md). Concurrent scheduling,
 async I/O and LLVM coroutine lowering remain later checkpoints.
 
@@ -1095,7 +1090,7 @@ async I/O and LLVM coroutine lowering remain later checkpoints.
 `auto pending = defer operation(owned_arguments);` transfers arguments immediately
 without starting the async body. `await pending` consumes the handle; moving it
 transfers the obligation to await. Pending captures retain their fault dispositions.
-Try `./bin/tellurc exec playground/cold_tasks.tellur` and hover its `auto` bindings.
+Try `./bin/vnc exec playground/cold_tasks.vn` and hover its `auto` bindings.
 Borrowed captures, public task types and concurrent scheduling remain ahead. The
 [reference](docs/reference/async-execution.md) gives the exact current rules.
 
@@ -1105,7 +1100,7 @@ Borrowed captures, public task types and concurrent scheduling remain ahead. The
 Deferred tasks can retain shared or exclusive borrows of existing reference-free
 storage. Moving a task preserves the loans; consuming await releases them. Ordinary
 reference arguments reborrow, while `move alias` transfers an exclusive reference.
-Try `./bin/tellurc exec playground/borrowed_tasks.tellur`. Contained captures,
+Try `./bin/vnc exec playground/borrowed_tasks.vn`. Contained captures,
 borrowed completion payloads and nested storage of borrowed tasks remain ahead.
 
 ### Borrowed task completions in 0.108
@@ -1113,7 +1108,7 @@ borrowed completion payloads and nested storage of borrowed tasks remain ahead.
 Await now delivers borrowed completion payloads, preserving each result's checked
 origins through task moves, selected outcomes, records, sums and outcome adapters.
 Unrelated captures become available at await; returned references protect their
-sources until their last use. Try `./bin/tellurc exec playground/task_results.tellur`.
+sources until their last use. Try `./bin/vnc exec playground/task_results.vn`.
 Contained captures and public task contracts remain ahead; execution is sequential.
 
 ### Owned reference-bearing captures in 0.109
@@ -1121,7 +1116,7 @@ Contained captures and public task contracts remain ahead; execution is sequenti
 Cold tasks can now capture records, variants and options containing references,
 retaining each field's origins and nested carrier dependencies. Passing shared
 reference records preserves ordinary copying; exclusive references transfer with
-the owning value. Try `./bin/tellurc exec playground/contained_tasks.tellur`.
+the owning value. Try `./bin/vnc exec playground/contained_tasks.vn`.
 Borrowing a whole reference-bearing carrier remains the next bounded step.
 
 
@@ -1131,7 +1126,7 @@ Cold tasks can borrow an entire reference-bearing record or sum. The task retain
 both its storage and the references inside it. Awaited results preserve separate
 storage and contained-origin contracts, including nested carriers and tagged sums.
 A shared outer borrow cannot grant exclusive access to an inner reference.
-Try `./bin/tellurc exec playground/carrier_tasks.tellur`; hover `auto` to inspect
+Try `./bin/vnc exec playground/carrier_tasks.vn`; hover `auto` to inspect
 the pending task and its detached borrowed completion. Public/escaping tasks,
 nested task storage and scheduling remain separate work.
 
@@ -1476,7 +1471,7 @@ Fresh local reborrows can now carry complete conservative holder dependencies th
 native capture and result delivery. Whole borrowed holder ancestors remain protected;
 copied shared fields gain no invented holder guard. Indirect guards, returned permission
 families and conditional/contained proof gaps remain partial. Try
-`./bin/tellurc exec playground/local_guarded_tasks.tellur`.
+`./bin/vnc exec playground/local_guarded_tasks.vn`.
 
 ## Local borrowed carrier coverage in 0.154
 
@@ -1485,7 +1480,7 @@ coverage when every leaf has unconditional checked provenance. Nested records an
 local field projections are supported; aliases, indirect holders, returned permission
 families and reference-to-carrier leaves remain partial. Runtime capture still requires
 complete incoming formation evidence for every reachable reference. Try
-`./bin/tellurc exec playground/local_carrier_tasks.tellur`.
+`./bin/vnc exec playground/local_carrier_tasks.vn`.
 
 ## Local carrier aliases in 0.155
 
@@ -1493,7 +1488,7 @@ Erased local carrier aliases can retain complete dependencies through moves and
 projected reborrows. Every broad borrowed ancestor and all its stored owners remain
 covered, even owners outside the projected runtime value. Conditional/received carriers,
 permission families, tagged contents and references to carriers remain partial. Try
-`./bin/tellurc exec playground/aliased_carrier_tasks.tellur`.
+`./bin/vnc exec playground/aliased_carrier_tasks.vn`.
 
 ## Incoming record-leaf evidence in 0.156
 
@@ -1508,7 +1503,7 @@ Singleton shared input leaves preserve complete incoming dependency coverage thr
 reborrows, local aliases and projections. Broad pointee ancestry remains protected, while
 copying a shared field does not retain its record holder. Partial caller evidence and
 unsupported permission cases remain conservative. Try
-`./bin/tellurc exec playground/incoming_leaf_tasks.tellur`.
+`./bin/vnc exec playground/incoming_leaf_tasks.vn`.
 
 ## Native holder snapshots in 0.158
 
@@ -1523,28 +1518,28 @@ Supported singleton exclusive input leaves retain their original pointee and the
 borrowed holder, including other stored owners. Direct and local aliased reborrows carry
 an explicit checked relationship; partial or invalid runtime evidence stays conservative.
 Shared field copies remain holder-free. Try
-`./bin/tellurc exec playground/guarded_input_tasks.tellur`.
+`./bin/vnc exec playground/guarded_input_tasks.vn`.
 
 ## Incoming carrier dependencies in 0.160
 
 Whole incoming ordinary carriers retain their full original aggregate and every stored owner
 through direct forwarding, projected reborrows and local aliases. Partial or changed caller
 metadata stays conservative, including evidence outside the selected projection. Run
-`./bin/tellurc exec playground/incoming_carrier_tasks.tellur`.
+`./bin/vnc exec playground/incoming_carrier_tasks.vn`.
 
 ## Checked cold-await preparation in 0.161
 
 Native host support can advance checked local work to a consuming cold await while retained
 children remain live. Handle and wait-capacity validation precedes source changes; an explicit
 handoff stops preparation before the child runs. Source execution remains sequential. Run
-`./bin/tellurc exec playground/owner_await_progress.tellur` for the maintained source example.
+`./bin/vnc exec playground/owner_await_progress.vn` for the maintained source example.
 
 ## Direct-await handoffs in 0.162
 
 Direct await now retains its caller and hands off explicitly through the existing task
 completion machinery. Nested direct and cold awaits preserve borrowed storage and owning
 fault cleanup. Source execution remains sequential. Run
-`./bin/tellurc exec playground/direct_await.tellur` for the maintained source example.
+`./bin/vnc exec playground/direct_await.vn` for the maintained source example.
 
 ## Retained started-task joins in 0.163
 
@@ -1567,6 +1562,6 @@ reference-free captures/results and joins before another source call or fault
 boundary. Child faults settle siblings before the owning contingency.
 See the structured tasks playground and the current async execution reference.
 
-Direct shared/exclusive spawned captures: `./bin/tellurc exec playground/borrowed_spawn.tellur playground/manifest.json`. Loans remain live until the consuming join.
+Direct shared/exclusive spawned captures: `./bin/vnc exec playground/borrowed_spawn.vn playground/manifest.json`. Loans remain live until the consuming join.
 
-Direct borrowed spawned results: `./bin/tellurc exec playground/borrowed_spawn_results.tellur playground/manifest.json`. Selected result origins remain borrowed through final use.
+Direct borrowed spawned results: `./bin/vnc exec playground/borrowed_spawn_results.vn playground/manifest.json`. Selected result origins remain borrowed through final use.

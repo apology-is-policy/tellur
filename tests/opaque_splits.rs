@@ -184,7 +184,7 @@ fn trait_contracts_require_disjoint_implementations_and_preserve_them_genericall
 }
 #[test]
 fn native_opaque_splits_match_interpreter_and_expansion() {
-    let p = compile(include_str!("fixtures/opaque_splits.tellur"), m()).unwrap();
+    let p = compile(include_str!("fixtures/opaque_splits.vn"), m()).unwrap();
     let expected = p.run(&scenario()).unwrap();
     assert_eq!(
         expected.fields,

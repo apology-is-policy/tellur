@@ -14,8 +14,8 @@ before running a separate, restricted contingency. Faults never become outcomes.
 The message is diagnostic information, not an outcome payload. No value is returned,
 no caller resumes, and effects already performed are not rolled back.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control fail(string reason) faults {
     fault reason;
 }
@@ -48,8 +48,8 @@ be live: work following a fault on that same history is rejected.
 
 A flat delta arm may terminate directly:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 pub control check(bool valid) exits accepted faults {
     delta valid {
         true => exit accepted,
@@ -69,11 +69,11 @@ host failures. Fuel exhaustion, malformed scripted replies, Rust panics and proc
 termination have their own existing behavior. No diagnostic-message prefix is used
 to infer a fault permission or classify a report.
 
-Try [the source-fault example](../../playground/source_faults.tellur):
+Try [the source-fault example](../../playground/source_faults.vn):
 
 ```sh
-./bin/tellurc exec playground/source_faults.tellur -- -- true
-./bin/tellurc exec playground/source_faults.tellur -- --json -- false
+./bin/vnc exec playground/source_faults.vn -- -- true
+./bin/vnc exec playground/source_faults.vn -- --json -- false
 ```
 
 The first call completes with `done`; the second reports a source fault and returns
@@ -85,11 +85,11 @@ fault-only entry has no normal outcomes requiring status mappings.
 From the repository root:
 
 ```sh
-./bin/tellurc exec playground/execution_faults.tellur -- --fuel 40
-./bin/tellurc exec playground/execution_faults.tellur -- --json --fuel 40
+./bin/vnc exec playground/execution_faults.vn -- --fuel 40
+./bin/vnc exec playground/execution_faults.vn -- --json --fuel 40
 ```
 
-[The example](../../playground/execution_faults.tellur) deliberately makes one worker
+[The example](../../playground/execution_faults.vn) deliberately makes one worker
 call complete, then invokes the same worker again and loops. The instruction budget
 ends execution. Its failure report shows root activation 1 and worker activation 3;
 activation 2 has already completed. Loop iterations do not allocate new activations.
@@ -112,7 +112,7 @@ application outcome, as explained in [process entry](process-entry.md).
 The reference interpreter accepts:
 
 ```sh
-./bin/tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]
+./bin/vnc run SOURCE MANIFEST SCENARIO [--expanded] [--json]
 ```
 
 Successful output keeps its existing JSON shape. On execution failure, `--json`
@@ -121,7 +121,7 @@ no successful result. The ordinary reference budget remains one million instruct
 The Rust API `run_detailed(scenario, steps)` exposes both the report and the existing
 diagnostic, plus the events observed before termination; `run` and `run_with_limit` retain their diagnostic API.
 
-VS Code's **Tellur: Build and Run** shows native reports in the Tellur Build output.
+VS Code's **Villanelle: Build and Run** shows native reports in the Villanelle Build output.
 To run the example with a budget, set:
 
 ```json
@@ -171,7 +171,7 @@ already observed; completion moves them into the normal result or failure.
 after a fault, host error, fuel failure or process termination.
 
 This is a host testing/embedding API for scripted simulation. Dropping a paused
-session abandons that simulation; it does not implement Tellur cancellation, settle
+session abandons that simulation; it does not implement Villanelle cancellation, settle
 resources, or grant permission to discard a future language task. No source
 `spawn`/`await`, readiness handling, concurrency or scheduler policy is implied.
 The existing `run`, `run_with_limit`, `run_detailed` and `run_completion` APIs drive
@@ -212,7 +212,7 @@ Arguments, payloads and a complete event history are not added to this report.
 An activation is an invocation, not a declaration, path label or lexical scope.
 Identities restart in each entry invocation. Expanded code can have fewer physical
 activations; its source and expansion provenance still identify the original work.
-Native optimizer inlining does not change the recorded Tellur graph calls. Reports
+Native optimizer inlining does not change the recorded Villanelle graph calls. Reports
 are not invariant under source/graph transformation, and instruction fuel is not a
 semantic step count. Neither these IDs nor the JSON report are resumable state,
 serialized reference addresses, a certificate or a proof of isolation.
@@ -249,7 +249,7 @@ requirement for their contained resources. An unhandled outcome containing only
 ordinary droppable data does not prevent boundary termination.
 
 This permission does **not** relax normal completion obligations: returning normally
-with an uncompleted resource remains an error. Destruction does not invoke a Tellur
+with an uncompleted resource remains an error. Destruction does not invoke a Villanelle
 completion control, report successful fallible cleanup, reverse effects, or promise
 a particular cross-resource cleanup order. Custom fault protocols and fallible cleanup
 are not implemented. Native boundaries use explicit resource scope membership as of

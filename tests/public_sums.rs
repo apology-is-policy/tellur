@@ -127,7 +127,7 @@ control main() exits done {{string result}} {{
 
 #[test]
 fn nested_record_and_variant_boundaries_keep_independent_exclusive_permissions() {
-    let source = include_str!("fixtures/public_variants.tellur");
+    let source = include_str!("fixtures/public_variants.vn");
     let p = compile(source, manifest()).unwrap();
     assert_eq!(
         p.run(&scenario()).unwrap(),
@@ -266,7 +266,7 @@ fn native_public_variant_boundaries_match_both_branches_and_expansion() {
     let root = std::env::temp_dir().join(format!("path-public-variants-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     for present in [true, false] {
-        let source = include_str!("fixtures/public_variants.tellur")
+        let source = include_str!("fixtures/public_variants.vn")
             .replace("body, true)", &format!("body, {present})"));
         let p = compile(&source, manifest()).unwrap();
         let expected = p.run(&scenario()).unwrap();

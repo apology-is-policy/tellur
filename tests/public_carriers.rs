@@ -293,7 +293,7 @@ fn nested_variant_referents_do_not_read_inactive_payloads() {
 #[test]
 fn native_nested_public_contracts_match_original_and_expanded_execution() {
     for (case, source) in [
-        include_str!("fixtures/public_carriers.tellur").to_owned(),
+        include_str!("fixtures/public_carriers.vn").to_owned(),
         RECORD.to_owned(),
         SUM.to_owned(),
         SUM.replace("saved,true", "saved,false"),
@@ -353,7 +353,7 @@ fn private_imported_carriers_expose_groups_without_exposing_fields() {
     ));
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(
-        root.join("views.tellur"),
+        root.join("views.vn"),
         r#"pub struct view['text] {ref mutable string text <- 'text;}
 pub struct job['storage,'text] {ref mutable view['text] target <- 'storage;}
 pub control make(ref mutable string input) exits ready {view[input] value} {exit ready {view {input}};}
@@ -362,12 +362,12 @@ pub control edit(job input) exits done {deref input.target.text="module";exit do
 "#,
     )
     .unwrap();
-    let source = r#"import "views.tellur" as v;control main() exits done {string text} {
+    let source = r#"import "views.vn" as v;control main() exits done {string text} {
 mutable string owner="before";delta v.make(borrow mutable owner) {ready {auto view}=>view}
 [view]:mutable v.view saved=view;delta v.pack(borrow mutable saved) {ready {auto job}=>job}
 [job]:v.edit(job);drop(saved);exit done {owner};}"#;
-    std::fs::write(root.join("main.tellur"), source).unwrap();
-    let p = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap();
+    std::fs::write(root.join("main.vn"), source).unwrap();
+    let p = tellur::compile_file(root.join("main.vn"), manifest()).unwrap();
     let scenario = Scenario {
         entry: "main".into(),
         arguments: vec![],
@@ -378,12 +378,12 @@ mutable string owner="before";delta v.make(borrow mutable owner) {ready {auto vi
         p.expanded("main").unwrap().run(&scenario).unwrap()
     );
     std::fs::write(
-        root.join("main.tellur"),
+        root.join("main.vn"),
         source.replace("v.edit(job);", "emit(job.target.text);v.edit(job);"),
     )
     .unwrap();
     assert_eq!(
-        tellur::compile_file(root.join("main.tellur"), manifest())
+        tellur::compile_file(root.join("main.vn"), manifest())
             .unwrap_err()
             .diagnostic
             .code,

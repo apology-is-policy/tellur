@@ -8,12 +8,12 @@ exports.run = async function (root) {
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
   // Use the existing native example with two explicit public generic interfaces.
-  const example = await fs.readFile(path.join(__dirname, '../../../playground/trait_bounds.tellur'), 'utf8');
+  const example = await fs.readFile(path.join(__dirname, '../../../playground/trait_bounds.vn'), 'utf8');
   const source = example.replace('outcome read_result', 'pub outcome read_result')
     .replace('trait reader {', 'pub trait reader {')
     .replace('control read_one<', 'pub control read_one<')
     + '\npub control read_another<r: reader>(ref r input) exits read_result<reader<r>.item> {\n    forward read_one<r>(input);\n}\n';
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

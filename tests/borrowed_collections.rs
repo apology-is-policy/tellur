@@ -23,7 +23,7 @@ fn rejects(source: &str, code: &str) {
     let e = compile(source, manifest()).unwrap_err();
     assert_eq!(e.code, code, "{e}\n{source}");
 }
-const SOURCE: &str = include_str!("fixtures/borrowed_collections.tellur");
+const SOURCE: &str = include_str!("fixtures/borrowed_collections.vn");
 #[test]
 fn shared_lookup_outlives_collection_and_releases_sources_at_last_use() {
     same(SOURCE);

@@ -4,8 +4,8 @@ set -eu
 input=${1:?qualified release directory}
 scratch=${2:?scratch directory}
 
-"$input/tellur" exec "$input/hello.tellur" --out "$scratch/hello" -- --json
-"$input/tellur" build "$input/project/applications/settings/main.tellur" \
+"$input/vnc" exec "$input/hello.vn" --out "$scratch/hello" -- --json
+"$input/vnc" build "$input/project/applications/settings/main.vn" \
     --adapter-pack "$input/settings.adapter" --out "$scratch/settings"
 
 cli="$scratch/settings"

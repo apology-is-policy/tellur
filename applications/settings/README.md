@@ -1,9 +1,9 @@
 # Settings service: CLI and loopback HTTP
 
-This is Tellur's maintained application: a local JSON settings CLI and, since
+This is Villanelle's maintained application: a local JSON settings CLI and, since
 compiler 0.50, a sequential loopback HTTP service using the same domain module.
 
-`settings.tellur` owns defaults, key validation, lookup/update/removal decisions and failure
+`settings.vn` owns defaults, key validation, lookup/update/removal decisions and failure
 mapping. It imports the shared [JSON file library](../../library/README.md); `host.rs`
 re-exports file/JSON/HTTP mechanisms from explicit Rust modules in `manifest.json` and
 implements text trimming through a typed adapter. The committed `Cargo.lock` makes native
@@ -15,12 +15,12 @@ failure, write preparation failure and uncertain replacement; this application s
 chooses an empty map for a missing file and maps failures into its existing outcomes.
 The public snapshot now includes the imported library module, and the contributor
 baseline records that extra call layer. The independent
-[JSON file example](../../examples/json_file/main.tellur) uses the same mechanisms
+[JSON file example](../../examples/json_file/main.vn) uses the same mechanisms
 without importing the settings service or its HTTP dependency.
 
 The HTTP library follow-up on 0.76 extracts the existing socket mechanisms into
-`library/host/loopback_http.rs`. `server.tellur` calls the public controls in
-[loopback_http.tellur](../../library/loopback_http.tellur). Routing, response policy,
+`library/host/loopback_http.rs`. `server.vn` calls the public controls in
+[loopback_http.vn](../../library/loopback_http.vn). Routing, response policy,
 the request boundary, retained connection handover and supervised loop remain here.
 Transport limits, result alternatives and resource completion are unchanged. The
 shared transport additionally rejects repeated receives on one connection; this
@@ -33,8 +33,8 @@ Since compiler 0.54, validation and storage failures use direct arm exits such a
 `invalid => exit invalid_key`. The continuing success paths remain labeled; the
 public contracts and host mechanisms are unchanged.
 
-`http.tellur` owns endpoint policy, request validation and HTTP response choices.
-`server.tellur` owns acceptance, connection budgets, concurrency and explicit
+`http.vn` owns endpoint policy, request validation and HTTP response choices.
+`server.vn` owns acceptance, connection budgets, concurrency and explicit
 completion. Rust
 provides sockets, bounded HTTP parsing through pinned `httparse` 1.10.1, and response
 framing; it does not route requests or decide which settings to change.
@@ -43,8 +43,8 @@ From the repository root:
 
 ```sh
 cargo build --locked --release --bins
-./target/release/tellurc check applications/settings/main.tellur
-./target/release/tellurc build applications/settings/main.tellur --release
+./target/release/tellurc check applications/settings/main.vn
+./target/release/tellurc build applications/settings/main.vn --release
 
 ./applications/settings/build/main --entry set -- /tmp/tellur-settings.json theme dark
 ./applications/settings/build/main --entry get -- /tmp/tellur-settings.json theme
@@ -79,7 +79,7 @@ The launcher prints the final outcome and returns its configured OS status:
 | `missing` | 3 |
 | `commit_uncertain` | 4 |
 
-`main` and `get` use annotated entry contracts in `main.tellur`. `set` and `remove`
+`main` and `get` use annotated entry contracts in `main.vn`. `set` and `remove`
 use manifest entry mappings, keeping the reusable domain contracts free of terminal
 policy. `--json` preserves the complete outcome/payload; scripts must still inspect
 it when distinguishing failure details. Execution faults report stderr and status 1.
@@ -105,7 +105,7 @@ The reusable `settings.remove(ref string path, ref string key)` control exposes
 status. It uses the existing shared JSON-file library. This addition is available
 through the CLI entry and `POST /remove`, documented below.
 
-In VS Code, open `main.tellur` and use **Tellur: Build and Run**. Set the entry and
+In VS Code, open `main.vn` and use **Villanelle: Build and Run**. Set the entry and
 arguments in workspace settings, for example:
 
 ```json
@@ -133,20 +133,20 @@ See [the agreed model](../../docs/faults-and-activations.md).
 Use the compiler's explanations while changing the application policy:
 
 ```sh
-./bin/tellurc explain applications/settings/settings.tellur --control validate_key --outcome invalid
-./bin/tellurc explain applications/settings/settings.tellur --control set --outcome storage_failed
+./bin/vnc explain applications/settings/settings.vn --control validate_key --outcome invalid
+./bin/vnc explain applications/settings/settings.vn --control set --outcome storage_failed
 ```
 
 The first query inspects a private control; the second shows the bounded contributors
-to one public failure, including file and encoding outcomes. In VS Code use **Tellur:
-Explain Outcome Contributors**, or put the cursor on a path label and use **Tellur:
+to one public failure, including file and encoding outcomes. In VS Code use **Villanelle:
+Explain Outcome Contributors**, or put the cursor on a path label and use **Villanelle:
 Explain Path Selection at Cursor**. Reports use current checked sources, expose
 analysis limits, and make no claim that every structural history has a feasible
 input. See [the reference](../../docs/reference/explanations.md).
 
 ## Run the HTTP service
 
-After building `main.tellur` as above, run:
+After building `main.vn` as above, run:
 
 ```sh
 ./applications/settings/build/main --entry serve -- /tmp/tellur-settings.json 8080 100 60000
@@ -195,7 +195,7 @@ do not select an endpoint.
 selected key and returns 404 for a missing file or key, without creating or rewriting
 a file. Removing the last key preserves the file as an empty JSON object. Repeating
 a successful removal returns 404. Invalid requests are rejected before storage access;
-invalid keys are rejected before reading. Lookup and removal share a Tellur request
+invalid keys are rejected before reading. Lookup and removal share a Villanelle request
 parser that transfers the owned key rather than cloning its JSON string.
 
 Removal maps oversized storage/output to 413 and corrupt storage or read/encode/write
@@ -252,7 +252,7 @@ closure avoids truncating ordinary rejection responses when input remains unread
 it cannot guarantee delivery under arbitrary disconnects or flooding. This follows
 the teardown concern described in [RFC 9112 §9.6](https://www.rfc-editor.org/rfc/rfc9112.html#section-9.6).
 
-Tellur always attempts connection completion after an exchange, even if reading or
+Villanelle always attempts connection completion after an exchange, even if reading or
 writing failed. If both exchange and completion fail, both details are retained and
 reported. Listener release runs after the accept loop completes or fails. Descriptor
 release does not claim an observable OS close-error result or write durability.
@@ -284,7 +284,7 @@ or executor ABI has been introduced.
 Changing dependencies is explicit:
 
 ```sh
-./target/release/tellurc lock-native applications/settings/main.tellur
+./target/release/tellurc lock-native applications/settings/main.vn
 ```
 
 [Adapter documentation](../../docs/rust-adapters.md) describes the generated Rust
@@ -299,13 +299,13 @@ that does not delay a fast one.
 
 ## Review the library's public contract
 
-`settings.contract.json` records the checked public interface of `settings.tellur`.
+`settings.contract.json` records the checked public interface of `settings.vn`.
 The regression suite checks this baseline against the current source. From the
 compiler checkout:
 
 ```sh
-./bin/tellurc contract-snapshot applications/settings/settings.tellur > /tmp/settings.contract.json
-./bin/tellurc contract-diff applications/settings/settings.contract.json /tmp/settings.contract.json --check
+./bin/vnc contract-snapshot applications/settings/settings.vn > /tmp/settings.contract.json
+./bin/vnc contract-diff applications/settings/settings.contract.json /tmp/settings.contract.json --check
 ```
 
 Review changes before replacing the committed baseline. An added failure outcome,
@@ -313,14 +313,14 @@ changed payload or borrowing contract appears in the report. Changing an interna
 limit or mapping a new internal failure into an existing public outcome may leave
 the contract unchanged; this is not a behavioral-equivalence check.
 The [snapshot reference](../../docs/reference/contract-snapshots.md) explains the
-format and VS Code's **Tellur: Show Public Contract Snapshot** command.
+format and VS Code's **Villanelle: Show Public Contract Snapshot** command.
 
 `settings.absorption.json` additionally records bounded internal contributors. Compare
 it separately when a private helper or failure mapping changes:
 
 ```sh
-./bin/tellurc absorption-snapshot applications/settings/settings.tellur > /tmp/settings.absorption.json
-./bin/tellurc absorption-diff applications/settings/settings.absorption.json /tmp/settings.absorption.json --check
+./bin/vnc absorption-snapshot applications/settings/settings.vn > /tmp/settings.absorption.json
+./bin/vnc absorption-diff applications/settings/settings.absorption.json /tmp/settings.absorption.json --check
 ```
 
 The absorption regression adds a private `blank` validation outcome and maps it to
@@ -357,7 +357,7 @@ service from the repository root. The manifest selects the checked-in Rust
 adapters and their dependency lock.
 
 ```sh
-./bin/tellurc build applications/settings/main.tellur --release --out /tmp/tellur-settings-llvm
+./bin/vnc build applications/settings/main.vn --release --out /tmp/tellur-settings-llvm
 /tmp/tellur-settings-llvm --entry serve -- /tmp/tellur-settings.json 0 2 60000
 ```
 

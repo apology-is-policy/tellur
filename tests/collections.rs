@@ -475,7 +475,7 @@ fn nested_element_borrow_and_map_growth_invalidation_are_checked() {
 }
 #[test]
 fn playground_collections_have_expected_output() {
-    let r = run(include_str!("../playground/collections.tellur"), vec![]);
+    let r = run(include_str!("../playground/collections.vn"), vec![]);
     assert_eq!(
         r.events,
         ["hello", "3", "20", "3", "hello", "path", "collections"]

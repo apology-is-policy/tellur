@@ -68,7 +68,7 @@ jobs:
         run: |
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl
-          cargo build --release --locked --features linux-musl-packs --bin tellur
+          cargo build --release --locked --features linux-musl-packs --bin vnc
 
       - uses: actions/setup-node@v4
         with:
@@ -80,16 +80,16 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          version=$(target/release/tellur --version | awk '{print $2}')
+          version=$(target/release/vnc --version | awk '{print $2}')
           if [[ -n "$RELEASE_TAG" ]]; then test "${RELEASE_TAG#v}" = "$version"; fi
           dist="$GITHUB_WORKSPACE/dist"
           mkdir -p "$dist" editors/vscode/server
-          cp target/release/tellur editors/vscode/server/tellur
-          tar -czf "$dist/tellur-$version-$PLATFORM.tar.gz" -C target/release tellur -C "$GITHUB_WORKSPACE" LICENSE
+          cp target/release/vnc editors/vscode/server/vnc
+          tar -czf "$dist/villanelle-$version-$PLATFORM.tar.gz" -C target/release vnc -C "$GITHUB_WORKSPACE" LICENSE
           cd editors/vscode
           npm ci
           npm test
-          ./node_modules/.bin/vsce package --no-dependencies --target "$PLATFORM" --out "$dist/tellur-$version-$PLATFORM.vsix"
+          ./node_modules/.bin/vsce package --no-dependencies --target "$PLATFORM" --out "$dist/villanelle-$version-$PLATFORM.vsix"
 
       - name: Exercise packaged compiler, server and live settings
         run: python3 ci/check-release.py dist "$RUNNER_TEMP/qualified"
@@ -112,7 +112,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tellur-${{ matrix.platform }}
+          name: villanelle-${{ matrix.platform }}
           path: dist/*
           if-no-files-found: error
           compression-level: 0
@@ -130,7 +130,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: tellur-*
+          pattern: villanelle-*
           path: dist
           merge-multiple: true
       - name: Attach qualified native archives and VSIX packages
@@ -139,7 +139,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         shell: bash
         run: |
-          prefix="dist/tellur-${RELEASE_TAG#v}"
+          prefix="dist/villanelle-${RELEASE_TAG#v}"
           assets=("$prefix"-{darwin-arm64,linux-x64,linux-arm64}.{tar.gz,vsix} "$prefix"-win32-x64.{zip,vsix})
           for asset in "${assets[@]}"; do test -s "$asset"; done
           gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber

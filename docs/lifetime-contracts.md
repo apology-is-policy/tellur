@@ -6,7 +6,7 @@ implementation conformance and abstract generic witnesses. Compiler 0.27 deliver
 
 ## Accepted surface
 
-```tellur
+```villanelle
 trait reader {
     type item;
     control peek(ref self input)
@@ -137,7 +137,7 @@ The checker reconstructs the authorization chain without reading inactive payloa
 shared outer authority cannot grant exclusive inner access. Public group selectors
 retain storage guards where needed. The independent IR verifier checks every layer.
 See [the reference](language-reference.md#public-nested-reference-contracts) and
-[the example](../playground/public_carriers.tellur).
+[the example](../playground/public_carriers.vn).
 
 Aggregate trait origin contracts arrived in 0.42 and local shared-reference
 collections in 0.43. Exclusive/nested elements, public collection schemas, abstract

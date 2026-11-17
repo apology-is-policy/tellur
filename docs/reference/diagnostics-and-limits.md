@@ -22,8 +22,8 @@ for their stated code, so they also serve as small regression cases.
 A public control must spell out its exit labels, payload types and borrowed-result
 origins. Private helpers may infer these from their bodies.
 
-<!-- tellur:reject E_PUBLIC_CONTRACT -->
-```tellur
+<!-- villanelle:reject E_PUBLIC_CONTRACT -->
+```villanelle
 pub control answer() exits auto {
     exit ready { 42 };
 }
@@ -40,8 +40,8 @@ auto` keeps the same range behavior; legacy payload inference remains a syntax e
 Imported and unused generic definitions keep their original header coordinates.
 Missing synthetic metadata retains the control-name fallback.
 
-<!-- tellur:reject E_PUBLIC_CONTRACT -->
-```tellur
+<!-- villanelle:reject E_PUBLIC_CONTRACT -->
+```villanelle
 pub control select(bool flag) exits plain, ready... {
     delta flag {
         true => exit plain,
@@ -58,8 +58,8 @@ checked hover returns only after the complete program validates. Missing borrowe
 result origins are checked in the later signature phase.
 
 
-<!-- tellur:reject E_PUBLIC_CONTRACT -->
-```tellur
+<!-- villanelle:reject E_PUBLIC_CONTRACT -->
+```villanelle
 pub control view(ref string input) exits ready { ref string value } {
     exit ready { input };
 }
@@ -99,8 +99,8 @@ the relevant alternative by name. Lowered trait methods, constructors and named
 boundaries retain the original point when no ordinary declaration header matches. The range is attached after aggregation, preserving raw
 contributor evidence, note deduplication/order and omission limits.
 
-<!-- tellur:reject E_ARMS -->
-```tellur
+<!-- villanelle:reject E_ARMS -->
+```villanelle
 control lookup() exits auto {
     exit missing;
 }
@@ -130,8 +130,8 @@ conservative limits.
 Since 0.47, use:
 
 ```sh
-./bin/tellurc check playground/count.tellur --json
-./bin/tellurc check main.tellur manifest.json --json
+./bin/vnc check playground/count.vn --json
+./bin/vnc check main.vn manifest.json --json
 ```
 
 The command writes **one JSON object to stdout**, with no normal progress text,
@@ -208,8 +208,8 @@ constructor signatures, generic data/control preparation and trait declarations 
 select that annotation. Typed delta-binding mismatches do likewise. Module lookup
 and trait-visibility errors discovered while validating such types also select them.
 
-<!-- tellur:reject E_MANIFEST -->
-```tellur
+<!-- villanelle:reject E_MANIFEST -->
+```villanelle
 struct settings {
     vector<
         string,
@@ -231,8 +231,8 @@ For `loop count(vector<string, u32> entries = [])`, the invalid type selects
 `vector<string, u32>`; it excludes `loop`, the binding modifier `mutable`, the name and initializer.
 Previously some loop type errors had no source position at all.
 
-<!-- tellur:reject E_MANIFEST -->
-```tellur
+<!-- villanelle:reject E_MANIFEST -->
+```villanelle
 control main() exits done {
     loop pending(vector<string, u32> entries = []) {
         exit done;
@@ -251,8 +251,8 @@ and stored `delta` adapters. Ordinary local type validation and stored adapter t
 validation select the annotation, including multiline types and reference prefixes.
 The binding modifier `mutable`, name, trailing comments and initializer are excluded.
 
-<!-- tellur:reject E_MANIFEST -->
-```tellur
+<!-- villanelle:reject E_MANIFEST -->
+```villanelle
 control main() exits done {
     vector<string, u32> entries = [];
     exit done;
@@ -270,8 +270,8 @@ public struct fields, variant/outcome payloads, control parameters and explicit
 control result payloads. For example, this selects `vector<hidden>` because a public
 field cannot expose a private type:
 
-<!-- tellur:reject E_VISIBILITY -->
-```tellur
+<!-- villanelle:reject E_VISIBILITY -->
+```villanelle
 struct hidden {
     u32 value;
 }
@@ -293,8 +293,8 @@ arguments. For `exits replies.answer<string>[input]`, the type range ends at `>`
 the origin mapping `[input]` is a separate contract and is not included. A private
 named contract still cannot appear in a public signature, even with nullary exits.
 
-<!-- tellur:reject E_VISIBILITY -->
-```tellur
+<!-- villanelle:reject E_VISIBILITY -->
+```villanelle
 outcome internal_reply {
     done
 }
@@ -315,8 +315,8 @@ number of origin arguments selects the same mapping. Multiline whitespace and
 comments inside the brackets are retained; the named type and trailing comments
 are excluded. These ranges also apply to generic controls and trait signatures.
 
-<!-- tellur:reject E_LIFETIME -->
-```tellur
+<!-- villanelle:reject E_LIFETIME -->
+```villanelle
 outcome view['a] {
     found { ref string value <- 'a }
 }
@@ -337,8 +337,8 @@ the final input name or `]`. The payload type/name and trailing comments are exc
 internal whitespace and line comments are preserved. This applies to modern and
 legacy control signatures, generic controls, and trait declarations/implementations.
 
-<!-- tellur:reject E_LIFETIME -->
-```tellur
+<!-- villanelle:reject E_LIFETIME -->
+```villanelle
 control peek(ref string input)
     exits found { ref string value from missing }
 {
@@ -361,8 +361,8 @@ The payload type, binding name, trailing comments and any storage `from` clause 
 excluded. Multiline comments, nested selectors, modern/legacy spelling, generic
 controls and trait declarations/implementations preserve the written bracket range.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 struct view['a] {
     ref string value <- 'a;
 }
@@ -387,8 +387,8 @@ non-group entries select the mapping containing that entry. Mapping-wide errors
 (such as incomplete groups or a field with no reference origins) select referent
 brackets when present, otherwise the primary bracket or storage-arrow mapping.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 struct view['a] {
     ref string value <- 'missing;
 }
@@ -412,8 +412,8 @@ includes internal whitespace/comments between the apostrophe and name, but exclu
 commas, brackets and trailing comments. Generic definitions retain the authored
 coordinates even when unused or reached through transitive imports.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 struct view['a, 'unused] {
     ref string value <- 'a;
 }
@@ -436,8 +436,8 @@ nested schema fails, declarations that depend on that failure are skipped, inclu
 transitive and shared dependencies. Fixing that schema can expose further errors in
 its dependents. Independent declarations continue up to the shared 32-error limit.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 struct first['a, 'a] {
     ref string value <- 'a;
 }
@@ -559,16 +559,16 @@ may expose another error in that declaration, a later preparation phase, or a bo
 CLI JSON preserves the original diagnostic code and source point; existing ranges
 remain present where supported. Imports keep their defining-file locations, and the
 single-error compiler APIs still return the first diagnostic in the failed phase.
-Try [declaration_diagnostics.tellur](../../playground/declaration_diagnostics.tellur):
+Try [declaration_diagnostics.vn](../../playground/declaration_diagnostics.vn):
 rename both secondary parameters to `value`, then repair them independently.
 For borrowed contracts, try
-[contract_binding_diagnostics.tellur](../../playground/contract_binding_diagnostics.tellur):
+[contract_binding_diagnostics.vn](../../playground/contract_binding_diagnostics.vn):
 change both `exits view[input]` bindings to `exits view[input, input]`. The schema
 declares one origin group, so both controls report `E_ORIGIN`. Repairing one leaves
 the other diagnostic; repairing both restores checked call and inferred-type hover.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 outcome view['source] {
     found { ref string value <- 'source }
 }
@@ -601,8 +601,8 @@ generic expansion, signatures or bodies after a bound error. Repairing the first
 bad requirement can expose another in the same control; later phases resume only
 when every declaration in this phase is valid.
 
-<!-- tellur:reject E_VISIBILITY -->
-```tellur
+<!-- villanelle:reject E_VISIBILITY -->
+```villanelle
 trait internal_tag {}
 
 pub control first<t: internal_tag>(t input) exits ready { t value } {
@@ -637,8 +637,8 @@ budget**, whether or not a concrete implementation uses it. This phase checks
 duplicate members, reserved associated names, explicit method profiles, payload type
 names/arity, public visibility and declared result origins.
 
-<!-- tellur:reject E_TRAIT_SIGNATURE -->
-```tellur
+<!-- villanelle:reject E_TRAIT_SIGNATURE -->
+```villanelle
 trait reader {
     control read() exits auto;
 }
@@ -664,7 +664,7 @@ Imported diagnostics retain their original source points; the editor includes th
 file locations and refreshes them from unsaved text. The single-error APIs return
 the first diagnostic in the failed phase. Checked call contracts and inferred hover
 return only when the entire source checks successfully. Try temporarily changing
-the `reader` declaration in [traits.tellur](../../playground/traits.tellur) to
+the `reader` declaration in [traits.vn](../../playground/traits.vn) to
 `exits auto`, alongside a second invalid trait declaration.
 
 
@@ -676,8 +676,8 @@ can report one member-inventory or method-profile error each, up to the shared
 generic/inferred method profiles and duplicate parameters or exit names. Unused
 implementations are checked too.
 
-<!-- tellur:reject E_TRAIT -->
-```tellur
+<!-- villanelle:reject E_TRAIT -->
+```villanelle
 trait reader {
     control read(self input) exits done;
 }
@@ -710,8 +710,8 @@ existing canonical trait/type order, followed by each implementation's written
 member order; this is not global source order. The first-error APIs preserve the
 first failure and its original root location.
 
-<!-- tellur:reject E_LIFETIME -->
-```tellur
+<!-- villanelle:reject E_LIFETIME -->
+```villanelle
 trait source {
     type item;
     type alias;
@@ -750,8 +750,8 @@ canonical trait/type order, then each implementation's written method order. It
 reports at most one error per implementation and stops at the shared 32-error budget,
 including unused implementations. Single-error APIs retain the first diagnostic.
 
-<!-- tellur:reject E_ASYNC -->
-```tellur
+<!-- villanelle:reject E_ASYNC -->
+```villanelle
 trait reader {
     control read(self input) exits done;
 }
@@ -790,8 +790,8 @@ selects that implementation's `control` keyword. Preceding annotations, followin
 comments and names are excluded. Both locations survive module remapping and
 rewritten method names.
 
-<!-- tellur:reject E_ASYNC -->
-```tellur
+<!-- villanelle:reject E_ASYNC -->
+```villanelle
 trait reader {
     async control read() exits done;
 }
@@ -825,8 +825,8 @@ adds fault permission selects its written `faults` keyword. This applies both to
 comments, annotations, normal completion clauses and the body. Its original range
 survives imported source remapping and rewritten method names.
 
-<!-- tellur:reject E_FAULT_CONTRACT -->
-```tellur
+<!-- villanelle:reject E_FAULT_CONTRACT -->
+```villanelle
 trait reader {
     control read() exits done;
 }
@@ -861,8 +861,8 @@ break written between them stays inside it. Comments after the annotation, `asyn
 the `control` keyword, completion clauses and the body are excluded. The original
 range survives imported source remapping and rewritten method names.
 
-<!-- tellur:reject E_CONTINGENT -->
-```tellur
+<!-- villanelle:reject E_CONTINGENT -->
+```villanelle
 trait cleanup {
     control finish() exits done;
 }
@@ -899,8 +899,8 @@ parameter ownership, exit payloads, direct return origins and contained origin
 mappings. Unused implementations are checked. The phase reports at most one error
 per implementation and stops at the shared 32-error budget.
 
-<!-- tellur:reject E_BOUND -->
-```tellur
+<!-- villanelle:reject E_BOUND -->
+```villanelle
 trait reader {
     type item: copy;
 }
@@ -941,8 +941,8 @@ mismatches also select that clause. The selected text includes all written exit
 alternatives, payloads and origin mappings, ending before trailing comments, fault
 permissions or the body.
 
-<!-- tellur:reject E_TRAIT_SIGNATURE -->
-```tellur
+<!-- villanelle:reject E_TRAIT_SIGNATURE -->
+```villanelle
 trait reader {
     control read() exits ready { u32 value };
 }
@@ -975,8 +975,8 @@ the written type, including `ref`, `mutable` and generic arguments, and excludes
 local parameter name. Associated-type and `self` aliases retain their authored
 spelling locations through normalization, imported files and generic checking.
 
-<!-- tellur:reject E_TRAIT_SIGNATURE -->
-```tellur
+<!-- villanelle:reject E_TRAIT_SIGNATURE -->
+```villanelle
 trait reader {
     control read(self input) exits done;
 }
@@ -1009,8 +1009,8 @@ select that type, including reference modifiers, generic arguments and qualified
 associated selections. Member names, `=`, trailing comments and semicolons stay
 outside the range. Imported and unsaved text retain both original endpoints.
 
-<!-- tellur:reject E_BOUND -->
-```tellur
+<!-- villanelle:reject E_BOUND -->
+```villanelle
 trait reader {
     type item: copy;
 }
@@ -1038,8 +1038,8 @@ and normalization before manifest validation rejects it. The later error selects
 the original assignment type. When normalization resolves an alias, its written
 use remains selected rather than the resolved spelling or another assignment.
 
-<!-- tellur:reject E_MANIFEST -->
-```tellur
+<!-- villanelle:reject E_MANIFEST -->
+```villanelle
 trait reader {
     type item;
 }
@@ -1051,8 +1051,8 @@ implement reader for u32 {
 This error selects `vector<missing>`. A public trait/type pair exposing a private
 associated type similarly selects its assigned type, including enclosing containers.
 
-<!-- tellur:reject E_VISIBILITY -->
-```tellur
+<!-- villanelle:reject E_VISIBILITY -->
+```villanelle
 struct hidden {
     u32 value;
 }
@@ -1077,8 +1077,8 @@ generic layout instantiation. Missing explicit arguments, wrong arity and invali
 concrete arguments select the assigned type. Local and qualified associated aliases
 retain their original written use after normalization.
 
-<!-- tellur:reject E_GENERIC -->
-```tellur
+<!-- villanelle:reject E_GENERIC -->
+```villanelle
 struct box<t> {
     t value;
 }
@@ -1107,8 +1107,8 @@ type after `for`. The range includes qualified names, reference modifiers and ge
 arguments, including interior comments. The `for` keyword, trailing comments and
 body braces stay outside it. Both endpoints survive imported and unsaved source maps.
 
-<!-- tellur:reject E_TRAIT -->
-```tellur
+<!-- villanelle:reject E_TRAIT -->
+```villanelle
 trait reader {}
 implement reader for ref mutable u32 {}
 ```
@@ -1136,8 +1136,8 @@ Since 0.207, implementation trait-name errors select the written name between
 comments; keywords, trailing comments and target types stay outside it. Imported
 and unsaved text preserve both endpoints independently of the target range.
 
-<!-- tellur:reject E_TRAIT -->
-```tellur
+<!-- villanelle:reject E_TRAIT -->
+```villanelle
 implement absent for u32 {}
 ```
 
@@ -1163,8 +1163,8 @@ implementations select the repeated name token. The range excludes `type`, `cont
 modifiers, comments, parameter lists and assignments. Imported and unsaved sources
 retain original coordinates, including Unicode text before a member on the same line.
 
-<!-- tellur:reject E_TRAIT -->
-```tellur
+<!-- villanelle:reject E_TRAIT -->
+```villanelle
 trait reader {
     type item;
     type item;
@@ -1195,8 +1195,8 @@ the type, colon, comments, origin bindings and `from` clause. Type-first and nam
 field spellings retain their own parsed name ranges; imports and unsaved edits
 preserve original coordinates independently of type and origin metadata.
 
-<!-- tellur:reject E_TRAIT -->
-```tellur
+<!-- villanelle:reject E_TRAIT -->
+```villanelle
 trait reader {
     control read(u32 item, u32 item) exits done;
 }
@@ -1225,8 +1225,8 @@ the range excludes payloads, origin clauses and trailing comments. Wrapped and
 unwrapped exit lists retain the same checks. Imports preserve both endpoints, and
 unsaved editor diagnostics use the original dependency coordinates.
 
-<!-- tellur:reject E_TRAIT -->
-```tellur
+<!-- villanelle:reject E_TRAIT -->
+```villanelle
 trait reader {
     control read() exits { done, done };
 }
@@ -1256,8 +1256,8 @@ and internal comments or line breaks. Other alternatives, wrapping braces, trail
 comments, fault annotations and bodies are excluded. Imports and unsaved edits
 preserve original coordinates.
 
-<!-- tellur:reject E_TRAIT_SIGNATURE -->
-```tellur
+<!-- villanelle:reject E_TRAIT_SIGNATURE -->
+```villanelle
 trait reader {
     control read() exits auto;
 }
@@ -1285,8 +1285,8 @@ bounds, qualifications, commas and internal comments or line breaks. Method name
 value parameters, trailing comments, result clauses and bodies are excluded.
 Original ranges survive imports and rewritten parameter or bound names.
 
-<!-- tellur:reject E_TRAIT_SIGNATURE -->
-```tellur
+<!-- villanelle:reject E_TRAIT_SIGNATURE -->
+```villanelle
 trait reader {
     control read<t: copy>() exits done;
 }
@@ -1315,8 +1315,8 @@ method names and contracts are outside that range. The parser retains the actual
 keyword token; its location is independent of the enclosing declaration point and
 survives imported source remapping and rewritten method names.
 
-<!-- tellur:reject E_TRAIT_SIGNATURE -->
-```tellur
+<!-- villanelle:reject E_TRAIT_SIGNATURE -->
+```villanelle
 trait reader {
     @contingent
     region read() exits done;
@@ -1362,9 +1362,9 @@ Constructor-definition errors have the separate, earlier batch below since 0.96.
 CLI JSON retains each caller's source point and defining file, and single-error
 APIs return the first diagnostic. LSP uses the same batch, including related locations
 for imported callers and unsaved dependency changes. Try
-[constructor_access/main.tellur](../../playground/constructor_access/main.tellur):
+[constructor_access/main.vn](../../playground/constructor_access/main.vn):
 remove `pub` from both constructors in
-[messages.tellur](../../playground/constructor_access/messages.tellur). Both caller
+[messages.vn](../../playground/constructor_access/messages.vn). Both caller
 errors appear together. Restore one modifier, then the other; checked hover returns
 only after the complete program is valid.
 
@@ -1376,8 +1376,8 @@ shared **32-error budget**, including unused generic structs. This phase checks
 result-origin argument counts, reserved `self` parameters, forbidden explicit exits
 or local isolation, whole/partial `self` access and unknown initialization fields.
 
-<!-- tellur:reject E_CONSTRUCTOR -->
-```tellur
+<!-- villanelle:reject E_CONSTRUCTOR -->
+```villanelle
 struct first {
     string text;
     constructor() { self.absent = "first"; }
@@ -1406,8 +1406,8 @@ Diagnostics keep the original constructor/body source points, including imported
 files and unsaved dependency edits. Single-error APIs select the first diagnostic;
 failed batches have no checked program, inferred hover or constructor call contract.
 Try invalid `self` fields in both constructors of
-[messages.tellur](../../playground/constructor_access/messages.tellur) while viewing
-its [caller](../../playground/constructor_access/main.tellur).
+[messages.vn](../../playground/constructor_access/messages.vn) while viewing
+its [caller](../../playground/constructor_access/main.vn).
 
 ## Statement recovery
 
@@ -1416,8 +1416,8 @@ single-completion call can be followed by diagnostics from independent subsequen
 statements. For example, both bad initializers below are reported; the use of
 `count` is suppressed until its declaration is repaired.
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control main() exits done {
     u32 count = true;
     string title = 7;
@@ -1441,7 +1441,7 @@ tracks uncertainty by selected history, as described below.
 The existing **32-error budget** covers both statements and controls. Successful
 programs use the ordinary checking path; diagnostic replays never publish contracts,
 hover bindings or executable code. No syntax or valid-program semantics change.
-Try the editable [diagnostics example](../../playground/diagnostics.tellur).
+Try the editable [diagnostics example](../../playground/diagnostics.vn).
 
 ## Path and scope recovery
 
@@ -1453,8 +1453,8 @@ Direct arm exits and ordinary `exit`, `forward` and `again` statements can also
 report independent errors on separate paths. Loop bodies use the same policy;
 uncertain loop completion does not produce a further coverage diagnostic.
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control inspect(bool flag) exits done {
     delta flag { true => left, false => right }
     [left]: u32 count = true; exit done;
@@ -1485,7 +1485,7 @@ limits. A whole-state fault-resource check stalls an uncertain history. Final
 resource checks are suppressed for uncertain scope domains, while clean disjoint
 paths retain their normal checks. No recovery result becomes executable or supplies
 partial inferred hover. The same 32-error budget covers all controls and paths.
-Try [path_diagnostics.tellur](../../playground/path_diagnostics.tellur).
+Try [path_diagnostics.vn](../../playground/path_diagnostics.vn).
 
 ## Named boundary body recovery
 
@@ -1494,8 +1494,8 @@ errors can be collected inside a named `boundary` or its attached `contingency`.
 Disjoint paths and ordinary nested scopes use the same uncertainty rules above.
 For example, both initializers below are diagnosed:
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 boundary request() {
     u32 count = true;
     string description = 7;
@@ -1522,7 +1522,7 @@ boundaries and inline adapters remain barriers after an omission. Lexical work a
 handler recovery are described below.
 
 Try introducing two independent bad local initializers in the work or contingency
-of [contingency.tellur](../../playground/contingency.tellur), then repairing them one
+of [contingency.vn](../../playground/contingency.vn), then repairing them one
 at a time. The supervision hover returns only after the complete source checks.
 
 ## Lexical boundary work recovery
@@ -1531,8 +1531,8 @@ Since 0.84, independent leaf errors inside `fault boundary { ... }` work can als
 be collected, including disjoint paths, ordinary scopes, loop bodies and nested
 boundary work. The following work reports both bad initializers:
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control main() exits done {
     fault boundary {
         u32 count = true;
@@ -1558,7 +1558,7 @@ their existing rules. No diagnostic replay runs a handler or emits a partial pro
 This is editor/checker recovery, not recovery from a running program's source fault.
 
 Try independent bad initializers in the work of
-[recovery.tellur](../../playground/recovery.tellur). After all errors are repaired,
+[recovery.vn](../../playground/recovery.vn). After all errors are repaired,
 the example still handles the first request's fault and runs the next request.
 
 ## Lexical contingency handler recovery
@@ -1568,8 +1568,8 @@ after its work checks cleanly. Handler paths, ordinary nested scopes and loops u
 the same bounded dependency and uncertainty rules. Work errors still suppress the
 attached handler until repaired.
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control main() exits done {
     fault boundary {} contingency [] {
         u32 count = true;
@@ -1599,8 +1599,8 @@ Since 0.86, independent terminal arms of `exit delta` in an ordinary control can
 report errors together when the control's entire result shape is explicit. Both
 payload errors below are reported:
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control choose(bool flag) exits ready { u32 value } {
     exit delta flag {
         true  => ready { true },
@@ -1625,7 +1625,7 @@ partial inferred outcome or executable program is synthesized. The same 32-error
 budget and complete-check requirement for hover apply.
 
 Try changing payload expressions in the explicit `main` adapter of
-[adapters.tellur](../../playground/adapters.tellur). Its inferred `successor` helper
+[adapters.vn](../../playground/adapters.vn). Its inferred `successor` helper
 also supports independent payload diagnostics since 0.94.
 
 ## Inferred exit-adapter recovery
@@ -1634,8 +1634,8 @@ Since 0.94, terminal arms of `exit delta` also recover under private `exits auto
 and selected payload inference (`ready...`). Independent errors can appear together
 even when the arms produce the same exit label:
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control choose(bool flag) exits ready... {
     exit delta flag {
         true  => ready { 1 < true },
@@ -1664,14 +1664,14 @@ wait for a complete successful check. Decision headers, uncertain entry historie
 captures and fault-context terminals retain their barriers. This does not introduce
 contextual exit inference, fault recovery or any new executable syntax. Try invalid
 payload expressions in the inferred `successor` helper in
-[adapters.tellur](../../playground/adapters.tellur).
+[adapters.vn](../../playground/adapters.vn).
 
 ## Type context: E_TYPE and E_INFER
 
 An annotation constrains the initializer; it does not request a conversion.
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control main() exits done {
     string text = 42;
     exit done;
@@ -1680,8 +1680,8 @@ control main() exits done {
 
 Use the explicit formatting operation:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     string text = u32_text(42);
     emit(text);
@@ -1691,16 +1691,16 @@ control main() exits done {
 
 An empty option does not supply enough information to infer its element type:
 
-<!-- tellur:reject E_INFER -->
-```tellur
+<!-- villanelle:reject E_INFER -->
+```villanelle
 control main() exits done {
     auto missing = none;
     exit done;
 }
 ```
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     option<string> missing = none;
     exit done;
@@ -1715,16 +1715,16 @@ value. Empty collection literals similarly need a type from their context.
 Even a literal boolean decision requires dispositions for both structural
 alternatives. The omitted flat arm introduces `[false]`, which is unfinished here:
 
-<!-- tellur:reject E_UNCOVERED -->
-```tellur
+<!-- villanelle:reject E_UNCOVERED -->
+```villanelle
 control main() exits done {
     delta true { true => yes }
     [yes]: exit done;
 }
 ```
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     delta true { true => yes, false => no }
     [yes | no]: exit done;
@@ -1733,8 +1733,8 @@ control main() exits done {
 
 A binding produced on one path is not available on every entry history:
 
-<!-- tellur:reject E_UNAVAILABLE -->
-```tellur
+<!-- villanelle:reject E_UNAVAILABLE -->
+```villanelle
 control choose(bool flag) exits ready { u32 value } {
     delta flag { true => yes, false => no }
     [yes]: u32 value = 1;
@@ -1744,8 +1744,8 @@ control choose(bool flag) exits ready { u32 value } {
 
 Give both paths a value, or return different outcomes:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control choose(bool flag) exits ready { u32 value } {
     delta flag { true => yes, false => no }
     [yes]: u32 value = 1;
@@ -1761,8 +1761,8 @@ lexical shadowing and does not permit merging reference-bearing bindings arbitra
 
 Emitting an owned string consumes it:
 
-<!-- tellur:reject E_MOVED -->
-```tellur
+<!-- villanelle:reject E_MOVED -->
+```villanelle
 control main() exits done {
     string text = "hello";
     emit(text);
@@ -1773,8 +1773,8 @@ control main() exits done {
 
 Borrow for observation when retaining ownership is intended:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     string text = "hello";
     emit(borrow text);
@@ -1785,8 +1785,8 @@ control main() exits done {
 
 The owner's mutability does not override a live shared reference:
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 control main() exits done {
     mutable string owner = "before";
     ref string view = borrow owner;
@@ -1798,8 +1798,8 @@ control main() exits done {
 
 Finish the reference's use before mutating its owner:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     mutable string owner = "before";
     ref string view = borrow owner;
@@ -1816,8 +1816,8 @@ dropping just one reference does not erase another retainer's dependency.
 
 An invocation's local owner cannot back a returned reference:
 
-<!-- tellur:reject E_LIFETIME -->
-```tellur
+<!-- villanelle:reject E_LIFETIME -->
+```villanelle
 control invalid() exits found { ref string value } {
     string owner = "temporary";
     exit found { borrow owner };
@@ -1826,8 +1826,8 @@ control invalid() exits found { ref string value } {
 
 Return ownership, or borrow storage supplied by the caller:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control view(ref string input) exits found { ref string value from input } {
     exit found { input };
 }
@@ -1839,8 +1839,8 @@ control view(ref string input) exits found { ref string value from input } {
 
 Capturing a call does not count as handling its result:
 
-<!-- tellur:reject E_OUTCOME -->
-```tellur
+<!-- villanelle:reject E_OUTCOME -->
+```villanelle
 control produce() exits ready { exit ready; }
 control main() exits done {
     auto saved = capture produce();
@@ -1848,8 +1848,8 @@ control main() exits done {
 }
 ```
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control produce() exits ready { exit ready; }
 control main() exits done {
     auto saved = capture produce();
@@ -1867,16 +1867,16 @@ a file carried inside it. `E_RESOURCE` diagnoses abandoned must-complete resourc
 A public origin schema must map every reference leaf, including fields in different
 alternatives. Merely declaring a group does not attach fields to it:
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 variant view['source] {
     found { ref string text },
     empty
 }
 ```
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 variant view['source] {
     found { ref string text <- 'source },
     empty
@@ -1892,16 +1892,16 @@ alternative also requires an explicit result mapping, such as `view[input] value
 A borrowed option that is always absent provides no reference leaf from which to
 infer its public owner dependency. Give that result an explicit mapping.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 control absent_text(ref string input) exits ready... {
     option<ref string> value = none {};
     exit ready { value };
 }
 ```
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control absent_text(ref string input)
     exits ready { option<ref string>[input] value }
 {
@@ -1922,8 +1922,8 @@ that same storage protection.
 An exclusive payload reborrow retains the sum that authorizes it. Replacing or
 dropping that carrier before the child's last use is rejected:
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 control main() exits done {
     mutable option<string> saved = some { "hello" };
     delta borrow mutable saved { some { auto text } => some, none => none }
@@ -1935,8 +1935,8 @@ control main() exits done {
 A borrowed sum input can yield selected references or a reference to the whole
 carrier. The latter retains both storage and contained-source dependencies:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control identity(ref option<ref string> input)
     exits ready { ref option<ref string> value from input }
 {
@@ -1947,8 +1947,8 @@ control identity(ref option<ref string> input)
 Explicitly dropping a Copy carrier is still a release, so a live reference to its
 storage prevents that drop:
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 struct view['source] { ref string text <- 'source; }
 control lend(ref view input) exits ready... { exit ready { input }; }
 control main() exits done {
@@ -1961,8 +1961,8 @@ control main() exits done {
 
 A captured carrier reference also keeps the carrier borrowed before unpacking:
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 struct view['source] { ref string text <- 'source; }
 control lend(ref view input) exits ready... { exit ready { input }; }
 control main() exits done {
@@ -1978,8 +1978,8 @@ Local containers of carrier references are supported. Public input/result contra
 require a complete mapping of storage and contained groups. Neither permits
 reference rebinding or references to references.
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 struct view['text] { ref string text <- 'text; }
 // Missing the inner text mapping: storage alone cannot describe this field.
 struct job['storage] { ref view target <- 'storage; }
@@ -2015,8 +2015,8 @@ Since 0.87, a stored adapter with an explicit outcome type can report independen
 payload errors together. The containing control may infer its own exits: the
 adapter's declared target supplies the complete payload shape.
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 outcome answer { ready { u32 value } }
 
 control choose(bool flag) exits answer {
@@ -2039,15 +2039,15 @@ arm-local storage. Such retirement errors remain barriers. Inferred stored adapt
 follow the rules below; captures, decision headers and adapters in fault contexts
 retain conservative first-error behavior. A successful full check is
 still required for hover and execution. Try the explicit `message_result message`
-adapter in [stored_adapters.tellur](../../playground/stored_adapters.tellur).
+adapter in [stored_adapters.vn](../../playground/stored_adapters.vn).
 
 ## Inferred stored-adapter recovery
 
 Since 0.93, `auto saved = delta ...` can report independent payload errors for
 distinct result labels. No target type is invented to make recovery possible.
 
-<!-- tellur:reject E_TYPE -->
-```tellur
+<!-- villanelle:reject E_TYPE -->
+```villanelle
 control choose(bool flag) exits auto {
     auto saved = delta flag {
         true  => left { 1 < true },
@@ -2083,13 +2083,13 @@ headers, already uncertain entry histories and fault-context adapters retain the
 existing barriers. Repairing an arm does not
 make a partially checked program executable or available to hover. Try invalid
 expressions in the `ready` and `empty` payloads of the first `auto saved` adapter in
-[stored_adapters.tellur](../../playground/stored_adapters.tellur); restoring the complete
+[stored_adapters.vn](../../playground/stored_adapters.vn); restoring the complete
 source restores its inferred-type and call contracts.
 
 ## Implementation budgets and operational limits
 
 These bounds protect the reference compiler from unbounded work. They are
-implementation limits, not mathematical properties of Tellur or permanent promises.
+implementation limits, not mathematical properties of Villanelle or permanent promises.
 Exhaustion must produce an error rather than a partially checked successful program.
 
 | Area | Current limit / behavior |
@@ -2132,8 +2132,8 @@ captured owner is no longer wholly available at a potentially faulting operation
 `E_RECOVER` requires the named enclosing supervised loop. `E_CONTINGENCY_EXIT`
 rejects ordinary return/restart from a handler; a fault cannot become an outcome.
 
-<!-- tellur:reject E_CONTINGENCY_EXIT -->
-```tellur
+<!-- villanelle:reject E_CONTINGENCY_EXIT -->
+```villanelle
 control main() exits done {
     fault boundary { fault "broken"; } contingency [] { exit done; }
 }
@@ -2143,8 +2143,8 @@ control main() exits done {
 `E_ENTRY_ONLY` rejects calls to controls with that authority. Both distinguish
 process termination from ordinary completion.
 
-<!-- tellur:reject E_ENTRY_ONLY -->
-```tellur
+<!-- villanelle:reject E_ENTRY_ONLY -->
+```villanelle
 control root() exits done {
     fault boundary { fault "startup"; } contingency [] { terminate process 2; }
 }
@@ -2174,8 +2174,8 @@ since 0.219, through polled Rust adapters; an unbound operation without a scenar
 reports that no live adapter exists. See
 [async host operations](async-execution.md#async-host-operations).
 
-<!-- tellur:reject E_ASYNC -->
-```tellur
+<!-- villanelle:reject E_ASYNC -->
+```villanelle
 async control early(ref handle input) exits done {
     forward run receive(input);
 }

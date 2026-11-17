@@ -2195,7 +2195,7 @@ impl CheckedProgram {
             "define i32 @{main}() {{\nentry:\n%status = call i32 {launch}\nret i32 %status\n}}"
         ));
         Ok(format!(
-            "; Tellur direct LLVM backend; private runtime ABI v1\n{DECLARATIONS}\n{}\n{}\n{}",
+            "; Villanelle direct LLVM backend; private runtime ABI v1\n{DECLARATIONS}\n{}\n{}\n{}",
             emitter.frame_types, emitter.globals, emitter.body
         ))
     }
@@ -2415,16 +2415,16 @@ outcome result {@exit 0 done}
                 source
             };
             let source = if mode == 11 {
-                include_str!("../../playground/llvm_async_recovery.tellur").to_owned()
+                include_str!("../../playground/llvm_async_recovery.vn").to_owned()
             } else if mode == 12 {
-                include_str!("../../playground/llvm_async_recovery.tellur").replace("            yield;", r#"            delta await tick("request") {ticked {string reply}=>ready,cancelled=>stopped}
+                include_str!("../../playground/llvm_async_recovery.vn").replace("            yield;", r#"            delta await tick("request") {ticked {string reply}=>ready,cancelled=>stopped}
             [ready]:emit(reply);
             [ready|stopped]:yield;"#)
             } else {
                 source
             };
             let source = if mode == 13 {
-                include_str!("../../playground/llvm_async_constructors.tellur").to_owned()
+                include_str!("../../playground/llvm_async_constructors.vn").to_owned()
             } else if mode == 14 || mode == 15 {
                 r#"
 struct message {string text;constructor(string input,bool fail) {

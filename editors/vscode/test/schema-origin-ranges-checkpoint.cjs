@@ -8,12 +8,12 @@ exports.run = async function (root) {
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
   const original = "pub struct view<t>['a] {pub ref t value <- 'a;}\r\npub struct holder<t>['a] {pub ref view<t>['a] value <- 'a;}\r\npub control work() exits done {exit done;}";
-  const main = 'import "worker.tellur" as worker;\ncontrol main() exits process_result {string text="schema origins";emit(text);worker.work();exit done;}\noutcome process_result {@exit 0 done}\n';
-  await fs.writeFile(path.join(fixture, 'main.tellur'), main);
-  await fs.writeFile(path.join(fixture, 'worker.tellur'), original);
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const main = 'import "worker.vn" as worker;\ncontrol main() exits process_result {string text="schema origins";emit(text);worker.work();exit done;}\noutcome process_result {@exit 0 done}\n';
+  await fs.writeFile(path.join(fixture, 'main.vn'), main);
+  await fs.writeFile(path.join(fixture, 'worker.vn'), original);
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   const document = await vscode.workspace.openTextDocument(uri);
-  const dependency = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(fixture, 'worker.tellur')));
+  const dependency = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(fixture, 'worker.vn')));
   await vscode.window.showTextDocument(document);
   await vscode.extensions.getExtension('tellur-language-local.tellur-language').activate();
   const diagnostics = () => vscode.languages.getDiagnostics(uri).filter(d => d.source === 'tellur');

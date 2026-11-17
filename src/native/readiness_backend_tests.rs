@@ -127,7 +127,7 @@ fn backend_subscriptions_rollback_and_retire_before_owned_operations() {
         std::env::temp_dir().join(format!("tellur-readiness-backend-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_pending_operation.tellur"),
+        include_str!("../../tests/fixtures/native_source_pending_operation.vn"),
         backend_manifest(&root),
     )
     .unwrap()

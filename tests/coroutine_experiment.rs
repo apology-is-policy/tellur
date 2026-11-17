@@ -181,7 +181,7 @@ fn embedded_binaries(specimen: &str) -> [PathBuf; 2] {
 
 fn program() -> CheckedProgram {
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    compile_file(&root().join("playground/cancellation.tellur"), manifest).unwrap()
+    compile_file(&root().join("playground/cancellation.vn"), manifest).unwrap()
 }
 fn call(operation: &str, outcome: &str, fields: Vec<Value>, waits: u32) -> ScriptCall {
     ScriptCall {
@@ -405,7 +405,7 @@ fn the_runtime_rejects_an_unjoined_cancelled_child() {
     assert!(stderr.contains("loan violated"), "{stderr}");
 }
 
-/// `experiments/coroutines/sets.tellur` with the async `tick` test primitive.
+/// `experiments/coroutines/sets.vn` with the async `tick` test primitive.
 fn sets_program() -> CheckedProgram {
     let mut config: serde_json::Value =
         serde_json::from_str(include_str!("../playground/manifest.json")).unwrap();
@@ -419,7 +419,7 @@ fn sets_program() -> CheckedProgram {
             "effects": ["clock.tick"], "returns": true
         }));
     let manifest = Manifest::from_json(&config.to_string()).unwrap();
-    compile_file(&root().join("experiments/coroutines/sets.tellur"), manifest).unwrap()
+    compile_file(&root().join("experiments/coroutines/sets.vn"), manifest).unwrap()
 }
 
 #[test]
@@ -491,7 +491,7 @@ fn fault_schedules(specimen: &'static str) {
         }));
     let manifest = Manifest::from_json(&config.to_string()).unwrap();
     let p = compile_file(
-        &root().join(format!("experiments/coroutines/{specimen}.tellur")),
+        &root().join(format!("experiments/coroutines/{specimen}.vn")),
         manifest,
     )
     .unwrap();

@@ -48,9 +48,9 @@ fn program(edit: impl Fn(&mut String)) -> Result<CheckedProgram, tellur::modules
         &root.join("manifest.json"),
     )
     .unwrap();
-    tellur::modules::compile_with_loader(root.join("main.tellur"), manifest, |path| {
+    tellur::modules::compile_with_loader(root.join("main.vn"), manifest, |path| {
         let mut source = fs::read_to_string(path)?;
-        if path.ends_with("main.tellur") {
+        if path.ends_with("main.vn") {
             edit(&mut source);
         }
         Ok(source)
@@ -309,7 +309,7 @@ fn independent_native_service_reuses_transport_with_its_own_routes() {
     let server = Service::start(&binary, 5);
     assert_eq!(
         server.exchange("GET", "/hello", "", 200),
-        "Hello from Tellur 🙂"
+        "Hello from Villanelle 🙂"
     );
     server.exchange("HEAD", "/hello", "", 200);
     server.exchange("POST", "/hello", "", 405);
@@ -370,7 +370,7 @@ fn imported_contingency_handles_fault_then_restarts_without_a_second_response() 
     );
     assert_eq!(
         server.exchange("GET", "/hello", "", 200),
-        "Hello from Tellur 🙂"
+        "Hello from Villanelle 🙂"
     );
     server.exchange("POST", "/hello", "", 405);
     server.finish();
@@ -402,7 +402,7 @@ fn transport_rejects_a_second_receive_without_consuming_or_replacing_the_first()
     let server = Service::start(&binary, 1);
     assert_eq!(
         server.exchange("GET", "/hello", "", 200),
-        "Hello from Tellur 🙂"
+        "Hello from Villanelle 🙂"
     );
     let tail = server.finish();
     assert!(tail.contains("request reception already started"), "{tail}");

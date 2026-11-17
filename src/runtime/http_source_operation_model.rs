@@ -116,7 +116,7 @@ fn http_program() -> CheckedProgram {
         "primitives":[receive,{"name":"close_test","parameters":[{"name":"connection","type":"http_connection","mode":"consume"}],"outcomes":[{"name":"done","fields":[]}],"effects":["close"],"returns":true,"contingent":true}]
     }).to_string()).unwrap();
     crate::compile(
-        include_str!("../../tests/fixtures/source_pending_http.tellur"),
+        include_str!("../../tests/fixtures/source_pending_http.vn"),
         manifest,
     )
     .unwrap()

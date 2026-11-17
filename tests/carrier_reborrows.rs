@@ -278,7 +278,7 @@ fn inferred_contracts_and_moved_children_keep_guard_dependencies() {
 }
 #[test]
 fn native_carrier_reborrows_preserve_execution_and_certified_expansion() {
-    let p = compile(include_str!("fixtures/carrier_reborrows.tellur"), m()).unwrap();
+    let p = compile(include_str!("fixtures/carrier_reborrows.vn"), m()).unwrap();
     let expected = p.run(&scenario()).unwrap();
     assert_eq!(
         expected.fields,

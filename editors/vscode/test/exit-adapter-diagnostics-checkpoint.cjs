@@ -7,8 +7,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'exit-adapter-diagnostics');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const source = await fs.readFile(path.join(__dirname, '../../../playground/adapters.tellur'), 'utf8');
-  const uri = vscode.Uri.file(path.join(fixture, 'adapters.tellur'));
+  const source = await fs.readFile(path.join(__dirname, '../../../playground/adapters.vn'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'adapters.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

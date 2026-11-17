@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/borrowed_record_spawn.tellur");
-const GUARDS: &str = include_str!("fixtures/source_borrowed_record_guards.tellur");
+const SOURCE: &str = include_str!("../playground/borrowed_record_spawn.vn");
+const GUARDS: &str = include_str!("fixtures/source_borrowed_record_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -156,7 +156,7 @@ control main() exits done {forward run startup();}
 }
 #[test]
 fn borrowed_record_faults_settle_joined_and_unjoined_results_before_owning_handler() {
-    let source = include_str!("fixtures/source_borrowed_record_fault.tellur");
+    let source = include_str!("fixtures/source_borrowed_record_fault.vn");
     for source in [
         source.to_owned(),
         source

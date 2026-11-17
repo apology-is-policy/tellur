@@ -14,8 +14,8 @@ report together before generated controls are registered. This includes invalid
 `self` accesses and forbidden exits. Loading still stops at the first failing file;
 see [constructor preparation diagnostics](diagnostics-and-limits.md#constructor-definition-preparation-batches).
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct greeting {
     pub string text;
 
@@ -60,8 +60,8 @@ an ordinary local value first, then move it into its field. There is no access t
 whole `self`, including borrowing, moving or passing it to a helper. This prevents
 partially initialized records from escaping.
 
-<!-- tellur:reject E_UNAVAILABLE -->
-```tellur
+<!-- villanelle:reject E_UNAVAILABLE -->
+```villanelle
 struct incomplete {
     string text;
     constructor(bool initialize) {
@@ -126,8 +126,8 @@ temporary transfers that field without cloning its allocation. Actual records,
 argument vectors and intermediate storage still exist; this is not a general
 zero-allocation or copy-elision guarantee.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct box<t> {
     t value;
     constructor(t value) {
@@ -154,8 +154,8 @@ can contain declared constructor calls even when the enclosing value stores
 references. The two forms compose directly: braces assemble fields, while
 parentheses run a declared constructor.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_view['a] {
     ref string text <- 'a;
 
@@ -212,8 +212,8 @@ nonescaping call borrows end before the next initializer. Its resulting value is
 already retained: an owned snapshot keeps its earlier contents, and any returned
 reference continues protecting its external source.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_change {
     string previous;
 
@@ -255,8 +255,8 @@ already-exclusive argument is rejected. Calls nested inside one initializer chec
 their own argument separation. Existing caller loans and outer pending arguments
 cannot be retired by an inner initializer list.
 
-<!-- tellur:reject E_ALIAS -->
-```tellur
+<!-- villanelle:reject E_ALIAS -->
+```villanelle
 struct change {
     bool done;
 
@@ -301,8 +301,8 @@ after its parameter list. The entries correspond, in order, to the struct's orig
 groups. They are a static lifetime contract, not additional runtime arguments.
 Mappings are required for both private and public constructors.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_pair['a, 'b] {
     ref string left <- 'a;
     ref string right <- 'b;
@@ -352,8 +352,8 @@ support a returned reference. A constructor may consume an existing reference
 carrier and return its external origins through `input['a]`; consuming the carrier
 does not extend the lifetime of its own storage.
 
-<!-- tellur:reject E_LIFETIME -->
-```tellur
+<!-- villanelle:reject E_LIFETIME -->
+```villanelle
 struct view['a] {
     ref string text <- 'a;
 
@@ -376,8 +376,8 @@ constructor result or raw record. Chained fields use ordinary transparent refere
 access. The constructor runs once, at that expression's place in evaluation order.
 Only a selected adapter arm runs its expressions.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_edit['source] {
     ref mutable string text <- 'source;
 
@@ -411,8 +411,8 @@ References to external records do not make their other fields owned by the
 temporary. Existing checks still forbid moving owned values out of borrowed storage.
 Fault dispositions remain required for live resources before and after projection.
 
-<!-- tellur:reject E_TEMPORARY -->
-```tellur
+<!-- villanelle:reject E_TEMPORARY -->
+```villanelle
 outcome completion { done }
 struct pending['a] {
     ref string text <- 'a;
@@ -478,20 +478,20 @@ source suppresses the call contract until repaired. Since 0.90, calls inside gen
 controls and constructors show symbolic input types, including nested and
 associated-type arguments. They preserve shared/exclusive borrows, ordered origin
 groups and checked permissions independently of concrete callers. Try
-[generic_construction.tellur](../../playground/generic_construction.tellur). Hovering `auto` reports
+[generic_construction.vn](../../playground/generic_construction.vn). Hovering `auto` reports
 the inferred constructed type or a constructor-local binding's type. Missing-field
 and ownership diagnostics update for unsaved source. Formatting preserves flat
 path labels and wraps constructor argument lists using the normal width settings.
 
-The [settings server](../../applications/settings/server.tellur) uses a constructor
+The [settings server](../../applications/settings/server.vn) uses a constructor
 to prepare an owned request context before its fault boundary. Its public interface
 and request recovery behavior are unchanged.
 
-Try [construction.tellur](../../playground/construction.tellur),
-[borrowed_construction.tellur](../../playground/borrowed_construction.tellur) and
-[composed_construction.tellur](../../playground/composed_construction.tellur), plus
-[projected_construction.tellur](../../playground/projected_construction.tellur) and
-[sequential_initializers.tellur](../../playground/sequential_initializers.tellur).
+Try [construction.vn](../../playground/construction.vn),
+[borrowed_construction.vn](../../playground/borrowed_construction.vn) and
+[composed_construction.vn](../../playground/composed_construction.vn), plus
+[projected_construction.vn](../../playground/projected_construction.vn) and
+[sequential_initializers.vn](../../playground/sequential_initializers.vn).
 Compiler/runtime checks are in [constructors.rs](../../tests/constructors.rs) and
 [borrowed_constructors.rs](../../tests/borrowed_constructors.rs), with composition in
 [borrowed_composition.rs](../../tests/borrowed_composition.rs) and fresh projections in

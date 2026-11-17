@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { configuration } = require('../configuration.cjs');
 function config(current, legacy) {
   return configuration({ workspace: { getConfiguration: name => ({
-    inspect: key => (name === 'tellurLanguage' ? current : legacy)[key],
+    inspect: key => (name === 'villanelleLanguage' ? current : legacy)[key],
     get: (_, fallback) => fallback,
   }) } });
 }
@@ -34,7 +34,7 @@ test('one bundled compiler serves both roles and configured standalone commands 
   const legacy = path.join(server, 'tellur-lsp' + suffix);
   fs.writeFileSync(legacy, '', { mode: 0o755 });
   assert.deepEqual(resolveCommand(root, root, '', true), { command: legacy, args: [] });
-  const command = path.join(server, 'tellur' + suffix);
+  const command = path.join(server, 'vnc' + suffix);
   fs.writeFileSync(command, '', { mode: 0o755 });
   assert.deepEqual(resolveCommand(root, root, '', true), { command, args: ['lsp'] });
   assert.deepEqual(resolveCommand(root, root, '', false), { command, args: [] });

@@ -12,7 +12,7 @@ fn compiled_results_retain_owners_and_borrows_until_join_or_emergency_retirement
     );
     fs::write(root.join("host.rs"), host).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_results.tellur"),
+        include_str!("../../tests/fixtures/native_results.vn"),
         manifest,
     )
     .unwrap()

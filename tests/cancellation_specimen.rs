@@ -1,4 +1,4 @@
-//! Milestone 5 acceptance specimen (`playground/cancellation.tellur`): two
+//! Milestone 5 acceptance specimen (`playground/cancellation.vn`): two
 //! concurrent receives, cancellation of one, borrowed handles held across
 //! suspension and a cleanup failure. Every schedule must reach a declared
 //! completion, join every child, keep both loans until the join, and agree across
@@ -21,7 +21,7 @@ fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
 fn program() -> CheckedProgram {
-    compile_file(&root().join("playground/cancellation.tellur"), manifest()).unwrap()
+    compile_file(&root().join("playground/cancellation.vn"), manifest()).unwrap()
 }
 fn call(operation: &str, outcome: &str, fields: Vec<Value>, waits: u32) -> ScriptCall {
     ScriptCall {
@@ -277,7 +277,7 @@ fn cleanup_failures_after_cancellation_stay_visible() {
 
 #[test]
 fn a_loan_cannot_end_before_its_borrower_is_joined() {
-    let source = std::fs::read_to_string(root().join("playground/cancellation.tellur")).unwrap();
+    let source = std::fs::read_to_string(root().join("playground/cancellation.vn")).unwrap();
     let edit = |from: &str, to: &str| {
         assert_eq!(source.matches(from).count(), 1, "{from}");
         source.replacen(from, to, 1)

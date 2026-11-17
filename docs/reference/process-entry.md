@@ -7,8 +7,8 @@ payload, assignability, ownership, or handling obligation.
 
 ## Declaration defaults
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome command_result {
     @exit 0 success,
     @exit 2 invalid_arguments { string message },
@@ -24,8 +24,8 @@ control main() exits command_result {
 `N` is an unsuffixed decimal integer from 0 through 255. An alternative can have
 at most one annotation. For example, this out-of-range declaration is rejected:
 
-<!-- tellur:reject E_EXIT_CODE -->
-```tellur
+<!-- villanelle:reject E_EXIT_CODE -->
+```villanelle
 outcome invalid_status { @exit 256 done }
 ```
 
@@ -113,12 +113,12 @@ Certified expansion preserves the original entry's mapping.
 
 A generated executable exposes controls with complete mappings and supported
 entry parameters through `--entry`; `--help` lists them. Other controls remain
-callable from Tellur but cannot be selected as process entries. Status mappings do
+callable from Villanelle but cannot be selected as process entries. Status mappings do
 not relax the launcher's existing argument-type validation.
 
 Normal text output and `--json` still report the complete final outcome and payload.
-`--scenario` uses the same status policy. `tellurc exec` propagates the generated
-program's numeric status, while `tellurc run` remains an interpreter/scenario tool:
+`--scenario` uses the same status policy. `vnc exec` propagates the generated
+program's numeric status, while `vnc run` remains an interpreter/scenario tool:
 its command status reports whether interpretation completed successfully.
 
 Launcher/runtime faults still report a diagnostic on stderr and status 1; they do

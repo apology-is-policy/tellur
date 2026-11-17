@@ -213,9 +213,9 @@ fn grouped_loops_remain_tail_selected_and_cannot_be_lexically_nested() {
 fn grouped_module_and_generic_bindings_survive_the_closing_brace() {
     let root = std::env::temp_dir().join(format!("tellur-group-modules-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("library.tellur"),"pub control identity<t>(t input) exits ready {t value} {[entry]: {t output=input;} exit ready {output};}").unwrap();
-    std::fs::write(root.join("main.tellur"),"import \"library.tellur\" as lib; control main() exits auto {[entry]: {delta lib.identity<string>(\"hello\") {ready {auto value}=>ready}} [ready]:exit done {value};}").unwrap();
-    let program = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap();
+    std::fs::write(root.join("library.vn"),"pub control identity<t>(t input) exits ready {t value} {[entry]: {t output=input;} exit ready {output};}").unwrap();
+    std::fs::write(root.join("main.vn"),"import \"library.vn\" as lib; control main() exits auto {[entry]: {delta lib.identity<string>(\"hello\") {ready {auto value}=>ready}} [ready]:exit done {value};}").unwrap();
+    let program = tellur::compile_file(root.join("main.vn"), manifest()).unwrap();
     let input = scenario(vec![]);
     let result = program.run(&input).unwrap();
     assert_eq!(result.fields, vec![Value::String("hello".into())]);

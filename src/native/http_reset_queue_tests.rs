@@ -104,7 +104,7 @@ fn live_http_resets_preserve_source_events_faults_and_retirement() {
     let root = std::env::temp_dir().join(format!("tellur-http-reset-queue-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_repeated_http.tellur"),
+        include_str!("../../tests/fixtures/native_source_repeated_http.vn"),
         reset_manifest(&root),
     )
     .unwrap()

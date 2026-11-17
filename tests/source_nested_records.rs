@@ -13,7 +13,7 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-const SOURCE: &str = include_str!("../playground/nested_spawn.tellur");
+const SOURCE: &str = include_str!("../playground/nested_spawn.vn");
 fn same(source: &str) -> tellur::CheckedProgram {
     let p = compile(source, manifest()).unwrap();
     assert_eq!(
@@ -98,7 +98,7 @@ fn nested_leaf_loans_survive_queued_completed_and_partially_moved_records() {
 }
 #[test]
 fn nested_detached_result_guards_preserve_exclusive_ancestry() {
-    let source = include_str!("fixtures/source_nested_guards.tellur");
+    let source = include_str!("fixtures/source_nested_guards.vn");
     same(source);
     for marker in [
         "auto moved = move pending;",
@@ -125,7 +125,7 @@ fn nested_detached_result_guards_preserve_exclusive_ancestry() {
 }
 #[test]
 fn nested_results_settle_before_awaited_owner_contingency() {
-    let text = include_str!("fixtures/source_nested_fault.tellur");
+    let text = include_str!("fixtures/source_nested_fault.vn");
     let joined = text
         .replace(
             "    yield;\n    yield;\n    delta await result",

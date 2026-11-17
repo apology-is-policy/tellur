@@ -12,6 +12,6 @@ pub control name(ref person value) exits found { ref string text from value } {
 }
 
 control internal_note() exits done {
-    emit("This helper is private to people.tellur");
+    emit("This helper is private to people.vn");
     exit done;
 }

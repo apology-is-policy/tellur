@@ -1,4 +1,4 @@
-"""Prepare the Thylacine runtime archives and startup files for an LLVM-enabled Tellur build."""
+"""Prepare the Thylacine runtime archives and startup files for an LLVM-enabled Villanelle build."""
 import argparse
 import os
 from pathlib import Path

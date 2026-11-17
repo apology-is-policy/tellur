@@ -100,7 +100,7 @@ fn owned_rust_operation_matches_source_waits_and_resource_settlement() {
     );
     fs::write(&host, wrapper).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_pending_operation.tellur"),
+        include_str!("../../tests/fixtures/native_source_pending_operation.vn"),
         manifest,
     )
     .unwrap()

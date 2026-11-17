@@ -9,14 +9,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             .ok_or("expected output directory")?,
     );
     fs::create_dir_all(&directory)?;
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("playground/hello.tellur");
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("playground/hello.vn");
     let manifest_path = source.with_file_name("manifest.json");
     let manifest = tellur::manifest::Manifest::from_json_at(
         &fs::read_to_string(&manifest_path)?,
         &manifest_path,
     )?;
     let hello = tellur::compile_file(&source, manifest)?.llvm_source_for_target("main", TARGET)?;
-    let hello_object = tellur::llvm::compile(&[("hello.tellur".into(), hello)], TARGET, 2)?;
+    let hello_object = tellur::llvm::compile(&[("hello.vn".into(), hello)], TARGET, 2)?;
     fs::write(directory.join("hello.obj"), hello_object)?;
     std::env::set_current_dir(directory)?;
 

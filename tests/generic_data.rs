@@ -197,7 +197,7 @@ fn type_parameters_are_lexical_even_when_an_outer_private_type_has_that_name() {
 
 #[test]
 fn generic_playground_and_extracted_tails_preserve_specialized_contracts() {
-    let source = include_str!("../playground/generic_data.tellur");
+    let source = include_str!("../playground/generic_data.vn");
     let p = compile(source, m()).unwrap();
     assert_eq!(
         p.run(&scenario()).unwrap(),

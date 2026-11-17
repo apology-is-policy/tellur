@@ -10,8 +10,8 @@ the keyword does not introduce a second kind of reference. Copy values, includin
 shared references, retain their Copy behavior. Exclusive references transfer their
 permission and make the old reference unavailable.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct image {
     string caption;
     bytes pixels;
@@ -48,8 +48,8 @@ to pass its input onwards.
 
 ## Borrowing a temporary for a call
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control display(ref string text) exits done {
     emit(text);
     exit done;

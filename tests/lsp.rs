@@ -103,7 +103,7 @@ fn symbolic_trait_hover_preserves_associated_types_declared_names_and_origins() 
 #[test]
 fn symbolic_trait_hover_preserves_named_nested_origin_contracts() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/aggregate_traits.tellur");
+    let source = include_str!("fixtures/aggregate_traits.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "editor<e>.prepare(input)").to_string();
@@ -181,11 +181,11 @@ fn symbolic_trait_hover_scopes_same_named_parameters_and_multiple_bounds() {
 #[test]
 fn symbolic_trait_hover_keeps_import_aliases_and_refreshes_unsaved_contracts() {
     let mut f = Fixture::new();
-    let library = f.root.join("reader.tellur");
+    let library = f.root.join("reader.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let original = "pub outcome reply<t>['a] {found {ref t text <- 'a}} pub trait reader {type item:clone;control peek(ref self source) exits reply<item>[source];}";
     fs::write(&library, original).unwrap();
-    let source = "import \"reader.tellur\" as reading;control get<t:reading.reader>(ref t input) exits auto {forward reading.reader<t>.peek(input);}";
+    let source = "import \"reader.vn\" as reading;control get<t:reading.reader>(ref t input) exits auto {forward reading.reader<t>.peek(input);}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let before = hover_at(&f, source, "reading.reader<t>.peek(input)").to_string();
@@ -271,8 +271,8 @@ fn symbolic_call_hover_expands_anonymous_payloads_without_renaming_fields() {
 #[test]
 fn symbolic_call_hover_keeps_imported_types_distinct_from_shadowing_parameters() {
     let mut f = Fixture::new();
-    fs::write(f.root.join("library.tellur"),"pub struct token {pub u32 value;} pub control pair<a>(a input,token concrete) exits ready {a first,token second} {exit ready {input,concrete};}").unwrap();
-    let source = "import \"library.tellur\" as library;control wrap<token>(token value,library.token concrete) exits auto {forward library.pair<token>(value,concrete);}";
+    fs::write(f.root.join("library.vn"),"pub struct token {pub u32 value;} pub control pair<a>(a input,token concrete) exits ready {a first,token second} {exit ready {input,concrete};}").unwrap();
+    let source = "import \"library.vn\" as library;control wrap<token>(token value,library.token concrete) exits auto {forward library.pair<token>(value,concrete);}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "library.pair<token>(value,concrete)").to_string();
@@ -350,8 +350,8 @@ fn symbolic_call_hover_preserves_private_checked_lifetimes_and_permissions() {
 #[test]
 fn symbolic_call_hover_preserves_imported_named_contracts_and_origin_arguments() {
     let mut f = Fixture::new();
-    fs::write(f.root.join("views.tellur"),"pub outcome reply<t>['a] {found {ref t value <- 'a}} pub control peek<t>(ref t input) exits reply<t>[input] {exit found {input};}").unwrap();
-    let source = "import \"views.tellur\" as view;\ncontrol wrap<t>(ref t owner) exits auto {forward view.peek<t>(owner);}";
+    fs::write(f.root.join("views.vn"),"pub outcome reply<t>['a] {found {ref t value <- 'a}} pub control peek<t>(ref t input) exits reply<t>[input] {exit found {input};}").unwrap();
+    let source = "import \"views.vn\" as view;\ncontrol wrap<t>(ref t owner) exits auto {forward view.peek<t>(owner);}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "view.peek<t>(owner)").to_string();
@@ -383,11 +383,11 @@ fn symbolic_call_hover_never_selects_a_shadowed_concrete_trait_witness() {
 #[test]
 fn symbolic_call_hover_refreshes_unsaved_dependencies_and_never_publishes_failed_checks() {
     let mut f = Fixture::new();
-    let library = f.root.join("helpers.tellur");
+    let library = f.root.join("helpers.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let original = "pub control echo<t>(t input) exits ready {t value} {exit ready {input};}";
     fs::write(&library, original).unwrap();
-    let source = "import \"helpers.tellur\" as helpers;control wrap<t>(t value) exits auto {forward helpers.echo<t>(value);}";
+    let source = "import \"helpers.vn\" as helpers;control wrap<t>(t value) exits auto {forward helpers.echo<t>(value);}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let before = hover_at(&f, source, "helpers.echo<t>(value)");
@@ -458,11 +458,12 @@ fn explicit_stored_adapter_diagnostics_repair_before_publishing_result_types() {
 #[test]
 fn explicit_stored_adapter_diagnostics_preserve_imported_nested_arm_locations() {
     let mut f = Fixture::new();
-    let library = f.root.join("jobs.tellur");
+    let library = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let source = "pub outcome result {ready {u32 value}}\npub control choose(bool flag) exits result {\nresult saved=delta flag {\ntrue=>delta flag {true=>ready {1},false=>ready {2}},\nfalse=>ready {3}\n};exit saved;}";
     fs::write(&library, source).unwrap();
-    let caller = "import \"jobs.tellur\" as jobs;control main() exits jobs.result {forward jobs.choose(true);}";
+    let caller =
+        "import \"jobs.vn\" as jobs;control main() exits jobs.result {forward jobs.choose(true);}";
     f.open(caller);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = source
@@ -526,11 +527,11 @@ fn explicit_exit_adapter_diagnostics_repair_independently_before_hover_returns()
 #[test]
 fn explicit_exit_adapter_diagnostics_preserve_imported_nested_arm_locations() {
     let mut f = Fixture::new();
-    let library = f.root.join("jobs.tellur");
+    let library = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let source = "pub control choose(bool flag) exits ready {u32 value} {\nexit delta flag {\ntrue=>delta flag {\ntrue=>ready {1},false=>ready {2}},\nfalse=>ready {3}\n};}";
     fs::write(&library, source).unwrap();
-    let caller = "import \"jobs.tellur\" as jobs;control main() exits ready {u32 value} {forward jobs.choose(true);}";
+    let caller = "import \"jobs.vn\" as jobs;control main() exits ready {u32 value} {forward jobs.choose(true);}";
     f.open(caller);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = source
@@ -600,12 +601,12 @@ fn lexical_handler_diagnostics_repair_independently_and_refresh_inferred_types()
 #[test]
 fn lexical_handler_diagnostics_keep_imported_disjoint_locations_and_dependency_suppression() {
     let mut f = Fixture::new();
-    let library = f.root.join("jobs.tellur");
+    let library = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let source = "pub control process(bool flag) exits done faults {\nfault boundary {exit done;} contingency [flag] {\ndelta flag {true=>yes,false=>no}\n[yes]:u32 first=1;escalate;\n[no]:string second=\"ready\";escalate;\n}}";
     fs::write(&library, source).unwrap();
     let caller =
-        "import \"jobs.tellur\" as jobs;control main() exits done {forward jobs.process(true);}";
+        "import \"jobs.vn\" as jobs;control main() exits done {forward jobs.process(true);}";
     f.open(caller);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = source
@@ -639,7 +640,7 @@ fn lexical_handler_diagnostics_keep_imported_disjoint_locations_and_dependency_s
 #[test]
 fn lexical_work_diagnostics_repair_before_handler_errors_and_inferred_hover() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/recovery.tellur")
+    let source = include_str!("../playground/recovery.vn")
         .replace(
             "fault boundary {",
             "fault boundary {\n u32 work_count=1;\n string work_text=\"ready\";",
@@ -698,12 +699,11 @@ fn lexical_work_diagnostics_repair_before_handler_errors_and_inferred_hover() {
 #[test]
 fn lexical_work_diagnostics_keep_imported_locations_and_fresh_call_contracts() {
     let mut f = Fixture::new();
-    let library = f.root.join("jobs.tellur");
+    let library = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let source = "pub control process() exits done faults {\nfault boundary {\nu32 first=1;\nstring second=\"ready\";\nexit done;\n} contingency [] {escalate;}\n}";
     fs::write(&library, source).unwrap();
-    let caller =
-        "import \"jobs.tellur\" as jobs;control main() exits done {forward jobs.process();}";
+    let caller = "import \"jobs.vn\" as jobs;control main() exits done {forward jobs.process();}";
     f.open(caller);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = source
@@ -784,11 +784,11 @@ fn named_boundary_diagnostics_repair_handler_then_work_before_hover_returns() {
 #[test]
 fn named_boundary_diagnostics_follow_unsaved_imports_and_disjoint_paths() {
     let mut f = Fixture::new();
-    let library = f.root.join("jobs.tellur");
+    let library = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let source = "pub boundary request(bool flag) {\ndelta flag {true=>yes,false=>no}\n[yes]:u32 first=1;terminate;\n[no]:string second=\"ready\";terminate;\n} contingency(string reason) {terminate;}";
     fs::write(&library, source).unwrap();
-    let caller = "import \"jobs.tellur\" as jobs;control main() exits done {supervise jobs.request(true);exit done;}";
+    let caller = "import \"jobs.vn\" as jobs;control main() exits done {supervise jobs.request(true);exit done;}";
     f.open(caller);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = source
@@ -823,7 +823,7 @@ fn named_boundary_diagnostics_follow_unsaved_imports_and_disjoint_paths() {
 #[test]
 fn boundary_call_hover_distinguishes_handled_faults_and_outcome_free_completion() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/contingency.tellur");
+    let source = include_str!("../playground/contingency.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "request(true");
@@ -884,11 +884,11 @@ fn boundary_call_hover_respects_declared_and_inferred_contingency_escape() {
 #[test]
 fn boundary_call_hover_refreshes_imported_retention_without_private_layouts() {
     let mut f = Fixture::new();
-    let library = f.root.join("jobs.tellur");
+    let library = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let valid = "pub struct ticket {string secret;} pub boundary request(ticket input, string context) retains context, input {fault \"broken\";} contingency(string reason) {drop(input);emit(context);terminate;}";
     fs::write(&library, valid).unwrap();
-    let source = "import \"jobs.tellur\" as first;import \"jobs.tellur\" as jobs;control main(first.ticket value) exits done {supervise jobs.request(move value, \"context\");exit done;}";
+    let source = "import \"jobs.vn\" as first;import \"jobs.vn\" as jobs;control main(first.ticket value) exits done {supervise jobs.request(move value, \"context\");exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let text = hover_at(&f, source, "jobs.request(move").to_string();
@@ -965,8 +965,8 @@ fn boundary_call_hover_selects_nested_calls_and_rejects_ordinary_invocation() {
 #[test]
 fn lexical_call_hover_resolves_self_and_associated_aliases_before_nominal_names() {
     let mut f = Fixture::new();
-    let source = "struct item {u32 shadow;}\n".to_owned()
-        + include_str!("../playground/trait_aliases.tellur");
+    let source =
+        "struct item {u32 shadow;}\n".to_owned() + include_str!("../playground/trait_aliases.vn");
     f.open(&source);
     assert_eq!(f.diagnostics(), json!([]));
     let text = hover_at(&f, &source, "reader<self>.read(owner)").to_string();
@@ -1028,8 +1028,8 @@ fn lexical_call_hover_uses_normalized_sibling_aliases_and_fresh_definitions() {
 #[test]
 fn lexical_call_hover_resolves_imported_traits_and_constructors_in_local_implementations() {
     let mut f = Fixture::new();
-    fs::write(f.root.join("library.tellur"), "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}pub trait maker {type item:drop;control wrap(item input) exits done;control dispatch(item input) exits done;}").unwrap();
-    let source = "import \"library.tellur\" as one;import \"library.tellur\" as lib;struct target {u32 tag;}struct item {bool shadow;}implement lib.maker for target {type item=string;control wrap(item owner) exits done {auto saved=lib.box<item>(move owner);drop(saved);exit done;}control dispatch(item owner) exits done {forward lib.maker<self>.wrap(move owner);}}control main() exits done {lib.maker<target>.dispatch(\"hello\");exit done;}";
+    fs::write(f.root.join("library.vn"), "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}pub trait maker {type item:drop;control wrap(item input) exits done;control dispatch(item input) exits done;}").unwrap();
+    let source = "import \"library.vn\" as one;import \"library.vn\" as lib;struct target {u32 tag;}struct item {bool shadow;}implement lib.maker for target {type item=string;control wrap(item owner) exits done {auto saved=lib.box<item>(move owner);drop(saved);exit done;}control dispatch(item owner) exits done {forward lib.maker<self>.wrap(move owner);}}control main() exits done {lib.maker<target>.dispatch(\"hello\");exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let text = hover_at(&f, source, "lib.box<item>(move owner)").to_string();
@@ -1052,7 +1052,7 @@ fn lexical_call_hover_resolves_imported_traits_and_constructors_in_local_impleme
 #[test]
 fn lexical_call_hover_keeps_associated_named_contracts_and_nested_origin_bindings() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/aggregate_traits.tellur");
+    let source = include_str!("../playground/aggregate_traits.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let text = hover_at(&f, source, "prepare<text_editor>(borrow").to_string();
@@ -1073,12 +1073,12 @@ fn lexical_call_hover_keeps_associated_named_contracts_and_nested_origin_binding
 #[test]
 fn lexical_call_hover_normalizes_named_helpers_in_their_defining_module() {
     let mut f = Fixture::new();
-    fs::write(f.root.join("types.tellur"), "pub outcome view<t>['a] {found {ref t value <- 'a}}pub trait source {type item;}implement source for bool {type item=string;}").unwrap();
-    let library = f.root.join("api.tellur");
+    fs::write(f.root.join("types.vn"), "pub outcome view<t>['a] {found {ref t value <- 'a}}pub trait source {type item;}implement source for bool {type item=string;}").unwrap();
+    let library = f.root.join("api.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
-    let valid = "import \"types.tellur\" as types;pub control peek<t:types.source>(ref types.source<t>.item input) exits types.view<types.source<t>.item>[input] {exit found {input};}";
+    let valid = "import \"types.vn\" as types;pub control peek<t:types.source>(ref types.source<t>.item input) exits types.view<types.source<t>.item>[input] {exit found {input};}";
     fs::write(&library, valid).unwrap();
-    let source = "import \"types.tellur\" as kinds;import \"api.tellur\" as api;control main() exits done {string owner=\"hello\";delta api.peek<bool>(borrow owner) {found {auto text}=>found} [found]:emit(text);exit done;}";
+    let source = "import \"types.vn\" as kinds;import \"api.vn\" as api;control main() exits done {string owner=\"hello\";delta api.peek<bool>(borrow owner) {found {auto text}=>found} [found]:emit(text);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let text = hover_at(&f, source, "api.peek<bool>(borrow").to_string();
@@ -1162,7 +1162,7 @@ fn trait_call_hover_preserves_declared_names_order_and_borrow_origins() {
 #[test]
 fn trait_call_hover_keeps_named_nested_contracts_and_declared_group_selectors() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/aggregate_traits.tellur").replace(
+    let source = include_str!("../playground/aggregate_traits.vn").replace(
         "capture prepare<text_editor>",
         "capture editor<text_editor>.prepare",
     );
@@ -1271,11 +1271,11 @@ fn trait_call_hover_resolves_manifest_named_outcome_alternatives() {
 #[test]
 fn trait_call_hover_refreshes_imported_declarations_without_implementation_names() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("reader.tellur");
+    let dependency = f.root.join("reader.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub struct message {string secret;}\npub trait reader {type item:clone;control peek(ref self input) exits found {ref item value from input};}\nimplement reader for message {type item=string;control peek(ref self owner) exits found {ref item payload from owner} {exit found {borrow owner.secret};}}\npub control make() exits ready {message value} {exit ready {message {\"hello\"}};}";
     fs::write(&dependency, valid).unwrap();
-    let source = "import \"reader.tellur\" as one;import \"reader.tellur\" as lib;control main() exits done {delta lib.make() {ready {auto source}=>ready} [ready]:delta lib.reader<lib.message>.peek(borrow source) {found {auto text}=>shown} [shown]:emit(text);exit done;}";
+    let source = "import \"reader.vn\" as one;import \"reader.vn\" as lib;control main() exits done {delta lib.make() {ready {auto source}=>ready} [ready]:delta lib.reader<lib.message>.peek(borrow source) {found {auto text}=>shown} [shown]:emit(text);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.reader<lib.message>.peek").to_string();
@@ -1412,11 +1412,11 @@ fn constructor_call_hover_has_checked_inputs_origins_and_exact_callee_range() {
 #[test]
 fn constructor_call_hover_specializes_imports_without_private_layouts() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("types.tellur");
+    let dependency = f.root.join("types.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}";
     fs::write(&dependency, valid).unwrap();
-    let source = "import \"types.tellur\" as one;import \"types.tellur\" as lib;control main() exits done {auto value=lib.box<string>(\"hello\");drop(value);exit done;}";
+    let source = "import \"types.vn\" as one;import \"types.vn\" as lib;control main() exits done {auto value=lib.box<string>(\"hello\");drop(value);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.box<string>");
@@ -1567,11 +1567,11 @@ fn named_completion_bindings_repair_independently_without_stale_hover() {
 #[test]
 fn unsaved_named_schema_edits_recheck_every_imported_completion_binding() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("views.tellur");
+    let dependency = f.root.join("views.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub outcome view['a] {found {ref string value <- 'a}}\npub control first(ref string input) exits view[input] {exit found {input};}\npub control second(ref string input) exits view[input] {exit found {input};}";
     fs::write(&dependency, valid).unwrap();
-    let source = "import \"views.tellur\" as lib;control main() exits done {string owner=\"hi\";delta lib.first(borrow owner) {found {auto text}=>shown} [shown]: emit(text);exit done;}";
+    let source = "import \"views.vn\" as lib;control main() exits done {string owner=\"hi\";delta lib.first(borrow owner) {found {auto text}=>shown} [shown]: emit(text);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = valid
@@ -1646,13 +1646,12 @@ fn declaration_errors_repair_independently_before_call_hover_returns() {
 #[test]
 fn unsaved_imported_public_declarations_batch_and_refresh_after_repairs() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("library.tellur");
+    let dependency = f.root.join("library.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid =
         "pub control first() exits done {exit done;}\npub control second() exits done {exit done;}";
     fs::write(&dependency, valid).unwrap();
-    let source =
-        "import \"library.tellur\" as lib;control main() exits done {forward lib.first();}";
+    let source = "import \"library.vn\" as lib;control main() exits done {forward lib.first();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let broken = valid.replace("exits done", "exits auto");
@@ -1690,11 +1689,11 @@ fn unsaved_imported_public_declarations_batch_and_refresh_after_repairs() {
 #[test]
 fn call_hover_resolves_imports_aliases_and_fresh_unsaved_contracts() {
     let mut f = Fixture::new();
-    let library = f.root.join("library.tellur");
+    let library = f.root.join("library.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let definition = "pub outcome reply {ready {u32 value}} pub control read(u32 number) exits reply {exit ready {number};}";
     fs::write(&library, definition).unwrap();
-    let source = "import \"library.tellur\" as one; import \"library.tellur\" as lib;\ncontrol main() exits auto {forward lib.read(7);}";
+    let source = "import \"library.vn\" as one; import \"library.vn\" as lib;\ncontrol main() exits auto {forward lib.read(7);}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.read(7)");
@@ -1793,9 +1792,9 @@ fn call_hover_shows_checked_inference_origins_and_fault_permission() {
 #[test]
 fn call_hover_specializes_concrete_generic_calls_without_name_prefix_collisions() {
     let mut f = Fixture::new();
-    let library = f.root.join("library.tellur");
+    let library = f.root.join("library.vn");
     fs::write(&library, "pub struct item {pub u32 value;} pub struct item_extra {pub string text;} pub control echo<t>(t value) exits ready {t value} {exit ready {value};}").unwrap();
-    let source = "import \"library.tellur\" as lib; control main() exits auto {forward lib.echo<lib.item_extra>(lib.item_extra {text: \"hi\"});}";
+    let source = "import \"library.vn\" as lib; control main() exits auto {forward lib.echo<lib.item_extra>(lib.item_extra {text: \"hi\"});}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.echo<").to_string();
@@ -1806,8 +1805,8 @@ fn call_hover_specializes_concrete_generic_calls_without_name_prefix_collisions(
 #[test]
 fn call_hover_preserves_public_origins_without_exposing_private_layouts() {
     let mut f = Fixture::new();
-    fs::write(f.root.join("library.tellur"), "pub struct message {string secret;} pub control make() exits made {message value} {exit made {message {secret: \"hi\"}};} pub control peek(ref message input) exits found {ref string value from input} {exit found {borrow input.secret};}").unwrap();
-    let source = "import \"library.tellur\" as lib;control main() exits auto {delta lib.make() {made {lib.message value}=>made} [made]:delta lib.peek(borrow value) {found {ref string text}=>found} [found]: emit(text); exit done;}";
+    fs::write(f.root.join("library.vn"), "pub struct message {string secret;} pub control make() exits made {message value} {exit made {message {secret: \"hi\"}};} pub control peek(ref message input) exits found {ref string value from input} {exit found {borrow input.secret};}").unwrap();
+    let source = "import \"library.vn\" as lib;control main() exits auto {delta lib.make() {made {lib.message value}=>made} [made]:delta lib.peek(borrow value) {found {ref string text}=>found} [found]: emit(text); exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.peek(").to_string();
@@ -1822,7 +1821,7 @@ fn call_hover_preserves_public_origins_without_exposing_private_layouts() {
 fn call_hover_keeps_public_grouped_result_mappings() {
     let mut f = Fixture::new();
     fs::write(
-        f.root.join("library.tellur"),
+        f.root.join("library.vn"),
         r#"
         pub struct pair['left, 'right] {
             pub ref string left <- 'left;
@@ -1834,7 +1833,7 @@ fn call_hover_keeps_public_grouped_result_mappings() {
     "#,
     )
     .unwrap();
-    let source = "import \"library.tellur\" as lib;control main() exits done {string a=\"a\";string b=\"b\";delta lib.join(borrow a,borrow b) {ready {auto value}=>got} [got]:emit(value.left);emit(value.right);exit done;}";
+    let source = "import \"library.vn\" as lib;control main() exits done {string a=\"a\";string b=\"b\";delta lib.join(borrow a,borrow b) {ready {auto value}=>got} [got]:emit(value.left);emit(value.right);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.join(").to_string();
@@ -2007,18 +2006,14 @@ fn call_hover_tracks_captures_inline_adapters_statement_arms_and_pure_arguments(
 #[test]
 fn call_hover_uses_distinct_display_identities_for_unimported_transitive_types() {
     let mut f = Fixture::new();
-    fs::write(
-        f.root.join("types.tellur"),
-        "pub struct token {pub u32 value;}",
-    )
-    .unwrap();
-    fs::write(f.root.join("library.tellur"), "import \"types.tellur\" as data;pub control make() exits made {data.token value} {exit made {data.token {value: 3}};}").unwrap();
-    let source = "import \"library.tellur\" as lib;struct token {string local;}control main() exits auto {forward lib.make();}";
+    fs::write(f.root.join("types.vn"), "pub struct token {pub u32 value;}").unwrap();
+    fs::write(f.root.join("library.vn"), "import \"types.vn\" as data;pub control make() exits made {data.token value} {exit made {data.token {value: 3}};}").unwrap();
+    let source = "import \"library.vn\" as lib;struct token {string local;}control main() exits auto {forward lib.make();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.make()").to_string();
     assert!(
-        h.contains("types.tellur::token value") && h.contains("display identities"),
+        h.contains("types.vn::token value") && h.contains("display identities"),
         "{h}"
     );
     assert!(!h.contains("_path_m_"), "{h}");
@@ -2055,11 +2050,13 @@ fn call_hover_handles_untitled_sources_and_symbolic_generic_contracts() {
 #[test]
 fn absorption_snapshots_show_unsaved_internal_changes_across_imports() {
     let mut f = Fixture::new();
-    let library = f.root.join("library.tellur");
+    let library = f.root.join("library.vn");
     let library_uri = url::Url::from_file_path(&library).unwrap().to_string();
     let before = "control leaf() exits auto {exit missing;}pub control lookup() exits failed {exit delta leaf() {missing=>failed {}};}";
     fs::write(&library, before).unwrap();
-    f.open("import \"library.tellur\" as lib;pub control lookup() exits failed {forward lib.lookup();}");
+    f.open(
+        "import \"library.vn\" as lib;pub control lookup() exits failed {forward lib.lookup();}",
+    );
     let snapshot = |f: &Fixture| {
         tellur::absorption::Snapshot::from_json(
             &f.server.absorption_snapshot(&f.uri).unwrap().to_string(),
@@ -2072,13 +2069,9 @@ fn absorption_snapshots_show_unsaved_internal_changes_across_imports() {
     let diff = first.compare(&second).unwrap();
     assert!(diff.public_contracts_equal && !diff.recorded_evidence_equal);
     let evidence = &second.controls["@entry::lookup"].outcomes["failed"].contributors;
-    assert!(
-        evidence
-            .iter()
-            .any(|c| c.control == "file:library.tellur::leaf"
-                && c.outcome == "malformed"
-                && c.location.module == "file:library.tellur")
-    );
+    assert!(evidence.iter().any(|c| c.control == "file:library.vn::leaf"
+        && c.outcome == "malformed"
+        && c.location.module == "file:library.vn"));
     f.server.notification("textDocument/didChange",&json!({"textDocument":{"uri":library_uri,"version":2},"contentChanges":[{"text":"control broken("}]}));
     assert!(f.server.absorption_snapshot(&f.uri).is_err());
     f.server.notification(
@@ -2112,19 +2105,19 @@ fn absorption_snapshots_require_open_file_and_manifest() {
 #[test]
 fn contract_snapshots_use_unsaved_graphs_and_refuse_partial_or_stale_results() {
     let mut f = Fixture::new();
-    let library = f.root.join("library.tellur");
+    let library = f.root.join("library.vn");
     let library_uri = url::Url::from_file_path(&library).unwrap().to_string();
     fs::write(&library, "pub struct record {pub u32 value;}").unwrap();
-    f.open("import \"library.tellur\" as lib;pub control echo(lib.record input) exits ready {lib.record value} {exit ready {input};}");
+    f.open("import \"library.vn\" as lib;pub control echo(lib.record input) exits ready {lib.record value} {exit ready {input};}");
     let first = f.server.contract_snapshot(&f.uri).unwrap();
     assert_eq!(
-        first["modules"]["file:library.tellur"]["declarations"]["record"]["fields"][0]["type"],
+        first["modules"]["file:library.vn"]["declarations"]["record"]["fields"][0]["type"],
         "u32"
     );
     f.server.notification("textDocument/didOpen", &json!({"textDocument":{"uri":library_uri,"version":1,"text":"pub struct record {pub string value;}"}}));
     let second = f.server.contract_snapshot(&f.uri).unwrap();
     assert_eq!(
-        second["modules"]["file:library.tellur"]["declarations"]["record"]["fields"][0]["type"],
+        second["modules"]["file:library.vn"]["declarations"]["record"]["fields"][0]["type"],
         "string"
     );
     f.server.notification("textDocument/didChange", &json!({"textDocument":{"uri":library_uri,"version":2},"contentChanges":[{"text":"pub struct record {pub missing value;}"}]}));
@@ -2208,7 +2201,7 @@ fn formatting_works_without_semantics_or_manifest_and_refuses_broken_syntax() {
     let uri = "untitled:formatting";
     let options = tellur::format::Options::default();
     assert_eq!(server.formatting(uri, options), json!([]));
-    let text = "import \"missing.tellur\" as missing;control main() exits done {u32 value=\"wrong type\";exit done;}";
+    let text = "import \"missing.vn\" as missing;control main() exits done {u32 value=\"wrong type\";exit done;}";
     server.notification(
         "textDocument/didOpen",
         &json!({"textDocument":{"uri":uri,"version":1,"text":text}}),
@@ -2321,18 +2314,18 @@ fn nested_branch_errors_clear_independently_without_stale_hover() {
 #[test]
 fn independent_imported_errors_follow_unsaved_repairs_and_closing_buffers() {
     let mut f = Fixture::new();
-    let path = f.root.join("library.tellur");
+    let path = f.root.join("library.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let source = "pub control first() exits done {u32 value=1;exit done;}\npub control second() exits done {string value=\"ok\";exit done;}";
     fs::write(&path, source).unwrap();
-    f.open("import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.first();}");
+    f.open("import \"library.vn\" as lib;\ncontrol main() exits done {forward lib.first();}");
     assert_eq!(f.diagnostics(), json!([]));
     let broken = source
         .replace("u32 value=1", "u32 value=true")
         .replace("string value=\"ok\"", "string value=7");
     f.server.notification(
         "textDocument/didOpen",
-        &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":broken}}),
+        &json!({"textDocument":{"uri":uri,"languageId":"villanelle","version":1,"text":broken}}),
     );
     let errors = f.diagnostics();
     assert_eq!(errors.as_array().unwrap().len(), 2);
@@ -2395,13 +2388,13 @@ fn expression_ranges_use_utf16_and_follow_unsaved_edits() {
 #[test]
 fn imported_expression_ranges_use_unsaved_dependency_text() {
     let mut f = Fixture::new();
-    let path = f.root.join("library.tellur");
+    let path = f.root.join("library.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub control read() exits done { exit done; }";
     fs::write(&path, valid).unwrap();
-    f.open("import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.read();}");
+    f.open("import \"library.vn\" as lib;\ncontrol main() exits done {forward lib.read();}");
     assert_eq!(f.diagnostics(), json!([]));
-    f.server.notification("textDocument/didOpen", &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":"pub control read() exits done {\n u32 value = \"😀\";\n exit done;\n}"}}));
+    f.server.notification("textDocument/didOpen", &json!({"textDocument":{"uri":uri,"languageId":"villanelle","version":1,"text":"pub control read() exits done {\n u32 value = \"😀\";\n exit done;\n}"}}));
     let errors = f.diagnostics();
     assert_eq!(errors[0]["code"], "E_TYPE");
     assert_eq!(
@@ -2428,7 +2421,7 @@ fn retained_resource_diagnostics_do_not_need_the_rust_source() {
         include_str!("../examples/retained_file/manifest.json"),
     )
     .unwrap();
-    let source = include_str!("../examples/retained_file/main.tellur");
+    let source = include_str!("../examples/retained_file/main.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     f.change(&source.replace("file_release(file);", ""), 2);
@@ -2444,7 +2437,7 @@ fn explicit_rust_modules_do_not_need_source_files_during_editor_checks() {
         serde_json::from_str(include_str!("../examples/retained_file/manifest.json")).unwrap();
     manifest["rust"]["modules"] = json!({"files":"absent/file.rs"});
     fs::write(f.root.join("manifest.json"), manifest.to_string()).unwrap();
-    let source = include_str!("../examples/retained_file/main.tellur");
+    let source = include_str!("../examples/retained_file/main.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     f.change(&source.replace("file_release(file);", ""), 2);
@@ -2472,7 +2465,7 @@ fn outcome_status_hover_and_unsaved_annotation_errors() {
 #[test]
 fn ellipsis_payload_hover_and_unsaved_diagnostics_follow_the_checked_body() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/inferred_payloads.tellur");
+    let source = include_str!("../playground/inferred_payloads.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let hover = f.server.hover(&f.uri, 0, 10).to_string();
@@ -2498,7 +2491,7 @@ fn ellipsis_payload_hover_and_unsaved_diagnostics_follow_the_checked_body() {
 #[test]
 fn stored_reference_records_diagnose_unsaved_owner_conflicts_and_moves() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/stored_references.tellur");
+    let source = include_str!("../playground/stored_references.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     f.change(
@@ -2520,7 +2513,7 @@ fn stored_reference_records_diagnose_unsaved_owner_conflicts_and_moves() {
 #[test]
 fn owned_variant_diagnostics_follow_unsaved_edits() {
     let mut f = Fixture::new();
-    let source = include_str!("../examples/optional_handle.tellur");
+    let source = include_str!("../examples/optional_handle.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     for (version, insert, code, name) in [
@@ -2549,7 +2542,7 @@ fn owned_variant_diagnostics_follow_unsaved_edits() {
 #[test]
 fn partial_move_diagnostics_follow_unsaved_edits() {
     let mut f = Fixture::new();
-    let source = include_str!("../examples/partial_moves.tellur");
+    let source = include_str!("../examples/partial_moves.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     for (version, expression, code) in [(2, "pair", "E_PARTIAL_MOVE"), (3, "pair.left", "E_MOVED")]
@@ -2623,7 +2616,7 @@ fn utf16_positions_and_crlf() {
 #[test]
 fn compiler_diagnostics_are_reused() {
     let mut f = Fixture::new();
-    let source = include_str!("../examples/load.tellur")
+    let source = include_str!("../examples/load.vn")
         .replace("[ReadBad & CloseBad]: exit Failed(Both(re, ce));", "");
     f.open(&source);
     let d = f.diagnostics();
@@ -3269,7 +3262,7 @@ fn bounded_control_hover_and_caller_diagnostics_survive_unsaved_repairs() {
 #[test]
 fn bounded_playground_declarations_have_hover_with_leading_comments_and_generic_data() {
     let mut f = Fixture::new();
-    f.open(include_str!("../playground/capabilities.tellur"));
+    f.open(include_str!("../playground/capabilities.vn"));
     assert_eq!(f.diagnostics(), json!([]));
     let hover = f.server.hover(&f.uri, 3, 10);
     assert!(hover.to_string().contains("item: clone"), "{hover}");
@@ -3278,7 +3271,7 @@ fn bounded_playground_declarations_have_hover_with_leading_comments_and_generic_
 #[test]
 fn trait_outline_hover_and_unsaved_conformance_errors_are_checked() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/traits.tellur");
+    let source = include_str!("../playground/traits.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let symbols = f.server.symbols(&f.uri);
@@ -3334,7 +3327,7 @@ fn trait_bound_hover_reports_source_names_and_unsaved_missing_requirements() {
 #[test]
 fn declared_origins_appear_in_trait_and_generic_hover_and_diagnose_unsaved_errors() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/borrowed_traits.tellur");
+    let source = include_str!("../playground/borrowed_traits.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     for (line, column) in [(6, 12), (16, 10)] {
@@ -3359,7 +3352,7 @@ fn declared_origins_appear_in_trait_and_generic_hover_and_diagnose_unsaved_error
 #[test]
 fn grouped_struct_origins_have_hover_outline_and_unsaved_diagnostics() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/origin_groups.tellur");
+    let source = include_str!("fixtures/origin_groups.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = f.server.hover(&f.uri, 0, 10);
@@ -3409,7 +3402,7 @@ fn reference_auto_is_inferred_in_unsaved_declarations_and_patterns() {
 #[test]
 fn record_input_selectors_hover_and_unsaved_contract_errors() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/record_inputs.tellur");
+    let source = include_str!("fixtures/record_inputs.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -3438,7 +3431,7 @@ fn record_input_selectors_hover_and_unsaved_contract_errors() {
 #[test]
 fn exclusive_carrier_hover_reports_authorization_and_unsaved_conflicts() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/carrier_reborrows.tellur");
+    let source = include_str!("fixtures/carrier_reborrows.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -3473,7 +3466,7 @@ fn exclusive_carrier_hover_reports_authorization_and_unsaved_conflicts() {
 #[test]
 fn opaque_split_hover_and_unsaved_alias_errors() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/opaque_splits.tellur");
+    let source = include_str!("fixtures/opaque_splits.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -3501,7 +3494,7 @@ fn opaque_split_hover_and_unsaved_alias_errors() {
 #[test]
 fn borrowed_outcomes_report_unsaved_owner_and_handling_errors() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/borrowed_outcomes.tellur");
+    let source = include_str!("fixtures/borrowed_outcomes.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -3632,13 +3625,13 @@ fn auto_hover_covers_collections_and_separate_lexical_bindings() {
 #[test]
 fn auto_hover_covers_captures_inline_adapters_and_regular_payload_bindings() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/borrowed_outcomes.tellur");
+    let source = include_str!("fixtures/borrowed_outcomes.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto pending", "outcome<first> pending");
     auto_hover(&f, source, "auto text", "ref string text");
     // Exercise inference independently of the runnable example's process contract.
-    let inferred = include_str!("../playground/stored_adapters.tellur")
+    let inferred = include_str!("../playground/stored_adapters.vn")
         .replace("exits process_result", "exits auto");
     let source = inferred.as_str();
     f.change(source, 2);
@@ -3654,7 +3647,7 @@ fn auto_hover_covers_captures_inline_adapters_and_regular_payload_bindings() {
 #[test]
 fn auto_hover_in_generic_definitions_is_independent_of_concrete_calls() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/generic_controls.tellur");
+    let source = include_str!("../playground/generic_controls.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto received", "item received");
@@ -3713,7 +3706,7 @@ fn auto_hover_distinguishes_sibling_arm_bindings_and_trait_method_locals() {
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto item} => [numeric]", "u32 item");
     auto_hover(&f, source, "auto item} => [textual]", "string item");
-    let source = include_str!("../playground/borrowed_traits.tellur").replace(
+    let source = include_str!("../playground/borrowed_traits.vn").replace(
         "exit found { borrow input.text };",
         "auto local = borrow input.text; exit found { local };",
     );
@@ -3740,7 +3733,7 @@ fn auto_hover_on_mutable_reference_payloads_keeps_exclusivity() {
 #[test]
 fn nested_borrowed_storage_has_inferred_hovers_and_unsaved_loan_diagnostics() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/nested_borrows.tellur");
+    let source = include_str!("fixtures/nested_borrows.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto message", "envelope message");
@@ -3783,7 +3776,7 @@ fn nested_anonymous_outcome_hover_keeps_symbolic_payloads_readable() {
 #[test]
 fn grouped_variant_hover_and_unsaved_owner_conflicts_follow_public_boundaries() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/public_variants.tellur");
+    let source = include_str!("fixtures/public_variants.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -3825,7 +3818,7 @@ fn grouped_variant_hover_and_unsaved_owner_conflicts_follow_public_boundaries() 
 #[test]
 fn named_origin_schema_and_completion_binding_hovers_preserve_schematic_spelling() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/outcome_origins.tellur");
+    let source = include_str!("fixtures/outcome_origins.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -3857,7 +3850,7 @@ fn named_origin_schema_and_completion_binding_hovers_preserve_schematic_spelling
 #[test]
 fn borrowed_sum_payload_hover_reports_reborrowed_mode_and_unsaved_errors() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/sum_carriers.tellur");
+    let source = include_str!("fixtures/sum_carriers.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto preview", "ref string preview");
@@ -3885,7 +3878,7 @@ fn borrowed_sum_payload_hover_reports_reborrowed_mode_and_unsaved_errors() {
 #[test]
 fn carrier_result_hover_reports_storage_contents_and_inferred_reference_types() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/carrier_results.tellur");
+    let source = include_str!("fixtures/carrier_results.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto view", "ref mutable text_view view");
@@ -3916,7 +3909,7 @@ fn carrier_result_hover_reports_storage_contents_and_inferred_reference_types() 
 #[test]
 fn stored_carrier_hovers_and_unsaved_release_errors_survive_repair() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/stored_carriers.tellur");
+    let source = include_str!("fixtures/stored_carriers.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto view", "ref mutable text_view view");
@@ -3934,7 +3927,7 @@ fn stored_carrier_hovers_and_unsaved_release_errors_survive_repair() {
 #[test]
 fn public_carrier_hovers_show_storage_and_nested_group_maps() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/public_carriers.tellur");
+    let source = include_str!("fixtures/public_carriers.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto pending", "outcome<prepare> pending");
@@ -3972,7 +3965,7 @@ fn public_carrier_hovers_show_storage_and_nested_group_maps() {
 #[test]
 fn aggregate_trait_hovers_and_unsaved_contract_diagnostics() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/aggregate_traits.tellur");
+    let source = include_str!("fixtures/aggregate_traits.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto job", "edit_job<string> job");
@@ -3992,7 +3985,7 @@ fn aggregate_trait_hovers_and_unsaved_contract_diagnostics() {
 #[test]
 fn borrowed_collection_hovers_and_unsaved_owner_conflicts() {
     let mut f = Fixture::new();
-    let source = include_str!("fixtures/borrowed_collections.tellur");
+    let source = include_str!("fixtures/borrowed_collections.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto word", "ref string word");
@@ -4013,7 +4006,7 @@ fn public_contract_diagnostics_and_forwarding_locations_follow_unsaved_edits() {
         include_str!("../playground/manifest.json"),
     )
     .unwrap();
-    let source = include_str!("fixtures/public_contracts.tellur");
+    let source = include_str!("fixtures/public_contracts.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     f.change(
@@ -4042,34 +4035,34 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     )
     .unwrap();
     fs::write(
-        f.root.join("settings.tellur"),
-        include_str!("../applications/settings/settings.tellur")
-            .replace("../../library/json_file.tellur", "json_file.tellur"),
+        f.root.join("settings.vn"),
+        include_str!("../applications/settings/settings.vn")
+            .replace("../../library/json_file.vn", "json_file.vn"),
     )
     .unwrap();
     fs::write(
-        f.root.join("json_file.tellur"),
-        include_str!("../library/json_file.tellur"),
+        f.root.join("json_file.vn"),
+        include_str!("../library/json_file.vn"),
     )
     .unwrap();
     fs::write(
-        f.root.join("server.tellur"),
-        include_str!("../applications/settings/server.tellur")
-            .replace("../../library/loopback_http.tellur", "loopback_http.tellur"),
+        f.root.join("server.vn"),
+        include_str!("../applications/settings/server.vn")
+            .replace("../../library/loopback_http.vn", "loopback_http.vn"),
     )
     .unwrap();
     fs::write(
-        f.root.join("http.tellur"),
-        include_str!("../applications/settings/http.tellur"),
+        f.root.join("http.vn"),
+        include_str!("../applications/settings/http.vn"),
     )
     .unwrap();
     fs::write(
-        f.root.join("loopback_http.tellur"),
-        include_str!("../library/loopback_http.tellur"),
+        f.root.join("loopback_http.vn"),
+        include_str!("../library/loopback_http.vn"),
     )
     .unwrap();
-    // No host.rs or Cargo.lock exists: checking Tellur must not build or run Rust.
-    let source = include_str!("../applications/settings/main.tellur");
+    // No host.rs or Cargo.lock exists: checking Villanelle must not build or run Rust.
+    let source = include_str!("../applications/settings/main.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     f.change(
@@ -4079,14 +4072,14 @@ fn rust_adapter_project_checks_unsaved_sources_without_loading_host_code() {
     assert_eq!(f.diagnostics()[0]["code"], "E_TYPE");
     f.change(source, 3);
     assert_eq!(f.diagnostics(), json!([]));
-    let uri = url::Url::from_file_path(f.root.join("http.tellur"))
+    let uri = url::Url::from_file_path(f.root.join("http.vn"))
         .unwrap()
         .to_string();
-    let original = include_str!("../applications/settings/http.tellur");
+    let original = include_str!("../applications/settings/http.vn");
     let invalid = original.replacen("400,", "\"bad status\",", 1);
     f.server.notification(
         "textDocument/didOpen",
-        &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":invalid}}),
+        &json!({"textDocument":{"uri":uri,"languageId":"villanelle","version":1,"text":invalid}}),
     );
     let errors = f.server.diagnostics(&uri);
     let error = &errors["diagnostics"][0];
@@ -4202,7 +4195,7 @@ fn structural_witness_data_is_current_and_distinct_from_message_text() {
 #[test]
 fn grouped_paths_keep_inferred_hover_and_report_unsaved_selection_errors() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/path_groups.tellur");
+    let source = include_str!("../playground/path_groups.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     auto_hover(&f, source, "auto heading", "string heading");
@@ -4446,16 +4439,16 @@ fn imported_history_positions_and_unsaved_dependency_errors_are_current() {
     let mut f = Fixture::new();
     let library =
         "pub control choose(bool flag) exits yes,no {delta flag {true=>exit yes,false=>exit no}}";
-    fs::write(f.root.join("library.tellur"), library).unwrap();
-    let source = "import \"library.tellur\" as lib;\ncontrol main(bool flag) exits done {\n delta lib.choose(flag) {yes=>selected,no=>exit done}\n [selected]:exit done;\n}";
+    fs::write(f.root.join("library.vn"), library).unwrap();
+    let source = "import \"library.vn\" as lib;\ncontrol main(bool flag) exits done {\n delta lib.choose(flag) {yes=>selected,no=>exit done}\n [selected]:exit done;\n}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = history_hover(&f, source, "[selected]");
     assert!(history_text(&h).contains("line 3, column 26"), "{h}");
-    let imported = url::Url::from_file_path(f.root.join("library.tellur"))
+    let imported = url::Url::from_file_path(f.root.join("library.vn"))
         .unwrap()
         .to_string();
-    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":imported,"languageId":"tellur","version":1,"text":library.replace("exit yes","exit unknown")}}));
+    f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":imported,"languageId":"villanelle","version":1,"text":library.replace("exit yes","exit unknown")}}));
     assert!(history_hover(&f, source, "[selected]").is_null());
     f.server.notification(
         "textDocument/didClose",
@@ -4514,13 +4507,11 @@ fn explanation_queries_use_current_utf16_positions_and_refuse_stale_sources() {
 #[test]
 fn outcome_queries_and_target_lists_follow_unsaved_imports_and_close() {
     let mut f = Fixture::new();
-    let library = f.root.join("library.tellur");
+    let library = f.root.join("library.vn");
     let uri = url::Url::from_file_path(&library).unwrap().to_string();
     let text = "control leaf() exits auto {exit missing;}pub control lookup() exits failed {exit delta leaf() {missing=>failed {}};}";
     fs::write(&library, text).unwrap();
-    f.open(
-        "import \"library.tellur\" as lib;control lookup() exits failed {forward lib.lookup();}",
-    );
+    f.open("import \"library.vn\" as lib;control lookup() exits failed {forward lib.lookup();}");
     let query = json!({"kind":"outcome","control":"lookup","outcome":"failed"});
     assert_eq!(
         f.server.explain_targets(&f.uri).unwrap(),
@@ -4537,7 +4528,7 @@ fn outcome_queries_and_target_lists_follow_unsaved_imports_and_close() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|c| c["control"] == "file:library.tellur::leaf" && c["outcome"] == "malformed")
+            .any(|c| c["control"] == "file:library.vn::leaf" && c["outcome"] == "malformed")
     );
     f.server.notification(
         "textDocument/didChange",
@@ -4574,9 +4565,9 @@ fn explanation_requests_require_open_file_and_valid_manifest() {
 fn explanation_serialization_errors_do_not_crash_the_server() {
     use std::os::unix::ffi::OsStringExt;
     let mut f = Fixture::new();
-    let path = f.root.join(std::ffi::OsString::from_vec(
-        b"invalid-\xff.tellur".to_vec(),
-    ));
+    let path = f
+        .root
+        .join(std::ffi::OsString::from_vec(b"invalid-\xff.vn".to_vec()));
     f.uri = url::Url::from_file_path(path).unwrap().to_string();
     f.open("control main() exits done {exit done;}");
     assert_eq!(
@@ -4811,7 +4802,7 @@ fn borrowed_constructor_origin_hover_and_unsaved_diagnostics() {
 #[test]
 fn composed_constructor_hover_and_unsaved_loan_diagnostics() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/composed_construction.tellur");
+    let source = include_str!("../playground/composed_construction.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let line = source
@@ -4850,7 +4841,7 @@ fn composed_constructor_hover_and_unsaved_loan_diagnostics() {
 #[test]
 fn projected_constructor_auto_hovers_and_unsaved_loan_diagnostics() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/projected_construction.tellur");
+    let source = include_str!("../playground/projected_construction.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     for (needle, inferred) in [
@@ -4895,7 +4886,7 @@ fn projected_constructor_auto_hovers_and_unsaved_loan_diagnostics() {
 #[test]
 fn sequential_initializer_hover_and_retained_borrow_diagnostics() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/sequential_initializers.tellur");
+    let source = include_str!("../playground/sequential_initializers.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let (line, text) = source
@@ -4975,11 +4966,11 @@ fn symbolic_constructor_hover_preserves_borrow_modes_and_ordered_origins() {
 #[test]
 fn symbolic_constructor_hover_refreshes_imported_aliases_and_privacy() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("types.tellur");
+    let dependency = f.root.join("types.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub struct box<t> {t secret;pub constructor(t input) {self.secret=move input;}}";
     fs::write(&dependency, valid).unwrap();
-    let source = "import \"types.tellur\" as first;import \"types.tellur\" as lib;control make<item>(item input) exits ready {lib.box<item> value} {exit ready {lib.box<item>(move input)};}control main() exits done {exit done;}";
+    let source = "import \"types.vn\" as first;import \"types.vn\" as lib;control make<item>(item input) exits ready {lib.box<item> value} {exit ready {lib.box<item>(move input)};}control main() exits done {exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "lib.box<item>(move");
@@ -5098,11 +5089,11 @@ fn symbolic_constructor_hover_inside_constructor_uses_lexical_parameters() {
 #[test]
 fn constructor_preparation_diagnostics_refresh_unsaved_privacy_and_hover() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("types.tellur");
+    let dependency = f.root.join("types.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let library = "pub struct message {string text;pub constructor(string input) {self.text=move input;}}pub struct box<t> {t value;pub constructor(t input) {self.value=move input;}}";
     fs::write(&dependency, library).unwrap();
-    let source = "import \"types.tellur\" as types;\ncontrol first() exits ready {types.message value} {exit ready {types.message(\"hello\")};}\ncontrol second<t>(t input) exits ready {types.box<t> value} {exit ready {types.box<t>(move input)};}\ncontrol main() exits done {exit done;}";
+    let source = "import \"types.vn\" as types;\ncontrol first() exits ready {types.message value} {exit ready {types.message(\"hello\")};}\ncontrol second<t>(t input) exits ready {types.box<t> value} {exit ready {types.box<t>(move input)};}\ncontrol main() exits done {exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "types.box<t>(move");
@@ -5140,14 +5131,14 @@ fn constructor_preparation_diagnostics_refresh_unsaved_privacy_and_hover() {
 #[test]
 fn constructor_preparation_diagnostics_keep_imported_related_locations() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("types.tellur");
+    let dependency = f.root.join("types.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid =
         "pub struct message {string text;pub constructor(string input) {self.text=move input;}}";
     fs::write(&dependency, valid.replace("pub constructor", "constructor")).unwrap();
-    let operations = f.root.join("operations.tellur");
-    fs::write(&operations, "import \"types.tellur\" as types;\npub control first() exits ready {types.message value} {exit ready {types.message(\"a\")};}\npub control second() exits ready {types.message value} {exit ready {types.message(\"b\")};}").unwrap();
-    let source = "import \"operations.tellur\" as ops;control main() exits done {delta ops.first() {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
+    let operations = f.root.join("operations.vn");
+    fs::write(&operations, "import \"types.vn\" as types;\npub control first() exits ready {types.message value} {exit ready {types.message(\"a\")};}\npub control second() exits ready {types.message value} {exit ready {types.message(\"b\")};}").unwrap();
+    let source = "import \"operations.vn\" as ops;control main() exits done {delta ops.first() {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
     f.open(source);
     let errors = f.diagnostics();
     assert_eq!(errors.as_array().unwrap().len(), 2, "{errors}");
@@ -5155,10 +5146,7 @@ fn constructor_preparation_diagnostics_keep_imported_related_locations() {
         assert_eq!(e["code"], "E_PRIVATE");
         let related = &e["relatedInformation"][0]["location"];
         assert!(
-            related["uri"]
-                .as_str()
-                .unwrap()
-                .ends_with("operations.tellur"),
+            related["uri"].as_str().unwrap().ends_with("operations.vn"),
             "{e}"
         );
         assert_eq!(related["range"]["start"]["line"], index + 1);
@@ -5218,11 +5206,11 @@ fn generic_bound_preparation_rechecks_untitled_requirements_without_stale_hover(
 #[test]
 fn generic_bound_preparation_refreshes_imported_private_traits_independently() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("requirements.tellur");
+    let dependency = f.root.join("requirements.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub trait first {}\npub trait second {}\nimplement first for string {}\npub control one<t:first>(t input) exits ready {t value} {exit ready {input};}\npub control two<t:second>(t input) exits ready {t value} {exit ready {input};}";
     fs::write(&dependency, valid).unwrap();
-    let source = "import \"requirements.tellur\" as req;control main() exits done {delta req.one<string>(\"hello\") {ready {auto value}=>ready} [ready]:emit(value);exit done;}";
+    let source = "import \"requirements.vn\" as req;control main() exits done {delta req.one<string>(\"hello\") {ready {auto value}=>ready} [ready]:emit(value);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "req.one<string>");
@@ -5304,12 +5292,12 @@ fn inferred_stored_adapter_diagnostics_repair_before_publishing_partial_types() 
 #[test]
 fn inferred_stored_adapter_diagnostics_keep_imported_arm_locations_and_labels() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("jobs.tellur");
+    let dependency = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub control choose(bool flag) exits left {u32 value},right {u32 value} {\nauto saved=delta flag {\ntrue=>delta flag {true=>left {1},false=>left {2}},\nfalse=>right {3}\n};exit saved;}";
     fs::write(&dependency, valid).unwrap();
     let source =
-        "import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.choose(true);}";
+        "import \"jobs.vn\" as jobs;control main() exits auto {forward jobs.choose(true);}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "jobs.choose(true)");
@@ -5390,11 +5378,11 @@ fn inferred_exit_adapter_diagnostics_refresh_selected_payload_and_call_hover() {
 #[test]
 fn inferred_exit_adapter_diagnostics_preserve_imported_generic_ranges() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("jobs.tellur");
+    let dependency = f.root.join("jobs.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "control choose<t>(t input,bool flag) exits auto {\nexit delta flag {\ntrue=>ready {input,1 < 2},\nfalse=>ready {input,2 < 3}\n};}\npub control start() exits ready {string input,bool value_1} {forward choose<string>(\"hello\",true);}";
     fs::write(&dependency, valid).unwrap();
-    let source = "import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.start();}";
+    let source = "import \"jobs.vn\" as jobs;control main() exits auto {forward jobs.start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "jobs.start()");
@@ -5460,12 +5448,12 @@ fn trait_declaration_batches_refresh_after_independent_unsaved_repairs() {
 #[test]
 fn trait_declaration_batches_preserve_imported_locations_and_visibility_repairs() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("interfaces.tellur");
+    let dependency = f.root.join("interfaces.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
     let valid = "pub struct one {string text;}\npub struct two {string text;}\npub trait first {control read(one input) exits done;}\npub trait second {control read(two input) exits done;}\npub control helper() exits done {exit done;}";
     fs::write(&dependency, valid).unwrap();
     let source =
-        "import \"interfaces.tellur\" as api;control main() exits done {forward api.helper();}";
+        "import \"interfaces.vn\" as api;control main() exits done {forward api.helper();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "api.helper()");
@@ -5534,11 +5522,11 @@ fn constructor_definition_batches_repair_before_publishing_generated_contracts()
 #[test]
 fn constructor_definition_batches_refresh_unsaved_imported_files_independently() {
     let mut f = Fixture::new();
-    let dependency = f.root.join("messages.tellur");
+    let dependency = f.root.join("messages.vn");
     let uri = url::Url::from_file_path(&dependency).unwrap().to_string();
-    let valid = include_str!("../playground/constructor_access/messages.tellur");
+    let valid = include_str!("../playground/constructor_access/messages.vn");
     fs::write(&dependency, valid).unwrap();
-    let source = include_str!("../playground/constructor_access/main.tellur");
+    let source = include_str!("../playground/constructor_access/main.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "messages.message(\"First constructor\")");
@@ -5619,11 +5607,11 @@ fn type_annotation_ranges_follow_utf16_unsaved_signatures_and_fresh_hover() {
 #[test]
 fn type_annotation_ranges_keep_multiline_imported_constructor_types_on_repair() {
     let mut f = Fixture::new();
-    let path = f.root.join("messages.tellur");
+    let path = f.root.join("messages.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
-    let valid = include_str!("../playground/constructor_access/messages.tellur");
+    let valid = include_str!("../playground/constructor_access/messages.vn");
     fs::write(&path, valid).unwrap();
-    let source = include_str!("../playground/constructor_access/main.tellur");
+    let source = include_str!("../playground/constructor_access/main.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "messages.message(\"First constructor\")");
@@ -5677,11 +5665,11 @@ fn type_annotation_ranges_keep_multiline_imported_constructor_types_on_repair() 
 #[test]
 fn loop_type_annotation_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub control work() exits done {\r\n loop pending(vector<string> values=[]) {drop(values);exit done;}\r\n}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -5726,12 +5714,12 @@ fn loop_type_annotation_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn local_type_annotation_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid =
         "pub control work() exits done {\r\n vector<string> values=[];drop(values);exit done;\r\n}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -5776,11 +5764,11 @@ fn local_type_annotation_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn public_type_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "struct hidden {u32 n;}pub struct view {pub vector<string> values;}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -5822,11 +5810,11 @@ fn public_type_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn named_completion_type_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "outcome hidden<t> {done}pub outcome visible<t> {done}pub control helper<t>() exits visible<t> {exit done;}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -5868,9 +5856,10 @@ fn named_completion_type_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn imported_async_permission_and_unsaved_edits_update_diagnostics_and_hover() {
     let mut f = Fixture::new();
-    let source = "import \"worker.tellur\" as worker;\ncontrol main() exits done {forward run worker.work();}";
+    let source =
+        "import \"worker.vn\" as worker;\ncontrol main() exits done {forward run worker.work();}";
     let worker = "pub async control work() exits done {exit done;}";
-    fs::write(f.root.join("worker.tellur"), worker).unwrap();
+    fs::write(f.root.join("worker.vn"), worker).unwrap();
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "worker.work()");
@@ -5887,13 +5876,13 @@ fn imported_async_permission_and_unsaved_edits_update_diagnostics_and_hover() {
             .unwrap()
             .contains("does not catch faults")
     );
-    let uri = url::Url::from_file_path(f.root.join("worker.tellur"))
+    let uri = url::Url::from_file_path(f.root.join("worker.vn"))
         .unwrap()
         .to_string();
     let synchronous = worker.replace("async ", "");
     f.server.notification(
         "textDocument/didOpen",
-        &json!({"textDocument":{"uri":uri,"languageId":"tellur","version":1,"text":synchronous}}),
+        &json!({"textDocument":{"uri":uri,"languageId":"villanelle","version":1,"text":synchronous}}),
     );
     assert_eq!(f.diagnostics()[0]["code"], "E_ASYNC");
     let start = source.lines().nth(1).unwrap().find("run worker").unwrap();
@@ -5953,7 +5942,7 @@ fn cold_task_auto_hover_and_unsaved_ownership_repair() {
 #[test]
 fn borrowed_task_loan_diagnostics_and_unsaved_repair_refresh_auto_hover() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/borrowed_tasks.tellur");
+    let source = include_str!("../playground/borrowed_tasks.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let h = hover_at(&f, source, "auto pending");
@@ -5980,7 +5969,7 @@ fn borrowed_task_loan_diagnostics_and_unsaved_repair_refresh_auto_hover() {
 #[test]
 fn awaited_borrowed_result_hover_and_origin_diagnostics_refresh_after_repair() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/task_results.tellur");
+    let source = include_str!("../playground/task_results.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let pending = hover_at(&f, source, "auto pending");
@@ -6014,7 +6003,7 @@ fn awaited_borrowed_result_hover_and_origin_diagnostics_refresh_after_repair() {
 #[test]
 fn contained_task_capture_loans_and_auto_types_refresh_after_unsaved_repair() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/contained_tasks.tellur");
+    let source = include_str!("../playground/contained_tasks.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let pending = hover_at(&f, source, "auto pending");
@@ -6046,7 +6035,7 @@ fn contained_task_capture_loans_and_auto_types_refresh_after_unsaved_repair() {
 #[test]
 fn whole_carrier_task_loans_and_auto_types_refresh_after_unsaved_repair() {
     let mut f = Fixture::new();
-    let source = include_str!("../playground/carrier_tasks.tellur");
+    let source = include_str!("../playground/carrier_tasks.vn");
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let pending = hover_at(&f, source, "auto pending");
@@ -6078,11 +6067,11 @@ fn whole_carrier_task_loans_and_auto_types_refresh_after_unsaved_repair() {
 #[test]
 fn named_completion_origin_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome reply<t>['a] {ready {ref t value <- 'a}}pub control helper<t>(ref t input) exits reply<t>[input] {exit ready {input};}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -6124,11 +6113,11 @@ fn named_completion_origin_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn return_origin_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub control helper<t>(ref t input) exits ready {ref t value from input} {exit ready {input};}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -6170,11 +6159,11 @@ fn return_origin_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn payload_origin_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct view<t>['a] {pub ref t value <- 'a;}pub control helper<t>(ref t input) exits ready {view<t>[input] value} {exit ready {view<t> {value:input}};}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -6216,7 +6205,7 @@ fn payload_origin_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
     let mut f = Fixture::new();
-    let text = include_str!("../playground/structured_tasks.tellur");
+    let text = include_str!("../playground/structured_tasks.vn");
     f.open(text);
     assert_eq!(f.diagnostics(), json!([]));
     let spawn = hover_at(&f, text, "spawn work").to_string();
@@ -6245,7 +6234,7 @@ fn source_task_hovers_and_diagnostics_describe_explicit_handoffs() {
 fn task_set_hovers_and_unsaved_drain_diagnostics() {
     let mut f = Fixture::new();
     // The editor fixture manifest has no text builtins; keep the task operations.
-    let text = &include_str!("../playground/task_sets.tellur")
+    let text = &include_str!("../playground/task_sets.vn")
         .replace("    emit(u32_text(count(borrow active)));\n", "")
         .replace("emit(concat(\"joined \", name));", "emit(name);");
     f.open(text);
@@ -6271,11 +6260,11 @@ fn task_set_hovers_and_unsaved_drain_diagnostics() {
 #[test]
 fn pending_children_recheck_unsaved_helper_inline_boundaries() {
     let mut f = Fixture::new();
-    let path = f.root.join("helpers.tellur");
+    let path = f.root.join("helpers.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "async control work() exits done {yield;exit done;} pub control helper() exits done {emit(\"helper\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"helpers.tellur\" as helpers; async control work() exits done {yield;exit done;} async control startup() exits done {auto child=spawn work();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}";
+    let source = "import \"helpers.vn\" as helpers; async control work() exits done {yield;exit done;} async control startup() exits done {auto child=spawn work();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto child");
@@ -6326,11 +6315,11 @@ fn unsaved_producer_handoffs_recheck_spawn_settlement_obligations() {
         include_str!("../playground/manifest.json"),
     )
     .unwrap();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub async control finish(handle h) exits done {delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:yield;exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; async control startup(handle h) exits done {auto child=spawn worker.finish(h);await child;exit done;}";
+    let source = "import \"worker.vn\" as worker; async control startup(handle h) exits done {auto child=spawn worker.finish(h);await child;exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto child");
@@ -6369,11 +6358,11 @@ fn parent_await_rechecks_unsaved_producer_stop_permissions() {
         include_str!("../playground/manifest.json"),
     )
     .unwrap();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub async control finish(handle h) exits done {delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:yield;exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; async control work() exits done {yield;exit done;} async control startup(handle h) exits done {auto child=spawn work();await worker.finish(h);await child;exit done;}";
+    let source = "import \"worker.vn\" as worker; async control work() exits done {yield;exit done;} async control startup(handle h) exits done {auto child=spawn work();await worker.finish(h);await child;exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto child");
@@ -6410,11 +6399,11 @@ fn helper_call_rechecks_unsaved_producer_stop_permissions() {
         include_str!("../playground/manifest.json"),
     )
     .unwrap();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub control helper(handle h) exits done {forward run finish(h);} pub async control finish(handle h) exits done {delta close(h) {closed=>closed,failed {close_error e}=>failed} [closed|failed]:yield;exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; async control work() exits done {yield;exit done;} async control startup(handle h) exits done {auto child=spawn work();worker.helper(h);await child;exit done;}";
+    let source = "import \"worker.vn\" as worker; async control work() exits done {yield;exit done;} async control startup(handle h) exits done {auto child=spawn work();worker.helper(h);await child;exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto child");
@@ -6446,7 +6435,7 @@ fn helper_call_rechecks_unsaved_producer_stop_permissions() {
 #[test]
 fn borrowed_spawn_unsaved_conflict_repair_restores_task_hover() {
     let mut f = Fixture::new();
-    let text = include_str!("../playground/borrowed_spawn.tellur");
+    let text = include_str!("../playground/borrowed_spawn.vn");
     f.open(text);
     assert_eq!(f.diagnostics(), json!([]));
     assert!(
@@ -6470,11 +6459,11 @@ fn borrowed_spawn_unsaved_conflict_repair_restores_task_hover() {
 #[test]
 fn spawned_result_origins_follow_unsaved_producer_contracts() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub async control lend(ref string a,ref string b) exits ready {ref string value from a} {yield;exit ready {a};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto value}=>ready} [ready]:b=\"free\";emit(value);exit done;}control main() exits done {forward run startup();}";
+    let source = "import \"worker.vn\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto value}=>ready} [ready]:b=\"free\";emit(value);exit done;}control main() exits done {forward run startup();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto value");
@@ -6500,11 +6489,11 @@ fn spawned_result_origins_follow_unsaved_producer_contracts() {
 #[test]
 fn spawned_carrier_origins_follow_unsaved_import_contracts() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct view['a,'b] {pub ref string left <- 'a;pub ref string right <- 'b;}pub async control lend(view input) exits ready {ref string value from input['a]} {yield;exit ready {input.left};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(worker.view {borrow a,borrow b});delta await task {ready {auto value}=>ready} [ready]:b=\"free\";emit(value);exit done;}control main() exits done {forward run startup();}";
+    let source = "import \"worker.vn\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(worker.view {borrow a,borrow b});delta await task {ready {auto value}=>ready} [ready]:b=\"free\";emit(value);exit done;}control main() exits done {forward run startup();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto value");
@@ -6530,7 +6519,7 @@ fn spawned_carrier_origins_follow_unsaved_import_contracts() {
 #[test]
 fn flat_spawn_capture_unsaved_conflict_and_repair_preserve_hover() {
     let mut f = Fixture::new();
-    let text = include_str!("../playground/carrier_spawn.tellur");
+    let text = include_str!("../playground/carrier_spawn.vn");
     f.open(text);
     assert_eq!(f.diagnostics(), json!([]));
     assert!(
@@ -6556,11 +6545,11 @@ fn flat_spawn_capture_unsaved_conflict_and_repair_preserve_hover() {
 #[test]
 fn spawned_carrier_results_follow_unsaved_origins() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct view['a] {pub ref string text <- 'a;}pub async control lend(ref string a,ref string b) exits ready {view[a] value} {yield;exit ready {view {a}};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto result}=>ready} [ready]:b=\"free\";emit(result.text);exit done;}control main() exits done {forward run startup();}";
+    let source = "import \"worker.vn\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto result}=>ready} [ready]:b=\"free\";emit(result.text);exit done;}control main() exits done {forward run startup();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6584,11 +6573,11 @@ fn spawned_carrier_results_follow_unsaved_origins() {
 #[test]
 fn nested_spawned_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct leaf['a] {pub ref string text <- 'a;}pub struct view['a,'b] {pub leaf['a] left;pub leaf['b] right;}pub async control lend(ref string a,ref string b) exits ready {view[a,b] value} {yield;exit ready {view {leaf {a},leaf {b}}};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto result}=>ready} [ready]:b=\"free\";emit(result.left.text);exit done;}control main() exits done {forward run startup();}";
+    let source = "import \"worker.vn\" as worker;async control startup() exits done {mutable string a=\"a\";mutable string b=\"b\";auto task=spawn worker.lend(borrow a,borrow b);delta await task {ready {auto result}=>ready} [ready]:b=\"free\";emit(result.left.text);exit done;}control main() exits done {forward run startup();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6613,11 +6602,11 @@ fn nested_spawned_result_origins_follow_unsaved_imports() {
 #[test]
 fn tagged_spawned_result_permissions_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub variant choice['a,'b] {left {ref string text <- 'a},right {ref string text <- 'b},empty} pub async control lend(ref string a,ref string b) exits ready {choice[a,b] value} {yield;exit ready {choice.left {a}};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";auto child=spawn worker.lend(borrow a,borrow b);delta await child {ready {auto result}=>ready} [ready]:delta result {left {auto left}=>left,right {auto right}=>right,empty=>empty} [left]:b=\"free\";emit(left);exit done;[right]:a=\"free\";emit(right);exit done;[empty]:exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";auto child=spawn worker.lend(borrow a,borrow b);delta await child {ready {auto result}=>ready} [ready]:delta result {left {auto left}=>left,right {auto right}=>right,empty=>empty} [left]:b=\"free\";emit(left);exit done;[right]:a=\"free\";emit(right);exit done;[empty]:exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6642,11 +6631,11 @@ fn tagged_spawned_result_permissions_follow_unsaved_imports() {
 #[test]
 fn outcome_spawned_result_permissions_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome choice['a,'b] {left {ref string text <- 'a},right {ref string text <- 'b},empty} pub async control lend(ref string a,ref string b) exits ready {choice[a,b] value} {yield;exit ready {choice.left {a}};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";auto child=spawn worker.lend(borrow a,borrow b);delta await child {ready {auto result}=>ready} [ready]:delta result {left {auto left}=>left,right {auto right}=>right,empty=>empty} [left]:b=\"free\";emit(left);exit done;[right]:a=\"free\";emit(right);exit done;[empty]:exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";auto child=spawn worker.lend(borrow a,borrow b);delta await child {ready {auto result}=>ready} [ready]:delta result {left {auto left}=>left,right {auto right}=>right,empty=>empty} [left]:b=\"free\";emit(left);exit done;[right]:a=\"free\";emit(right);exit done;[empty]:exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6671,11 +6660,11 @@ fn outcome_spawned_result_permissions_follow_unsaved_imports() {
 #[test]
 fn borrowed_record_spawn_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct pair['a,'b] {pub ref string left <- 'a;pub ref string right <- 'b;} pub async control first(ref pair input) exits ready {ref string value from input['a]} {yield;exit ready {input.left};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.pair saved=worker.pair {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready} [ready]:drop(saved);b=\"free\";emit(result);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.pair saved=worker.pair {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready} [ready]:drop(saved);b=\"free\";emit(result);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6700,11 +6689,11 @@ fn borrowed_record_spawn_origins_follow_unsaved_imports() {
 #[test]
 fn borrowed_tagged_spawn_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub variant choice['a,'b] {held {ref string left <- 'a,ref string right <- 'b},empty} pub async control first(ref choice input) exits ready {ref string value from input['a]},empty {yield;delta input {held {auto a,auto b}=>held,empty=>empty} [held]:exit ready {a};[empty]:exit empty;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice saved=worker.choice.held {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready,empty=>empty} [ready]:drop(saved);b=\"free\";emit(result);a=\"free\";exit done;[empty]:drop(saved);exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice saved=worker.choice.held {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready,empty=>empty} [ready]:drop(saved);b=\"free\";emit(result);a=\"free\";exit done;[empty]:drop(saved);exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6729,11 +6718,11 @@ fn borrowed_tagged_spawn_origins_follow_unsaved_imports() {
 #[test]
 fn borrowed_outcome_spawn_origins_and_caller_handling_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome choice['a,'b] {held {ref string left <- 'a,ref string right <- 'b},empty} pub async control first(ref choice input) exits ready {ref string value from input['a]},empty {yield;delta input {held {auto a,auto b}=>held,empty=>empty} [held]:exit ready {a};[empty]:exit empty;} pub control consume(choice input) exits done {delta input {held {auto left,auto right}=>held,empty=>empty} [entry]:exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice saved=worker.choice.held {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready,empty=>empty} [ready]:worker.consume(saved);b=\"free\";emit(result);a=\"free\";exit done;[empty]:worker.consume(saved);exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice saved=worker.choice.held {borrow a,borrow b};auto child=spawn worker.first(borrow saved);delta await child {ready {auto result}=>ready,empty=>empty} [ready]:worker.consume(saved);b=\"free\";emit(result);a=\"free\";exit done;[empty]:worker.consume(saved);exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6758,11 +6747,11 @@ fn borrowed_outcome_spawn_origins_and_caller_handling_follow_unsaved_imports() {
 #[test]
 fn whole_borrowed_record_spawn_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct view['a] {pub ref string text <- 'a;} pub async control lend(ref view a,ref view b) exits ready {ref view[a['a]] value from a} {yield;exit ready {a};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view {borrow a};worker.view second=worker.view {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:drop(second);b=\"free\";emit(result.text);drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view {borrow a};worker.view second=worker.view {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:drop(second);b=\"free\";emit(result.text);drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6788,11 +6777,11 @@ fn whole_borrowed_record_spawn_result_origins_follow_unsaved_imports() {
 #[test]
 fn whole_borrowed_variant_spawn_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub variant choice['a] {held {ref string text <- 'a},empty} pub async control lend(ref choice a,ref choice b) exits ready {ref choice[a['a]] value from a} {yield;exit ready {a};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice first=worker.choice.held {borrow a};worker.choice second=worker.choice.held {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:drop(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty} [held]:drop(first);emit(text);a=\"free\";exit done;[empty]:drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice first=worker.choice.held {borrow a};worker.choice second=worker.choice.held {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:drop(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty} [held]:drop(first);emit(text);a=\"free\";exit done;[empty]:drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6818,11 +6807,11 @@ fn whole_borrowed_variant_spawn_result_origins_follow_unsaved_imports() {
 #[test]
 fn whole_borrowed_outcome_spawn_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome choice['a] {held {ref string text <- 'a},empty} pub control consume(choice input) exits done {delta input {held {auto ignored}=>held,empty=>empty}[entry]:exit done;} pub async control lend(ref choice a,ref choice b) exits ready {ref choice[a['a]] value from a} {yield;exit ready {a};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice first=worker.choice.held {borrow a};worker.choice second=worker.choice.held {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:worker.consume(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty} [held]:worker.consume(first);emit(text);a=\"free\";exit done;[empty]:worker.consume(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.choice first=worker.choice.held {borrow a};worker.choice second=worker.choice.held {borrow b};auto child=spawn worker.lend(borrow first,borrow second);delta await child {ready {auto result}=>ready} [ready]:worker.consume(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty} [held]:worker.consume(first);emit(text);a=\"free\";exit done;[empty]:worker.consume(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6848,11 +6837,11 @@ fn whole_borrowed_outcome_spawn_result_origins_follow_unsaved_imports() {
 #[test]
 fn record_chain_spawn_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct view['a] {pub ref string text <- 'a;}pub struct pair['left,'a,'right,'b] {pub ref view['a] first <- 'left;pub ref view['b] second <- 'right;}pub async control lend(pair input) exits ready {ref view[input['a]] value from input['left]} {yield;exit ready {input.first};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view {borrow a};worker.view second=worker.view {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:drop(second);b=\"free\";emit(result.text);drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view {borrow a};worker.view second=worker.view {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:drop(second);b=\"free\";emit(result.text);drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6878,11 +6867,11 @@ fn record_chain_spawn_result_origins_follow_unsaved_imports() {
 #[test]
 fn tagged_chain_spawn_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub variant view['a] {held {ref string text <- 'a},empty}pub struct pair['left,'a,'right,'b] {pub ref view['a] first <- 'left;pub ref view['b] second <- 'right;}pub async control lend(pair input) exits ready {ref view[input['a]] value from input['left]} {yield;exit ready {input.first};}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view.held {borrow a};worker.view second=worker.view.held {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:drop(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty}[held]:emit(text);[ready]:drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view.held {borrow a};worker.view second=worker.view.held {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:drop(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty}[held]:emit(text);[ready]:drop(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6908,11 +6897,11 @@ fn tagged_chain_spawn_result_origins_follow_unsaved_imports() {
 #[test]
 fn outcome_chain_spawn_result_origins_follow_unsaved_imports() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome view['a] {held {ref string text <- 'a},empty}pub struct pair['left,'a,'right,'b] {pub ref view['a] first <- 'left;pub ref view['b] second <- 'right;}pub async control lend(pair input) exits ready {ref view[input['a]] value from input['left]} {yield;exit ready {input.first};}pub control consume(view input) exits done {delta input {held {auto ignored}=>held,empty=>empty}[entry]:exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view.held {borrow a};worker.view second=worker.view.held {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:worker.consume(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty}[held]:emit(text);[ready]:worker.consume(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
+    let source = "import \"worker.vn\" as worker;async control start() exits done {mutable string a=\"a\";mutable string b=\"b\";worker.view first=worker.view.held {borrow a};worker.view second=worker.view.held {borrow b};worker.pair links=worker.pair {borrow first,borrow second};auto child=spawn worker.lend(links);delta await child {ready {auto result}=>ready}[ready]:worker.consume(second);b=\"free\";delta result {held {auto text}=>held,empty=>empty}[held]:emit(text);[ready]:worker.consume(first);a=\"free\";exit done;}control main() exits done {forward run start();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto result");
@@ -6938,11 +6927,11 @@ fn outcome_chain_spawn_result_origins_follow_unsaved_imports() {
 #[test]
 fn imported_boundary_handoffs_keep_public_origins_and_unsaved_loan_repairs() {
     let mut f = Fixture::new();
-    let path = f.root.join("helpers.tellur");
+    let path = f.root.join("helpers.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let helper = "async control pause() exits done {yield;exit done;} pub trait reader {control read(ref self input) exits ready {ref self value from input} faults;} implement reader for string {control read(ref self input) exits ready {ref self value from input} faults {fault boundary {run pause();} contingency [] {escalate;}exit ready {input};}} pub control helper<t:reader>(ref t input) exits ready {ref t value from input} faults {forward reader<t>.read(input);}";
     fs::write(&path, helper).unwrap();
-    let source = "import \"helpers.tellur\" as helpers; async control worker() exits done {yield;exit done;} async control startup() exits done {string text=\"parent\";auto child=spawn worker();delta helpers.helper<string>(borrow text) {ready {auto value}=>ready} [ready]:emit(value);await child;exit done;} control main() exits done {forward run startup();}";
+    let source = "import \"helpers.vn\" as helpers; async control worker() exits done {yield;exit done;} async control startup() exits done {string text=\"parent\";auto child=spawn worker();delta helpers.helper<string>(borrow text) {ready {auto value}=>ready} [ready]:emit(value);await child;exit done;} control main() exits done {forward run startup();}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let hover = hover_at(&f, source, "helpers.helper<string>").to_string();
@@ -6980,11 +6969,11 @@ fn imported_boundary_handoffs_keep_public_origins_and_unsaved_loan_repairs() {
 #[test]
 fn schema_origin_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct view<t>['a] {pub ref t value <- 'a;}pub struct holder<t>['a] {pub ref view<t>['a] value <- 'a;}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7035,11 +7024,11 @@ fn schema_origin_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn schema_group_ranges_follow_unsaved_imports_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome view<t>['a] {ready {ref t value <- 'a}}pub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7086,11 +7075,11 @@ fn schema_group_ranges_follow_unsaved_imports_and_restore_hover() {
 #[test]
 fn schema_recovery_tracks_partial_unsaved_dependency_repairs_without_stale_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct first<t>['a] {pub ref t value <- 'a;}\r\npub struct holder<t>['a] {pub first<t>['a] value;}\r\npub outcome second<t>['b] {ready {ref t value <- 'b}}\r\npub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7170,11 +7159,11 @@ fn schema_recovery_budget_is_visible_and_clears_after_repair() {
 #[test]
 fn contributor_ranges_follow_unsaved_dependency_text_and_clear_on_repair() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "control leaf(bool flag) exits auto {delta flag {true=>exit first,false=>exit first}}\r\ncontrol middle(bool flag) exits auto {forward leaf(flag);}\r\npub control work(bool flag) exits first {forward middle(flag);}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work(true);exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work(true);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7231,11 +7220,11 @@ fn contributor_ranges_follow_unsaved_dependency_text_and_clear_on_repair() {
 #[test]
 fn public_shape_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub control first<t>(t input) exits ready {t value} {exit ready {input};}\r\npub control second<t>(t input) exits plain, ready {t value} {exit ready {input};}\r\npub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7295,11 +7284,11 @@ fn public_shape_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
 #[test]
 fn missing_public_origin_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub outcome reply['a] {ready {ref string value <- 'a}}\r\npub control first(ref string input) exits ready {ref string value from input} {exit ready {input};}\r\npub control second(ref string input) exits reply[input] {exit ready {input};}\r\npub control work() exits done {exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7356,11 +7345,11 @@ fn missing_public_origin_ranges_follow_unsaved_partial_repairs_and_restore_hover
 #[test]
 fn declared_contributor_ranges_follow_unsaved_headers_and_clear_on_repair() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "control leaf(bool flag) exits first {delta flag {true=>exit first,false=>exit first}}\r\ncontrol middle(bool flag) exits auto {forward leaf(flag);}\r\npub control work(bool flag) exits first {forward middle(flag);}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work(true);exit done;}";
+    let source = "import \"worker.vn\" as worker; control main() exits done {auto text=\"x\";drop(text);worker.work(true);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7416,11 +7405,11 @@ fn declared_contributor_ranges_follow_unsaved_headers_and_clear_on_repair() {
 #[test]
 fn implementation_preparation_batches_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7481,11 +7470,11 @@ fn implementation_preparation_batches_follow_unsaved_partial_repairs_and_restore
 #[test]
 fn associated_normalization_batches_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "trait reader {type item;type mirror;control read(self input) exits done;}\r\nimplement reader for u32 {type item=string;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.mirror text=\"x\";reader<string>.item number=1;drop(text);drop(number);reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7539,11 +7528,11 @@ fn associated_normalization_batches_follow_unsaved_partial_repairs_and_restore_h
 #[test]
 fn implementation_permission_batches_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7611,11 +7600,11 @@ fn implementation_permission_batches_follow_unsaved_partial_repairs_and_restore_
 #[test]
 fn implementation_conformance_batches_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7682,11 +7671,11 @@ fn implementation_conformance_batches_follow_unsaved_partial_repairs_and_restore
 #[test]
 fn implementation_completion_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7755,11 +7744,11 @@ fn implementation_completion_ranges_follow_unsaved_partial_repairs_and_restore_h
 #[test]
 fn implementation_parameter_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7825,11 +7814,11 @@ fn implementation_parameter_ranges_follow_unsaved_partial_repairs_and_restore_ho
 #[test]
 fn associated_assignment_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7898,11 +7887,11 @@ fn associated_assignment_ranges_follow_unsaved_partial_repairs_and_restore_hover
 #[test]
 fn associated_concrete_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "struct hidden {u32 value;} pub trait reader {type item;type mirror;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -7987,11 +7976,11 @@ fn associated_concrete_ranges_follow_unsaved_partial_repairs_and_restore_hover()
 #[test]
 fn associated_instantiation_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct box<t> {t value;} pub trait reader {type item;type mirror;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8053,11 +8042,11 @@ fn associated_instantiation_ranges_follow_unsaved_partial_repairs_and_restore_ho
 #[test]
 fn implementation_target_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub struct box<t> {t value;} pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8116,11 +8105,11 @@ fn implementation_target_ranges_follow_unsaved_partial_repairs_and_restore_hover
 #[test]
 fn implementation_trait_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8185,11 +8174,11 @@ fn implementation_trait_ranges_follow_unsaved_partial_repairs_and_restore_hover(
 #[test]
 fn trait_member_duplicate_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8258,11 +8247,11 @@ fn trait_member_duplicate_ranges_follow_unsaved_partial_repairs_and_restore_hove
 #[test]
 fn trait_signature_duplicate_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8331,11 +8320,11 @@ fn trait_signature_duplicate_ranges_follow_unsaved_partial_repairs_and_restore_h
 #[test]
 fn trait_exit_duplicate_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8416,11 +8405,11 @@ fn trait_exit_duplicate_ranges_follow_unsaved_partial_repairs_and_restore_hover(
 #[test]
 fn trait_inference_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8502,11 +8491,11 @@ fn trait_inference_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
 #[test]
 fn trait_generic_profile_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8588,11 +8577,11 @@ fn trait_generic_profile_ranges_follow_unsaved_partial_repairs_and_restore_hover
 #[test]
 fn trait_legacy_profile_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {type item:copy;type mirror:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;type mirror=item;control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {type item=u32;type mirror=item;control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8677,11 +8666,11 @@ fn trait_legacy_profile_ranges_follow_unsaved_partial_repairs_and_restore_hover(
 #[test]
 fn implementation_async_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait a_sync {@contingent control read(self input) exits done;} pub trait b_async {async control read(self input) exits done;}\r\nimplement a_sync for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement b_async for string {async control read(self second) exits done {exit done;}}\r\npub control work() exits done {a_sync<u32>.read(1);run b_async<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.a_sync<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.a_sync<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8750,11 +8739,11 @@ fn implementation_async_ranges_follow_unsaved_partial_repairs_and_restore_hover(
 #[test]
 fn implementation_fault_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {@contingent control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8825,11 +8814,11 @@ fn implementation_fault_ranges_follow_unsaved_partial_repairs_and_restore_hover(
 #[test]
 fn implementation_contingent_ranges_follow_unsaved_partial_repairs_and_restore_hover() {
     let mut f = Fixture::new();
-    let path = f.root.join("worker.tellur");
+    let path = f.root.join("worker.vn");
     let uri = url::Url::from_file_path(&path).unwrap().to_string();
     let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     fs::write(&path, valid).unwrap();
-    let source = "import \"worker.tellur\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
+    let source = "import \"worker.vn\" as worker;control main() exits done {auto text=\"x\";drop(text);worker.work();worker.reader<u32>.read(1);exit done;}";
     f.open(source);
     assert_eq!(f.diagnostics(), json!([]));
     let initial = hover_at(&f, source, "auto text");
@@ -8949,16 +8938,16 @@ fn complete_at(f: &Fixture, source: &str, typed: &str) -> Vec<Value> {
 #[test]
 fn collection_discovery_edits_three_real_calls_and_preserves_their_contracts() {
     let mut f = Fixture::new();
-    let example = include_str!("../examples/collection_discovery/main.tellur")
-        .replace("../../library/membership.tellur", "membership.tellur");
+    let example = include_str!("../examples/collection_discovery/main.vn")
+        .replace("../../library/membership.vn", "membership.vn");
     fs::write(
-        f.root.join("membership.tellur"),
-        include_str!("../library/membership.tellur"),
+        f.root.join("membership.vn"),
+        include_str!("../library/membership.vn"),
     )
     .unwrap();
     fs::write(
-        f.root.join("sequences.tellur"),
-        include_str!("../examples/collection_discovery/sequences.tellur"),
+        f.root.join("sequences.vn"),
+        include_str!("../examples/collection_discovery/sequences.vn"),
     )
     .unwrap();
     for (call, typed, label, inserted, effect, argument, fill) in [
@@ -9010,7 +8999,7 @@ fn collection_discovery_edits_three_real_calls_and_preserves_their_contracts() {
 fn dot_discovery_uses_open_imports_receiver_permissions_and_utf16_ranges() {
     let mut f = Fixture::new();
     f.server.initialize(&json!({"capabilities":{"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}}}));
-    let module = f.root.join("api.tellur");
+    let module = f.root.join("api.vn");
     fs::write(
         &module,
         "pub control stale(ref vector<u32> v) exits done {exit done;}",
@@ -9018,7 +9007,7 @@ fn dot_discovery_uses_open_imports_receiver_permissions_and_utf16_ranges() {
     .unwrap();
     let api = "pub control read<t>(ref vector<t> v,u32 i) exits done {exit done;} pub control edit(ref mutable vector<u32> v) exits done {exit done;} pub control take(vector<u32> v) exits done {exit done;} control hidden(ref vector<u32> v) exits done {exit done;}";
     f.server.notification("textDocument/didOpen",&json!({"textDocument":{"uri":url::Url::from_file_path(module).unwrap().to_string(),"text":api,"version":1}}));
-    let source = "import \"api.tellur\" as tools;\r\ncontrol run(ref vector<u32> values) exits done {emit(\"😀\"); delta values.read {done=>exit done} }";
+    let source = "import \"api.vn\" as tools;\r\ncontrol run(ref vector<u32> values) exits done {emit(\"😀\"); delta values.read {done=>exit done} }";
     f.open(source);
     let items = complete_at(&f, source, "values.re");
     assert_eq!(items.len(), 1);
@@ -9085,8 +9074,8 @@ fn dot_discovery_uses_open_imports_receiver_permissions_and_utf16_ranges() {
 fn discovery_preserves_record_fields_and_imported_type_identity() {
     let mut f = Fixture::new();
     let module = "pub struct row { pub string title; u32 internal; } pub control inspect(ref vector<row> rows) exits done {exit done;}";
-    fs::write(f.root.join("data.tellur"), module).unwrap();
-    let source = "import \"data.tellur\" as lib; struct row { u32 count; } control main(ref row local, ref lib.row other,ref vector<row> rows,ref vector<lib.row> matches) exits done {delta rows. {done=>exit done}}";
+    fs::write(f.root.join("data.vn"), module).unwrap();
+    let source = "import \"data.vn\" as lib; struct row { u32 count; } control main(ref row local, ref lib.row other,ref vector<row> rows,ref vector<lib.row> matches) exits done {delta rows. {done=>exit done}}";
     for (iteration, (name, labels)) in [
         ("rows", vec![]),
         ("matches", vec!["inspect"]),

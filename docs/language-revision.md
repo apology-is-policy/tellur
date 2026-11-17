@@ -1,6 +1,10 @@
-# Tellur language revision: controls, values, outcomes, and tasks
+# Villanelle language revision: controls, values, outcomes, and tasks
 
 ## Active checkpoint queue
+
+### Language name, 17 November 2026
+
+The language is now Villanelle. Sources use `.vn` and the compiler is `vnc`. Borrowed ordered map traversal remains the next language-library experiment. [Migration guide](language-reference.md#villanelle-name-and-migration)
 
 ### Standard library direction, 17 November 2026
 
@@ -17,7 +21,7 @@ in development. Scheduled backend checks are paused.
 
 | Original milestone | Available today | Open work |
 | --- | --- | --- |
-| 1. Executable syntax | Named paths, selectors, explicit exits and reusable controls. The [file loader](../examples/load.tellur), [port parser](../examples/port.tellur) and [retry example](../examples/fetch_retry.tellur) exercise the original cases. | Measure how readily a reader can identify the source of a new outcome and its consequence in a caller. |
+| 1. Executable syntax | Named paths, selectors, explicit exits and reusable controls. The [file loader](../examples/load.vn), [port parser](../examples/port.vn) and [retry example](../examples/fetch_retry.vn) exercise the original cases. | Measure how readily a reader can identify the source of a new outcome and its consequence in a caller. |
 | 2. Values and references | Moves, shared and exclusive borrows, checked resource completion and declared result origins across calls. | Abstract origin-shape bounds for generic and associated types. |
 | 3. Collections | Arrays, vectors, maps, borrowed lookup and explicit missing-key and bounds outcomes. | Borrowed slices, iterators and public origins for reference-bearing collection elements. |
 | 4. Outcomes and transformations | Capture and forward named outcomes, route alternatives, certify graph expansion and extract checked control tails. | General expression-position adapters, extraction across arbitrary graph cuts and a checked correspondence between original and extracted paths. |
@@ -57,7 +61,7 @@ defaults and failure policy. P4d now adds checked source and manifest call contr
 alongside the selected-history explanation, including imported names, concrete generic
 calls and fresh unsaved dependencies. Specialized callable forms remain a bounded
 editor follow-up. P5b.2b now extracts bounded loopback HTTP transport, with public
-Tellur contracts, unchanged retained-resource mechanisms and an independent greeting
+Villanelle contracts, unchanged retained-resource mechanisms and an independent greeting
 service. This source-library checkpoint runs on the existing 0.76 compiler and editor.
 P2c batches independent public contract-shape and concrete signature errors.
 P2d extends this to named completion-origin bindings after shared schemas validate,
@@ -383,7 +387,7 @@ delivers explicit executable status policies through named outcome annotations
 and exhaustive entry mappings.
 
 Release 0.50 delivers P5b.1: the settings application now serves bounded, sequential
-loopback HTTP with Tellur routing, validation, status mapping and resource completion.
+loopback HTTP with Villanelle routing, validation, status mapping and resource completion.
 Release 0.56 delivers P4a formatting through the CLI and VS Code, preserving label
 extent, optional groups, comments and literals. Release 0.57 delivers P4b.1 checked
 public contract snapshots, structural diffs, an editor JSON view and the settings
@@ -419,7 +423,7 @@ disjoint writes and forgets unknown mutation or loop-carried lineage. See
 [diagnostic coverage and limits](reference/diagnostics-and-limits.md).
 
 Release 0.45 starts I1/P5: typed Rust source adapters, explicit locked dependencies
-and a persistent settings CLI with Tellur policy and host file/JSON mechanisms.
+and a persistent settings CLI with Villanelle policy and host file/JSON mechanisms.
 Opaque retained Rust resources are delivered in 0.49. HTTP and async bindings
 remain later slices.
 
@@ -455,7 +459,7 @@ Whole reference-bearing aggregate reference results follow in 0.39.
 Release 0.37 adds named-outcome and builtin-option origin schemas, including
 `exits reply[input]` and inherited option groups.
 
-Release 0.36 adopts the name **Tellur**, with canonical compiler/server commands,
+Release 0.36 adopted the name **Tellur**, with canonical compiler/server commands,
 source extension, editor identity and reference branding. Compatibility entry points
 preserve existing programs and settings. This release does not change origin semantics.
 
@@ -523,7 +527,7 @@ do not block this design work. E2 remains the native coroutine target.
 | C1b.3b.1 | Nested local borrowed storage | **Delivered in 0.34**: recursive tag/field dependencies, nested options/variants/outcomes/records, independent retainers, scope and carrier guards, generic/module/native/editor checks |
 | DOC1 | Detailed language manual and documentation checks | **Delivered for 0.34**: semantic reference, lexical/grammar/diagnostic/glossary/status chapters, checked examples and local navigation; maintained at every checkpoint |
 | C1b.3b.2a | Public grouped variant contracts | **Delivered in 0.35**: alternative-guarded schemas, owned calls/results, nested/generic record/variant layouts, contained selectors, capture/forwarding, verifier/native/editor checks |
-| N1 | Tellur naming and migration | **Delivered in 0.36**: compiler/crate names, `.tellur` sources, editor/package identity, reference, legacy file/command/settings support |
+| N1 | Tellur naming and migration | **Delivered in 0.36**: compiler/crate names, `.vn` sources, editor/package identity, reference, legacy file/command/settings support |
 | C1b.3b.2b | Named-outcome and builtin-option origin schemas | **Delivered in 0.37**: grouped named outcomes, completion bindings, inherited option groups, owned boundaries, generic/module/native/editor coverage |
 | C1b.3b.2c | Borrowed sum carriers | **Delivered in 0.38**: shared/exclusive whole-sum inputs, active payload reborrows, authorizing carrier guards, nested/generic/module/native/editor checks |
 | C1b.3b.2d | Whole carrier reference results | **Delivered in 0.39**: direct references to grouped records/sums, inferred/declared contained origins, storage guards, forwarding and verifier/native/editor checks |
@@ -592,7 +596,7 @@ do not block this design work. E2 remains the native coroutine target.
 | P4d | Call-site contract hover | **Bounded slice delivered in 0.76; constructors in 0.79 (P4d.1); concrete traits in 0.80 (P4d.2); lexical aliases/named results in 0.81 (P4d.3); named boundaries in 0.82 (P4d.4); ordinary symbolic generic calls in 0.88 (P4d.5); symbolic trait calls in 0.89 (P4d.6); symbolic constructors in 0.90 (P4d.7):** checked local/imported controls, concrete explicit generic calls and manifest primitives; typed inputs, closed outcomes, public origins, private inferred lifetimes, faults, effects and host execution alongside selected histories. Constructor calls show the constructed type, input modes, ordered origin groups and checked permissions. Fresh unsaved source snapshots and caller aliases; no private layout leakage. Concrete trait calls retain the declared contract names, origins and permissions with associated types resolved. Implementation-local aliases and ordinary named generic results preserve their checked type/origin meaning. Named supervision shows owned inputs, ordered retention, outcome-free completion and contingency escape permission. Ordinary generic-body calls use universally checked symbolic contracts, named origins, bounds and inferred return lifetimes; symbolic trait calls retain their declared interfaces per generic definition; symbolic constructors keep input modes, ordered origins and permissions without concrete witnesses. Named boundaries have no generic parameters; existing concrete supervision hover remains supported |
 | P5a | Sustained application: persistent CLI | **Delivered in 0.45**: settings load/get/set, validation, strict JSON, bounded input/output, replacement uncertainty and live/scripted failure scenarios |
 | P5a.1 | Executable outcome status contracts | **Delivered in 0.48**: alternative annotations, exhaustive entry mappings, final-contract policy, exact exec status propagation, and settings/editor migration |
-| P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Tellur policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
+| P5b.1 | Sustained application: blocking HTTP | **Delivered in 0.50**: loopback settings/lookup/update endpoints, Villanelle policy, retained listeners/connections, framing/size/deadline limits, budget/idle shutdown and live/scripted cleanup evidence |
 | P5b.2 | Sustained application and library growth | **JSON files delivered in 0.75 (P5b.2a); loopback HTTP delivered as a source-library follow-up on 0.76 (P5b.2b):** shared source contracts and Rust modules, independent executables and maintained settings behavior. HTTP retains framing/size/deadline outcomes, owned handles, consuming completion and explicit contingent operations; routing and supervision stay in applications. Key removal delivered on 0.95 (P5b.2c), using existing JSON-file contracts; its HTTP endpoint follows on 0.113 (P5b.2d). Continue improving the application from concrete needs; signal-driven shutdown, richer HTTP and concurrency remain later work |
 | P5b.2c | Sustained application: key removal | **Delivered on 0.95:** `settings.remove` and CLI entry, explicit missing/removed/failure outcomes, no write for absent keys, preservation of other entries, last-key empty document and replacement uncertainty. Reuses existing map and JSON-file contracts; O0/O2 native, expanded/scenario and snapshot evidence. HTTP policy and storage/concurrency guarantees are unchanged |
 | P5b.2d | Sustained application: HTTP key removal | **Delivered on 0.113:** `POST /remove` reuses `settings.remove`; shared owned-key parsing with lookup, explicit missing/removed/storage/uncertainty responses, no write for absent or rejected keys, live O0/O2 and scripted native/expanded checks. Domain/library/host contracts unchanged |
@@ -738,7 +742,7 @@ do not block this design work. E2 remains the native coroutine target.
 | E1f.6k | Actual TCP reset receive evidence | Internal on 0.189: O0/O2 loopback probes require real ConnectionReset reads before input, during headers and during a body. The unchanged parser/shared error mapping returns disconnected, preserves the original deadline and established HEAD state, rejects duplicate reads/stale notices and retires registration/state/socket in order. This is standalone macOS evidence; source-queue resets, registration failures and public policies remain separate |
 | E1f.6l | Actual reset through the HTTP source queue | Internal on 0.189: a controlled peer resets after partial body input, and checked polling produces disconnected from an actual ConnectionReset read. Original/expanded O0/O2 events/reports match independent reference plans across source fuel cuts, quotas and readiness ordering. Repeated operation identity, no-read duplicates and wait/registration/state/supplier retirement remain intact. General backend/cleanup policy and public admission remain separate |
 | E1f.6m | Faults during the first repeated HTTP receive | Internal on 0.189: private reference/native profiles now distinguish a stopped first receive from an immediately completed first receive with a pending successor. Explicit poll/wait/state counts, unstarted-resource disposition, no result adoption and independent work are checked in original/expanded O0/O2 fuel/quota matrices with deterministic/live/reset-capable peers. A fault before the planned reset produces no reset read or completion. Production scheduling and public admission remain unchanged |
-| E1g | Public async host operations | **E1g.1 delivered in 0.217:** manifest `"async": true` primitives with shared resource borrows, Copy/consumed data and owned results; public direct `await` lowered to a generated async control around the single host leaf; scripted reference readiness (`waits`), FIFO idle signalling and stop-before-supplier settlement; `run`/`defer`/`spawn`/plain calls rejected with specific `E_ASYNC` messages; native builds rejected with `E_BACKEND`. **E1g.2a delivered in 0.218:** native lowering to a production host step with scripted `--scenario` waits, sequential elapse, source-driver readiness parking and FIFO idle signalling; native/reference differential schedules, fuel cuts and owning faults. **E1g.2b delivered in 0.219:** Rust adapters bound with `poll` execution (generated per-operation traits, `Poll`/`Wait`), in-turn polling, idle re-poll of the oldest due operation, sleeping until the earliest delay, and state drop before suppliers on completion or stop. **E1g.3 delivered in 0.220:** `Wait::readable`/`or_after` with an internal Mio backend (renamed generated dependency, edge-triggered registration per operation, deregistration on completion and stop, idle blocking on readiness up to the earliest delay). **Stage (b) delivered in 0.221:** the loopback HTTP library's `receive` is an async control over a polled `http_receive` (nonblocking reads, readiness parking, the unchanged two-second deadline); the settings service and example enter it with `run`. **Stage (c), parts 1–2 delivered in 0.222–0.223:** dynamic task sets, accepted on 7 November 2026. `tasks<C>` holds started children of one async control. `spawn C(..) into set;` adds a member; `delta await next set { ..., empty => ... }` joins the earliest completed member, and only `empty` retires the set. `count(borrow set)` returns the number of unjoined members. The set travels through loop parameters, member faults settle every member before the owning contingency, and there is no early exit before cancellation (E1e). The reference executor (0.222) and native executables (0.223) support owned reference-free members. **Stage (c), part 3a delivered in 0.224:** async host operations may return owned resources whose types declare `"fault": "release"`; the loopback library's `accept` is async over a polled `http_accept`, and `http_connection` declares release. **Part 3b delivered in 0.225:** `Wait::writable` write readiness; async operations may consume resources that declare release; the library's `send` and new `finish` are async (contingencies keep the blocking `close` and `reply_failure`). **Part 3c delivered in 0.226:** the settings service serves connections concurrently: an async accept loop keeps a task set of members (global budget and idle timeout, width 64 via `count`), each member isolates its request with a named boundary that retains the connection, and a live test shows a slow client does not delay a fast one. Stage (c) is complete. **Stage (d) delivered in 0.227:** host operations are entered like async controls, through their generated controls: `run` from synchronous code, `defer`, `spawn` and `spawn … into` inside async controls, and `tasks<op>` sets; a plain call stays `E_ASYNC`. E1g is complete. **E1e cancellation (design accepted 8 November):** `cancel child;` and `cancel set;` request cooperative cancellation that propagates to everything the task starts; work observes it only at host operations entered by await or run whose decision lists `cancelled`, and joins are never interrupted. **E1e.1 delivered in 0.228** in the checker and reference executor. **E1e.2 delivered in 0.229:** native executables, including live polled adapters, with reference/native parity; observation is selected statically through a cancellable generated control. **E1e.3 delivered in 0.230:** opt-in `launch.<entry>.signals: "cancel"` (the first SIGINT/SIGTERM cancels the entry, a second exits with 128 + signal), deterministic scenario `$signal` entries in both executors, and a graceful settings shutdown (members waiting for a request reply 503, the service reports `stopped`). **Milestone 5 specimen delivered in 0.231:** [playground/cancellation.tellur](../playground/cancellation.tellur) runs two concurrent receives through borrowed handles, cancels the slower one, joins it, closes both handles after the join and reports close failures, with reference/expansion/quota/native agreement on every schedule. E1e is complete; E2 follows. Overlapping operations on one resource, `run` from synchronous code, event timing and deregistration-failure policy are audited per stage |
+| E1g | Public async host operations | **E1g.1 delivered in 0.217:** manifest `"async": true` primitives with shared resource borrows, Copy/consumed data and owned results; public direct `await` lowered to a generated async control around the single host leaf; scripted reference readiness (`waits`), FIFO idle signalling and stop-before-supplier settlement; `run`/`defer`/`spawn`/plain calls rejected with specific `E_ASYNC` messages; native builds rejected with `E_BACKEND`. **E1g.2a delivered in 0.218:** native lowering to a production host step with scripted `--scenario` waits, sequential elapse, source-driver readiness parking and FIFO idle signalling; native/reference differential schedules, fuel cuts and owning faults. **E1g.2b delivered in 0.219:** Rust adapters bound with `poll` execution (generated per-operation traits, `Poll`/`Wait`), in-turn polling, idle re-poll of the oldest due operation, sleeping until the earliest delay, and state drop before suppliers on completion or stop. **E1g.3 delivered in 0.220:** `Wait::readable`/`or_after` with an internal Mio backend (renamed generated dependency, edge-triggered registration per operation, deregistration on completion and stop, idle blocking on readiness up to the earliest delay). **Stage (b) delivered in 0.221:** the loopback HTTP library's `receive` is an async control over a polled `http_receive` (nonblocking reads, readiness parking, the unchanged two-second deadline); the settings service and example enter it with `run`. **Stage (c), parts 1–2 delivered in 0.222–0.223:** dynamic task sets, accepted on 7 November 2026. `tasks<C>` holds started children of one async control. `spawn C(..) into set;` adds a member; `delta await next set { ..., empty => ... }` joins the earliest completed member, and only `empty` retires the set. `count(borrow set)` returns the number of unjoined members. The set travels through loop parameters, member faults settle every member before the owning contingency, and there is no early exit before cancellation (E1e). The reference executor (0.222) and native executables (0.223) support owned reference-free members. **Stage (c), part 3a delivered in 0.224:** async host operations may return owned resources whose types declare `"fault": "release"`; the loopback library's `accept` is async over a polled `http_accept`, and `http_connection` declares release. **Part 3b delivered in 0.225:** `Wait::writable` write readiness; async operations may consume resources that declare release; the library's `send` and new `finish` are async (contingencies keep the blocking `close` and `reply_failure`). **Part 3c delivered in 0.226:** the settings service serves connections concurrently: an async accept loop keeps a task set of members (global budget and idle timeout, width 64 via `count`), each member isolates its request with a named boundary that retains the connection, and a live test shows a slow client does not delay a fast one. Stage (c) is complete. **Stage (d) delivered in 0.227:** host operations are entered like async controls, through their generated controls: `run` from synchronous code, `defer`, `spawn` and `spawn … into` inside async controls, and `tasks<op>` sets; a plain call stays `E_ASYNC`. E1g is complete. **E1e cancellation (design accepted 8 November):** `cancel child;` and `cancel set;` request cooperative cancellation that propagates to everything the task starts; work observes it only at host operations entered by await or run whose decision lists `cancelled`, and joins are never interrupted. **E1e.1 delivered in 0.228** in the checker and reference executor. **E1e.2 delivered in 0.229:** native executables, including live polled adapters, with reference/native parity; observation is selected statically through a cancellable generated control. **E1e.3 delivered in 0.230:** opt-in `launch.<entry>.signals: "cancel"` (the first SIGINT/SIGTERM cancels the entry, a second exits with 128 + signal), deterministic scenario `$signal` entries in both executors, and a graceful settings shutdown (members waiting for a request reply 503, the service reports `stopped`). **Milestone 5 specimen delivered in 0.231:** [playground/cancellation.vn](../playground/cancellation.vn) runs two concurrent receives through borrowed handles, cancels the slower one, joins it, closes both handles after the join and reports close failures, with reference/expansion/quota/native agreement on every schedule. E1e is complete; E2 follows. Overlapping operations on one resource, `run` from synchronous code, event timing and deregistration-failure policy are audited per stage |
 | E2 | Native coroutine lowering | Preserved architectural target: direct LLVM coroutine primitives, pinned-toolchain experiment, frame lifetime rules and schedule-based differential tests; I1 must keep this route open. **E2.1 delivered in 0.232 (standalone experiment, chosen by the author):** [hand-lowered switched-resume coroutines](../experiments/coroutines/README.md) for the cancellation specimen, a cancelled task set and a sibling fault, built with pinned LLVM 22 at O0/O2, match the reference executor's events and statuses on every tested schedule; the runtime keeps scheduling, readiness, cancellation and settlement. Recommendation: go, staged. E2.2 would generate the lowering from checked IR behind a flag, with the Rust runtime behind a C ABI |
 | B1 | Single-binary LLVM backend | Decided by the author on 9 November 2026: replace the generated-Rust backend with LLVM IR emitted by the compiler. LLVM and LLD are built into one binary per platform, with a precompiled runtime and per-target link packs, so nothing has to be installed. Async controls lower to frontend state machines, one struct frame per control with a switch on the resume state (this absorbs E2.2; decided 9 November, to be measured against LLVM coroutines). Planned targets: macOS, Linux (static musl), Windows and Thylacine. **B1.1 delivered in 0.233:** the runtime is a separately compiled crate shared by every program, instead of source pasted into each one. **B1.2 delivered in 0.234:** LLVM and LLD 22.1.8, built static from the pinned release, are embedded behind the `llvm` cargo feature; IR is compiled and linked in-process, and the E2.1 coroutine specimens built that way match the reference executor. **B1.3a delivered in 0.235:** a private versioned C ABI and `--backend llvm` emit synchronous scalar controls and Boolean path branches directly as LLVM IR, with matching values, statuses, faults and fuel reports at O0/O2. Unsupported operations fail before output creation. **B1.3b delivered in 0.236:** synchronous scalar control calls, including private imported helpers, implicit calls, identity routing and multiple payloads, use compiled callbacks and one-use outcome handles; nested fault locations and every tested fuel cut match Rust at O0/O2. **B1.3c delivered in 0.237:** ordinary owned records with scalar leaves, nested/imported/generic layouts, written-order initializers, direct field reads/moves/assignment and temporary projections preserve existing ownership through calls and outcomes. **B1.3d delivered in 0.238:** options, variants and named outcome values recursively compose with scalar/record payloads; constructors and captured outcomes use checked transfers, and value decisions share call outcome routing with exact branch/fault/fuel parity. **B1.3e delivered in 0.239:** returning synchronous primitives with owned arguments dispatch through the existing host and shared outcome routing; live/scripted payloads, trace events, driver faults and fuel reports retain parity. Whole signatures gate borrowed/async/adapter/unsupported types before output creation. **B1.3f delivered in 0.240:** source locals use the runtime's stable activation arena while temporary values retain one-use handles. Nested calls retire child storage on success/failure without touching caller slots or losing fault provenance; this prepares reference lowering without admitting references yet. **B1.3g delivered in 0.241:** direct shared/exclusive references to reference-free values, borrowed control parameters/results, indirect places and borrowed decisions reuse runtime addresses and origin evidence. Temporary borrow lifetimes and returned caller loans retain parity; reference-bearing aggregates and borrowed host operations remain gated. **B1.3h delivered in 0.242:** reference-bearing records/options/variants/named outcomes, whole borrowed carrier results and guarded exclusive leaves reuse the runtime holder/leaf evidence checks. Static descriptors preserve original owners across child retirement; primitive signatures keep a separate reference-free profile. **B1.3i delivered in 0.243:** opaque/resource values compose through the admitted aggregates and synchronous calls. Borrowed host parameters use checked value snapshots while consuming calls transfer the owner; live file open/read/close and scripted failures preserve existing host behavior. Reference-bearing host signatures and async/adapters stay gated. **B1.3j delivered in 0.244:** arrays/vectors/maps, typed literals, lengths and collection operations share existing runtime storage, preserving returned element origins, local shared-reference retainers, resource transfers and deterministic map order. **B1.3k delivered in 0.245:** consumed temporary tables retain bounded capacity with monotonic handle identities; scratch allocations are hoisted to function entry before enabling backedges. **B1.3l delivered in 0.246:** synchronous tail loops reset local slots/facts, transfer restart parameters simultaneously and route expanded helper completions to their checked continuation. Long-run stack bounds and original/expanded fault/fuel behavior retain parity. **B1.3m delivered in 0.247:** synchronous declared constructors deliver completed owning/borrowed records directly to identity-checked caller storage; nested/imported/generic calls preserve written order, result origins, partial-initialization faults and fuel. **B1.3n delivered in 0.248:** named synchronous supervision uses compiled work/contingency callbacks and administrative settlement. Retained owners transfer after failed child storage retires; nested escalation, source-fault classification, resources and causes match the existing runtime. **B1.3o delivered in 0.249:** lexical synchronous boundaries preserve shared frames, retained captures, structured faults and exactly-once scope finalization across exits/loop jumps. Supervised recovery and entry-only process termination retain administrative semantics. **B1.4a delivered in 0.250:** explicit typed frontend frames, by-value direct awaits and arena task frames match the same 88 reference schedules as coroutine splitting. Allocation, code-size and bounded in-process comparisons record the tradeoffs, including arena slack and nested fault destruction. **B1.4b delivered in 0.251:** a private retained root owns activation state across C ABI resume callbacks while host/arena borrows remain callback-local. Checked identity/phase, one-use completion, result-resource adoption and stop cleanup reuse existing host scopes. This does not admit source tasks. **B1.4c delivered in 0.252:** retained ABI invocations use the existing Machine/Contexts and source scheduler, with by-value direct children, original parent/domain authority and child-first retirement. **B1.4d delivered in 0.253:** generated C-safe metadata, typed LLVM frames and state switches admit bounded run/direct-await/yield programs, with original/expanded O0/O2 fault/fuel/origin parity and host-quota invariance. **B1.4e delivered in 0.254:** cold control capture/local moves/options and consuming await use original task authority and by-value children, with resource/origin/fault/fuel/quota evidence. Next: spawn/join and staged task/host integration; Rust remains the default until parity. Runtime text-patching test migration is deferred to the retire station |
 | T1 | Stronger source transformations | Hold current scope during P1–P5: extraction correspondence, continuation cuts, source-level lift and editor actions |
@@ -787,7 +791,7 @@ that a selection matches the author's intent. Indentation remains presentation,
 not a new semantic delimiter. Lint details and editor presentation need evaluation.
 The existing scoped `over &:` construct retains its distinct lifetime purpose.
 
-The author's `applications/settings/server.tellur` layout, included in 0.60, keeps
+The author's `applications/settings/server.vn` layout, included in 0.60, keeps
 labels inside the enclosing control/loop indentation, expands long signatures and
 decisions over multiple lines, and separates decisions from their final path
 dispositions with blank lines. Preserve this application example as a concrete
@@ -825,9 +829,9 @@ application needs them, accounting for native storage and analysis boundaries.
 
 Maintain one real application across compiler releases, rather than building a new
 showcase for each feature. The initial working choice is a local configuration and
-key-value service. Start with a CLI over reusable Tellur modules, then expose the
+key-value service. Start with a CLI over reusable Villanelle modules, then expose the
 same operations through a blocking HTTP server bound to loopback. A sequential
-server makes useful progress before Tellur has async. The persistent CLI and typed
+server makes useful progress before Villanelle has async. The persistent CLI and typed
 owned-data Rust adapters are delivered in 0.45, retained resources in 0.49, and
 bounded sequential HTTP in 0.50. See [the application](../applications/settings/README.md).
 
@@ -839,7 +843,7 @@ and report uncertainty after partial external effects instead of claiming rollba
 Do not require a thousand lines or force every language feature into the program.
 
 Keep request validation, domain decisions, retry choices, failure mapping, resource
-completion and orchestration in Tellur. Rust adapters provide filesystem, encoding,
+completion and orchestration in Villanelle. Rust adapters provide filesystem, encoding,
 HTTP and other host mechanisms; they must not hide the application in one large
 Rust primitive. Exercise invalid configuration, missing keys, failed writes,
 occupied ports, client disconnects and cleanup failures. Scripted fault injection
@@ -849,9 +853,9 @@ reports and reader/agent repairs.
 
 Extract library operations when the application establishes a reusable contract.
 Likely early modules cover text/bytes, filesystem and paths, JSON, clocks and
-network I/O. Prefer existing Rust implementations behind Tellur-facing contracts
+network I/O. Prefer existing Rust implementations behind Villanelle-facing contracts
 for substantial mechanisms. Library policy and composition can themselves be
-Tellur. Keep experimental modules revisable until repeated use establishes their
+Villanelle. Keep experimental modules revisable until repeated use establishes their
 shape; this is not a promise to stabilize a large standard library immediately.
 
 General loops, numeric types, further formatter refinements and generic argument inference should
@@ -861,21 +865,21 @@ adding them; don't wait for complete language tooling before using the language.
 ## Rust interoperability direction
 
 The immediate goal is source-level reuse through typed Rust adapters built by
-Cargo with the generated Tellur program. The current native pipeline already
+Cargo with the generated Villanelle program. The current native pipeline already
 emits Rust and invokes Cargo, but its host adapters and dependency template are
 fixed in the 0.44 baseline. I1a in 0.45 adds explicit typed wrapper source, registry
 dependencies and a committed Cargo lock. It is a bounded source-binding facility,
 not automatic import of arbitrary Rust APIs. See [the adapter contract](rust-adapters.md).
 
-A binding should connect a Tellur contract to a concrete Rust wrapper: argument
+A binding should connect a Villanelle contract to a concrete Rust wrapper: argument
 conversions, owned versus borrowed access, closed outcome mapping, resource
 completion and faults. Prefer a single checked binding description from which
 signatures and glue are generated. Rust checks the wrapper's use of the crate;
-Tellur checks callers against the declared contract. Neither compiler automatically
+Villanelle checks callers against the declared contract. Neither compiler automatically
 proves arbitrary foreign behavior matches every semantic promise. Adapters remain
 an identified trust boundary with conformance and failure-injection tests.
 
-Preserve error meaning. Rust Result and enum alternatives can map to Tellur outcomes,
+Preserve error meaning. Rust Result and enum alternatives can map to Villanelle outcomes,
 but an open error type may require intentional classification and a documented
 residual outcome. Rust's non-exhaustive io::ErrorKind is one concrete example.
 Do not auto-collapse newly encountered errors into an unreviewed generic failure.
@@ -903,23 +907,23 @@ coupling or LTO as a prerequisite for library reuse.
 
 ### Preserve first-class async and LLVM coroutine lowering
 
-The user explicitly requires the Rust reuse work to keep E1/E2 open. Tellur owns
+The user explicitly requires the Rust reuse work to keep E1/E2 open. Villanelle owns
 its task/outcome distinction, suspension points, scheduling boundaries, cancellation
 and completion obligations. The checked async representation must be independent
 of generated Rust, Rust Future layouts and any particular executor. Rust library
-integration must not turn Tellur async into an alias for a foreign runtime.
+integration must not turn Villanelle async into an alias for a foreign runtime.
 
 Initial blocking adapters must be identified as blocking, with no hidden scheduler
 or implicit suspension. Later asynchronous adapters need explicit operation lifetime,
 readiness/completion and cancellation contracts behind opaque state; their precise
 ABI is not settled. Supporting a Rust executor can be an adapter capability, not
-a requirement of every Tellur program. A future native LLVM backend must be able
+a requirement of every Villanelle program. A future native LLVM backend must be able
 to call the same host mechanisms through the defined adapter boundary.
 
 Activation identities and stable frame storage must preserve loans and owned
 resources across suspension. Cancellation requests must complete the declared
 cleanup protocol before frame destruction; dropping a foreign future or invoking
-llvm.coro.destroy is not by itself Tellur cancellation. Keep LLVM coroutine layout
+llvm.coro.destroy is not by itself Villanelle cancellation. Keep LLVM coroutine layout
 and intrinsics internal to the backend and pin the experimental toolchain.
 
 The reference executor and controlled-schedule tests remain the semantic baseline
@@ -974,7 +978,7 @@ Primary references for these constraints:
   does not establish purity.
 - Adopt Rust-style ownership foundations: Copy values, moves for owning values,
   explicit cloning, shared/exclusive references, checked lifetimes. Make those
-  checks sensitive to Tellur's selected histories.
+  checks sensitive to Villanelle's selected histories.
 - Preserve the distinction between ordinary destruction and a resource protocol
   that requires explicit, potentially failing completion.
 - Outcomes become first-class completed results with mandatory handling/forwarding.
@@ -1186,11 +1190,11 @@ See [the E1 audit and implementation sequence](async-execution.md) for current
 foundations, the accepted spawned-child fault policy and bounded next steps.
 
 The acceptance specimen below is runnable since 0.231 as
-[playground/cancellation.tellur](../playground/cancellation.tellur), with
+[playground/cancellation.vn](../playground/cancellation.vn), with
 `tests/cancellation_specimen.rs` as its evidence. The earlier design sketch is kept
 for history; it is NOT current syntax:
 
-```tellur
+```villanelle
 async control startup(string filename) exits ready { config settings }, failed { load_error error }, cancelled {
     [entry]:
         task<load_result> pending = defer load_config(filename);
@@ -1250,7 +1254,7 @@ reference executor for differential testing.
 LLVM supplies coroutine frames, suspension/resumption and splitting mechanisms.
 Its switched-resume lowering is the initial candidate; `llvm.coro.id.async` is a
 specific alternative ABI, not a requirement imposed by the source keyword. Scheduling,
-readiness, result delivery and Tellur cancellation protocols remain frontend/runtime
+readiness, result delivery and Villanelle cancellation protocols remain frontend/runtime
 responsibilities. Validate cancellation cleanup before destroying completed frames.
 LLVM warns that coroutine compatibility across releases is not guaranteed.
 See [LLVM's coroutine documentation](https://llvm.org/docs/Coroutines.html).
@@ -1279,7 +1283,7 @@ whole-collection loans, returned element origins, local shared-reference retaine
 deterministic key order and sealed resource completion obligations. Reference-free
 collection host signatures are admitted; borrowed host payloads remain gated.
 
-The runnable `playground/llvm_collections.tellur` demonstrates helper-returned borrows,
+The runnable `playground/llvm_collections.vn` demonstrates helper-returned borrows,
 vector edits, sorted map take and faults. Differential tests cover original/expanded
 O0/O2 execution, nested/reference/resource values and fuel cuts. ABI tests validate
 shape and batch failures before transfer. Rust remains the default backend.
@@ -1308,7 +1312,7 @@ Synchronous tail loops now lower to explicit LLVM restart and completion blocks.
 Initial and next arguments finish before local owners reset; body facts are fresh
 on every iteration. Expansion of a looping helper retains the correct caller
 continuation and its selected completion bindings. Source-level nesting and borrowed
-loop-state restrictions are unchanged. The runnable `playground/llvm_loops.tellur`
+loop-state restrictions are unchanged. The runnable `playground/llvm_loops.vn`
 shows simultaneous string swaps and an outer counter, with an explicit fault case.
 
 Differential O0/O2 tests cover original/expanded execution, collections/resources,
@@ -1324,7 +1328,7 @@ an identity-checked runtime ABI destination. No intermediate outcome tag or payl
 vector is created. Nested, concrete generic, imported and reference-bearing results
 preserve initialization order, caller origins, selected histories, fault provenance
 and fuel. Partial initialization never publishes a result. The runnable
-`playground/llvm_constructors.tellur` combines owning and borrowed construction.
+`playground/llvm_constructors.vn` combines owning and borrowed construction.
 
 Differential original/expanded O0/O2 coverage includes short-circuiting, fresh result
 projection, collection/exit arguments, loop preparation and restored caller loans.
@@ -1340,7 +1344,7 @@ outcome or fault value returns from supervision. Retained owners transfer in dec
 order after failed work storage retires; resource scopes release abandoned owners
 before handler entry and finalize on normal completion or failure. Source faults,
 escalation and secondary faults preserve activation causes. Fuel/host errors bypass
-contingency. The runnable `playground/llvm_supervision.tellur` shows independent
+contingency. The runnable `playground/llvm_supervision.vn` shows independent
 requests and retained diagnostic context.
 
 Differential original/expanded O0/O2 tests cover nested/imported supervision, helpers,
@@ -1361,7 +1365,7 @@ normal/error exit and outward loop or expansion jump finalizes the scopes crosse
 Handler failures propagate outward without re-entering that handler.
 
 Structured `@fault`, supervised recovery snapshots and entry-only process status
-preserve the existing language model. The runnable `playground/llvm_recovery.tellur`
+preserve the existing language model. The runnable `playground/llvm_recovery.vn`
 shows a failed request followed by independent work using preserved supervisor
 state. Original/expanded O0/O2 tests cover fallthrough, outward restarts, helper
 completions, named/imported composition, constructor results, nested escalation and
@@ -1822,7 +1826,7 @@ Loop entry, outward again, recovery and expanded completion use the original
 Machine transfer requests. Written argument order and whole-batch transfer are
 preserved; source owners retire before pure C callbacks reset local path facts.
 No ownership, origin, outcome, contingency, cancellation or handoff rule changes.
-The formatted `playground/llvm_async_recovery.tellur` demonstrates recovery across
+The formatted `playground/llvm_async_recovery.vn` demonstrates recovery across
 a yielded request and subsequent healthy iteration.
 
 Nine new source matrices compare Rust/reference/LLVM original and expanded forms
@@ -1993,7 +1997,7 @@ and before/after emitted-object comparisons; the failed run remains recorded.
 
 LLVM source admission now accepts the complete synchronous data adapter profile.
 Generated Rust static libraries contain user source/modules, typed result enums,
-exact function checks and C codecs. They contain no Tellur runtime definitions.
+exact function checks and C codecs. They contain no Villanelle runtime definitions.
 Per-launch tables register every Rust operation before original Host dispatch.
 Owned scalar/string/bytes/vector/map values and local shared borrows preserve the
 existing contracts; only the selected outcome crosses back through one-use handles.
@@ -2024,7 +2028,7 @@ per-target link packs and retirement follow. Rust stays default; no fork is pend
 LLVM admits the existing directly bound opaque Rust resource profile for immediate
 and blocking operations. Typed static shims preserve public resource aliases,
 non-Send/non-Sync owners, repeated shared pointer identity, consuming transfer and
-fresh returned handles. No new Tellur syntax or ownership mode is introduced.
+fresh returned handles. No new Villanelle syntax or ownership mode is introduced.
 
 The private C protocol publishes, borrows and takes resource descriptors with an
 explicit ownership handshake. Registry/type/alias checks precede dispatch. Shared
@@ -2082,18 +2086,18 @@ runtime libraries and target link packs, and builds release artifacts in CI.
 ## Unified compiler and language server (0.278)
 
 The Apple Silicon VSIX ships one executable. It runs compiler commands directly
-and starts the language server with `tellur lsp`. Existing compiler and standalone
+and starts the language server with `vnc lsp`. Existing compiler and standalone
 server aliases retain their calling conventions. Next come runtime and target link
 packs for builds on machines without a development toolchain.
 
 ## Apple Silicon runtime and system link pack (0.279)
 
 The compiler build prepares the two runtime profiles from the checked-in Rust
-runtime crate and embeds them with the macOS link pack. An ordinary Tellur
+runtime crate and embeds them with the macOS link pack. An ordinary Villanelle
 program compiles and links from an empty cache with no system development tools:
 
 ```sh
-tellur exec playground/hello.tellur
+vnc exec playground/hello.vn
 ```
 
 The plain profile avoids allocating a readiness poller. Manifests with polled
@@ -2104,54 +2108,54 @@ resource ownership. Rust source adapters still use their locked toolchain build.
 
 The compiler can emit and link Linux ELF executables for x86_64 and arm64.
 `build --target` selects the runtime and system objects by triple. The
-target-specific Rust entry makes process arguments available to both the Tellur
+target-specific Rust entry makes process arguments available to both the Villanelle
 launcher and Rust adapters. Scalar argument parsing, exit codes, settings file
 operations and loopback HTTP exercise both architectures.
 
 ## Portable Rust adapter packs (0.281)
 
-`tellur pack-adapter` builds an application's locked Rust adapter for one target.
+`vnc pack-adapter` builds an application's locked Rust adapter for one target.
 A subsequent LLVM `build` or `exec` can consume that pack with an empty tool
 search path. The settings application exercises relocation, file operations,
 and live HTTP with the bundled Apple Silicon and Linux musl runtime packs.
 The packaged compiler and extension passed on Apple Silicon and both Linux hosts.
 Each Linux host passed all 113 integration targets, including 69 run on both backends.
-[Native qualification results](https://github.com/apology-is-policy/tellur/actions/runs/43731462441)
+[Native qualification results](https://github.com/apology-is-policy/villanelle/actions/runs/43731462441)
 
 ## Linux default backend (0.282)
 
 On Linux x86_64 and arm64, a compiler built with the native LLVM pack selects
 direct LLVM emission when `build` or `exec` omits the backend. For example,
-`tellur exec playground/hello.tellur` builds and runs Hello using the embedded
+`vnc exec playground/hello.vn` builds and runs Hello using the embedded
 toolchain. Featureless builds default to Rust, and `--backend rust` selects it
 explicitly. Release 0.282.0 includes the compiler and VS Code extension for
 Apple Silicon, Linux x86_64 and Linux arm64. Both Linux release runners passed
 all 113 integration targets, including 69 LLVM comparison groups.
-[Release packages](https://github.com/apology-is-policy/tellur/releases/tag/v0.282.0) ·
-[Native qualification](https://github.com/apology-is-policy/tellur/actions/runs/43748026383)
+[Release packages](https://github.com/apology-is-policy/villanelle/releases/tag/v0.282.0) ·
+[Native qualification](https://github.com/apology-is-policy/villanelle/actions/runs/43748026383)
 
 ## Windows x64 target pack qualification
 
 The opt-in Windows GNU pack adds x64 COFF output to LLVM-enabled compiler
 builds. It links through embedded LLD with MinGW startup, OS import libraries
-and the plain or polled Tellur runtime. Native CI exercises Hello and the
+and the plain or polled Villanelle runtime. Native CI exercises Hello and the
 packed settings HTTP service with an empty tool search path. The Windows x64
 CLI and VS Code extension use the same executable for compilation and stdio LSP.
 All 113 native integration targets passed, along with library, binary and documentation
 tests. Compiler 0.283 makes LLVM the default on packaged Windows x64. The
 release workflow qualifies all four platforms before publishing their eight assets.
-[Windows parity qualification](https://github.com/apology-is-policy/tellur/actions/runs/43791913439) ·
+[Windows parity qualification](https://github.com/apology-is-policy/villanelle/actions/runs/43791913439) ·
 [Windows target instructions](reference/llvm-backend.md#windows-x64-linker-qualification)
 
 ## Thylacine development pack
 
 The opt-in `thylacine-pack` compiler build embeds the AArch64 pouch startup
-files, static system libraries, and both Tellur runtime profiles. A host compiler
+files, static system libraries, and both Villanelle runtime profiles. A host compiler
 with this pack can cross-compile a static executable for
 `aarch64-unknown-thylacine`. Inside the guest, the development compiler used
 embedded LLVM and LLD to build and run optimized Hello. The scalar example
 received its arguments and returned its authored exit status of 7 through
-`tellur exec`. That development build selected LLVM explicitly. Current source builds default to the native LLVM pack on Thylacine.
+`vnc exec`. That development build selected LLVM explicitly. Current source builds default to the native LLVM pack on Thylacine.
 [Pack preparation and guest checks](reference/llvm-backend.md#thylacine-runtime-qualification)
 
 The settings application's Rust adapter can now be packed with the Thylacine

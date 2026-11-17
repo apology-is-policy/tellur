@@ -7,10 +7,10 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'lexical-diagnostics');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const source = (await fs.readFile(path.join(__dirname, '../../../playground/recovery.tellur'), 'utf8'))
+  const source = (await fs.readFile(path.join(__dirname, '../../../playground/recovery.vn'), 'utf8'))
     .replace('fault boundary {', 'fault boundary {\n    u32 work_count = 1;\n    string work_text = "ready";')
     .replace('contingency [context] {', 'contingency [context] {\n    u32 report_count = 1;\n    string report_text = "handled";');
-  const uri = vscode.Uri.file(path.join(fixture, 'contingency.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'contingency.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

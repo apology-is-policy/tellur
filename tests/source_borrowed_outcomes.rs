@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/borrowed_outcome_spawn.tellur");
-const GUARDS: &str = include_str!("fixtures/source_borrowed_outcome_guards.tellur");
+const SOURCE: &str = include_str!("../playground/borrowed_outcome_spawn.vn");
+const GUARDS: &str = include_str!("fixtures/source_borrowed_outcome_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -208,7 +208,7 @@ fn shared_outcome_siblings_keep_distinct_loans_and_nominal_identity() {
 }
 #[test]
 fn borrowed_outcome_faults_settle_joined_and_unjoined_storage_before_owning_handler() {
-    let source = include_str!("fixtures/source_borrowed_outcome_fault.tellur");
+    let source = include_str!("fixtures/source_borrowed_outcome_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

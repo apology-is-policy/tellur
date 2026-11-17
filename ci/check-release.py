@@ -27,15 +27,15 @@ def digest(stream):
 def unpack(dist, dest):
     archive_path, = dist.glob("*.tar.gz")
     vsix_path, = dist.glob("*.vsix")
-    compiler = dest / "tellur"
+    compiler = dest / "vnc"
     with tarfile.open(archive_path) as tar:
-        member = tar.getmember("tellur")
+        member = tar.getmember("vnc")
         assert member.isfile() and member.mode & 0o111
         with tar.extractfile(member) as source, compiler.open("wb") as output:
             shutil.copyfileobj(source, output)
     compiler.chmod(0o755)
     with zipfile.ZipFile(vsix_path) as vsix:
-        server = vsix.getinfo("extension/server/tellur")
+        server = vsix.getinfo("extension/server/vnc")
         assert server.external_attr >> 16 & 0o111
         with vsix.open(server) as source, compiler.open("rb") as cli:
             assert digest(source) == digest(cli), "VSIX and archive contain different compilers"
@@ -98,19 +98,19 @@ def check_settings(binary, directory, env):
 def copy_settings_project(project):
     # Model a consumer with an LF checkout, even when the pack producer uses
     # Git's Windows checkout settings. Keep relative module paths intact.
-    for pattern in ["applications/settings/*.tellur", "applications/settings/manifest.json",
+    for pattern in ["applications/settings/*.vn", "applications/settings/manifest.json",
                     "applications/settings/Cargo.lock", "applications/settings/host.rs",
-                    "library/*.tellur", "library/host/*.rs"]:
+                    "library/*.vn", "library/host/*.rs"]:
         for path in Path(".").glob(pattern):
             copy = project / path
             copy.parent.mkdir(parents=True, exist_ok=True)
             copy.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
-    return project / "applications/settings/main.tellur"
+    return project / "applications/settings/main.vn"
 
 
 def qualify_adapter_pack(compiler, dest, scratch):
     source = copy_settings_project(dest / "project")
-    original = Path("applications/settings/main.tellur")
+    original = Path("applications/settings/main.vn")
     pack = dest / "settings.adapter"
     subprocess.run([compiler, "pack-adapter", original, "--out", pack], check=True)
     env = {"HOME": str(scratch), "PATH": "/absent", "TELLUR_NATIVE_TARGET_DIR": str(scratch / "packed-cache")}
@@ -158,17 +158,17 @@ def main():
     dest.mkdir(parents=True, exist_ok=True)
     compiler, version = unpack(dist, dest)
     check_lsp(compiler, version)
-    for name in ["hello.tellur", "manifest.json"]:
+    for name in ["hello.vn", "manifest.json"]:
         shutil.copyfile(Path("playground") / name, dest / name)
     with tempfile.TemporaryDirectory() as directory:
         scratch = Path(directory)
         env = {"HOME": directory, "PATH": "/absent", "TELLUR_NATIVE_TARGET_DIR": str(scratch / "cache")}
-        output = subprocess.check_output([compiler, "exec", dest / "hello.tellur",
+        output = subprocess.check_output([compiler, "exec", dest / "hello.vn",
                                           "--out", scratch / "hello", "--", "--json"], env=env)
         report = json.loads(output)
-        assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"
+        assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Villanelle!"
         qualify_adapter_pack(compiler, dest, scratch)
-    print(f"Qualified packaged Tellur {version}, stdio LSP, cold Hello and packed settings HTTP.")
+    print(f"Qualified packaged Villanelle {version}, stdio LSP, cold Hello and packed settings HTTP.")
 
 
 
@@ -178,7 +178,7 @@ if __name__ == "__main__":
         env = {**os.environ, "PATH": ""}
         hello = subprocess.check_output([directory / "hello-standalone.exe", "--json"], env=env, timeout=15)
         report = json.loads(hello)
-        assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Tellur!"
+        assert report["outcome"] == "done" and report["events"][0]["message"] == "Hello from Villanelle!"
         with tempfile.TemporaryDirectory() as scratch:
             check_settings(directory / "settings-standalone.exe", Path(scratch), env)
     else:

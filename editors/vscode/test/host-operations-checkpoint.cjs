@@ -8,7 +8,7 @@ exports.run = async function (root) {
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
   const original = 'async control next(ref handle input) exits got {bytes data}, ended {} {\n    delta await receive(input) {\n        data {bytes data} => received,\n        closed => closed,\n        failed {read_error error} => failed\n    }\n    [received]: exit got {data};\n    [closed | failed]: exit ended; // 😀\n}\ncontrol main() exits process_result {\n    delta open("input") {\n        opened {handle input} => ready,\n        not_found => absent,\n        denied => blocked\n    }\n    [absent | blocked]: exit done;\n    [ready]: delta run next(borrow input) {got {bytes data} => got, ended => ended}\n    [ready]: delta close(move input) {closed => closed, failed {close_error error} => failed}\n    [ready]: exit done;\n}\noutcome process_result {@exit 0 done}\n';
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, original);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

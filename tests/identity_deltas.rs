@@ -249,12 +249,12 @@ fn imported_implicit_bindings_take_precedence_over_same_named_declarations() {
     let root = std::env::temp_dir().join(format!("tellur-identity-module-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     fs::write(
-        root.join("library.tellur"),
+        root.join("library.vn"),
         "pub control read() exits ready {string message} {exit ready {\"module\"};}",
     )
     .unwrap();
-    let source = "import \"library.tellur\" as library; struct message {} control main() exits done {delta library.read();[ready]:emit(message);exit done;}";
-    let path = root.join("main.tellur");
+    let source = "import \"library.vn\" as library; struct message {} control main() exits done {delta library.read();[ready]:emit(message);exit done;}";
+    let path = root.join("main.vn");
     fs::write(&path, source).unwrap();
     let p = tellur::modules::compile_file(Path::new(&path), manifest()).unwrap();
     assert_eq!(

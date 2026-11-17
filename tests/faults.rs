@@ -28,14 +28,14 @@ impl Fixture {
         Self { root }
     }
     fn program(&self, source: &str) -> tellur::CheckedProgram {
-        fs::write(self.root.join("main.tellur"), source).unwrap();
+        fs::write(self.root.join("main.vn"), source).unwrap();
         fs::write(
             self.root.join("manifest.json"),
             include_str!("../playground/manifest.json"),
         )
         .unwrap();
         tellur::compile_file(
-            self.root.join("main.tellur"),
+            self.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap()
@@ -97,7 +97,7 @@ fn second_invocation_has_fresh_identity_and_first_failure_keeps_the_active_chain
 fn imported_sites_and_expansion_origins_remain_source_based() {
     let f = Fixture::new();
     fs::write(
-        f.root.join("library.tellur"),
+        f.root.join("library.vn"),
         SOURCE.split("\ncontrol main").next().unwrap().replacen(
             "control leaf",
             "pub control leaf",
@@ -106,7 +106,7 @@ fn imported_sites_and_expansion_origins_remain_source_based() {
     )
     .unwrap();
     let p = f.program(
-        "import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.leaf(\"1\");}",
+        "import \"library.vn\" as lib;\ncontrol main() exits done {forward lib.leaf(\"1\");}",
     );
     let mut s = scenario();
     s.calls.clear();
@@ -119,7 +119,7 @@ fn imported_sites_and_expansion_origins_remain_source_based() {
             .path
             .as_ref()
             .unwrap()
-            .ends_with("library.tellur")
+            .ends_with("library.vn")
     );
     assert_eq!(report.site.as_ref().unwrap().line, 2);
     assert_eq!(report.activations[1].called_at.as_ref().unwrap().line, 2);
@@ -269,13 +269,7 @@ fn cli_run_serializes_only_execution_failure_when_requested_and_keeps_stdout_emp
     .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
         .current_dir(&f.root)
-        .args([
-            "run",
-            "main.tellur",
-            "manifest.json",
-            "scenario.json",
-            "--json",
-        ])
+        .args(["run", "main.vn", "manifest.json", "scenario.json", "--json"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
@@ -284,7 +278,7 @@ fn cli_run_serializes_only_execution_failure_when_requested_and_keeps_stdout_emp
     assert_eq!(report.activations[1].id, 3);
     let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
         .current_dir(&f.root)
-        .args(["run", "main.tellur", "manifest.json", "scenario.json"])
+        .args(["run", "main.vn", "manifest.json", "scenario.json"])
         .output()
         .unwrap();
     assert!(String::from_utf8_lossy(&output.stderr).contains("activation 3: leaf"));
@@ -294,7 +288,7 @@ fn cli_run_serializes_only_execution_failure_when_requested_and_keeps_stdout_emp
 fn imported_entry_failures_use_the_same_source_name_in_both_executors() {
     let f = Fixture::new();
     fs::write(
-        f.root.join("library.tellur"),
+        f.root.join("library.vn"),
         SOURCE.split("\ncontrol main").next().unwrap().replacen(
             "control leaf",
             "pub control leaf",
@@ -303,7 +297,7 @@ fn imported_entry_failures_use_the_same_source_name_in_both_executors() {
     )
     .unwrap();
     let p = f.program(
-        "import \"library.tellur\" as lib;control main() exits done {forward lib.leaf(\"1\");}",
+        "import \"library.vn\" as lib;control main() exits done {forward lib.leaf(\"1\");}",
     );
     let entry = p.source_files()[1]
         .names

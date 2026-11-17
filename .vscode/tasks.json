@@ -2,14 +2,14 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Tellur: Build active file",
+      "label": "Villanelle: Build active file",
       "type": "process",
-      "command": "${workspaceFolder}/bin/tellurc",
+      "command": "${workspaceFolder}/bin/vnc",
       "args": [
         "build",
         "${file}",
         "--entry",
-        "${config:tellurLanguage.entryRegion}"
+        "${config:villanelleLanguage.entryRegion}"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -32,7 +32,7 @@
       }
     },
     {
-      "label": "Build Tellur tools",
+      "label": "Build Villanelle tools",
       "type": "process",
       "command": "cargo",
       "args": [
@@ -45,7 +45,7 @@
       ]
     },
     {
-      "label": "Build Tellur extension",
+      "label": "Build Villanelle extension",
       "type": "process",
       "command": "npm",
       "args": [
@@ -58,16 +58,16 @@
       "problemMatcher": []
     },
     {
-      "label": "Prepare Tellur extension host",
+      "label": "Prepare Villanelle extension host",
       "dependsOn": [
-        "Build Tellur tools",
-        "Build Tellur extension"
+        "Build Villanelle tools",
+        "Build Villanelle extension"
       ],
       "dependsOrder": "sequence",
       "problemMatcher": []
     },
     {
-      "label": "Test Tellur compiler",
+      "label": "Test Villanelle compiler",
       "type": "process",
       "command": "cargo",
       "args": [

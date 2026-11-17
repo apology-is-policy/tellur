@@ -6,7 +6,7 @@ fn compiled_independent_child_cold_awaits_preserve_recovery_causes_and_fuel_part
     let root = std::env::temp_dir().join(format!("tellur-mixed-await-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_mixed_await.tellur"),
+        include_str!("../../tests/fixtures/native_mixed_await.vn"),
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )

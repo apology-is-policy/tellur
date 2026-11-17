@@ -1,5 +1,5 @@
-// Try Tellur: Explain Path Selection at Cursor on [accepted].
-// Try Tellur: Explain Outcome Contributors, then choose classify -> invalid.
+// Try Villanelle: Explain Path Selection at Cursor on [accepted].
+// Try Villanelle: Explain Outcome Contributors, then choose classify -> invalid.
 control classify(bool present, bool valid) exits accepted, invalid {
     delta present {
         true => exists,

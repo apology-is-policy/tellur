@@ -276,13 +276,13 @@ fn compare(label: &str, text: &str, nested: bool) {
 fn generated_pending_delivery_preserves_real_borrowed_results_and_all_fuel_cuts() {
     compare(
         "borrowed",
-        include_str!("../../tests/fixtures/native_pending_operation.tellur"),
+        include_str!("../../tests/fixtures/native_pending_operation.vn"),
         false,
     );
 }
 #[test]
 fn generated_pending_delivery_preserves_nested_supplier_and_fault_reports() {
-    let text = include_str!("../../tests/fixtures/native_pending_operation.tellur");
+    let text = include_str!("../../tests/fixtures/native_pending_operation.vn");
     let helper = r#"
 control nested(bool stop) exits done faults {
     fault boundary {

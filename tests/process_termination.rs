@@ -10,13 +10,13 @@ use tellur::{
 #[test]
 fn process_status_stays_entry_only_after_nested_fault_retirement() {
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let p = compile(include_str!("fixtures/process_nested.tellur"), manifest)
+    let p = compile(include_str!("fixtures/process_nested.vn"), manifest)
         .unwrap()
         .with_entry_exit_codes("main", BTreeMap::from([("done".into(), 0)]))
         .unwrap();
     let invalid = format!(
         "{}\ncontrol invalid() exits done {{ main(); exit done; }}",
-        include_str!("fixtures/process_nested.tellur")
+        include_str!("fixtures/process_nested.vn")
     );
     assert_eq!(
         compile(

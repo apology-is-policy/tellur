@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/record_chain_spawn.tellur");
-const GUARDS: &str = include_str!("fixtures/source_record_chain_guards.tellur");
+const SOURCE: &str = include_str!("../playground/record_chain_spawn.vn");
+const GUARDS: &str = include_str!("fixtures/source_record_chain_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -57,7 +57,7 @@ fn record_chains_preserve_selected_shared_and_exclusive_schedules() {
     assert_eq!(run(SOURCE), ["left", "right"]);
     assert_eq!(run(GUARDS), ["after", "available"]);
     assert_eq!(
-        run(include_str!("fixtures/source_record_chain_results.tellur")),
+        run(include_str!("fixtures/source_record_chain_results.vn")),
         ["returned"]
     );
 }
@@ -185,7 +185,7 @@ fn shared_outer_chain_cannot_write_exclusive_inner_fields() {
 }
 #[test]
 fn owned_chain_results_keep_holders_through_repeated_spawn_and_join() {
-    let source = include_str!("fixtures/source_record_chain_results.tellur");
+    let source = include_str!("fixtures/source_record_chain_results.vn");
     run(source);
     rejects(
         &source.replace("delta await pending", "drop(original);delta await pending"),
@@ -274,7 +274,7 @@ fn generic_child_forwarding_preserves_record_chain_result_origins() {
 }
 #[test]
 fn completed_and_joined_record_chain_fault_results_settle_before_contingency() {
-    let source = include_str!("fixtures/source_record_chain_fault.tellur");
+    let source = include_str!("fixtures/source_record_chain_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

@@ -47,7 +47,7 @@ fn independent_compiled_contexts_restore_causes_borrows_scripts_and_shared_fuel(
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_contexts.tellur"),
+        include_str!("../../tests/fixtures/native_contexts.vn"),
         manifest,
     )
     .unwrap()

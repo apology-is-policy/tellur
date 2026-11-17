@@ -40,7 +40,7 @@ This is implemented checking and differential evidence, not a mechanized theorem
 that one symbolic run proves all future language extensions sound. New operations
 must specify which type properties they require. Concrete layout and body checks
 remain mandatory. There is no general proof yet that source-level generic
-specialization commutes with every proposed Tellur algebra operation.
+specialization commutes with every proposed Villanelle algebra operation.
 
 ## Sealed capabilities
 

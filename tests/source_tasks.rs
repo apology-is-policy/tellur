@@ -15,7 +15,7 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-const NORMAL: &str = include_str!("../playground/structured_tasks.tellur");
+const NORMAL: &str = include_str!("../playground/structured_tasks.vn");
 #[test]
 fn source_handoffs_preserve_schedule_across_quotas_and_expansion() {
     let p = compile(NORMAL, manifest()).unwrap();
@@ -89,7 +89,7 @@ fn native_source_handoffs_match_reference() {
     );
     fs::remove_dir_all(root).unwrap();
 }
-const FAULT: &str = include_str!("../tests/fixtures/source_task_fault.tellur");
+const FAULT: &str = include_str!("../tests/fixtures/source_task_fault.vn");
 #[test]
 fn child_fault_stops_siblings_before_only_the_owning_contingency() {
     let p = compile(FAULT, manifest()).unwrap();
@@ -154,7 +154,7 @@ fn native_child_fault_matches_reference() {
     );
     fs::remove_dir_all(root).unwrap();
 }
-const MIXED: &str = include_str!("../tests/fixtures/source_task_tree.tellur");
+const MIXED: &str = include_str!("../tests/fixtures/source_task_tree.vn");
 #[test]
 fn owned_tasks_compose_with_borrowed_cold_awaits_and_invocation_owned_grandchildren() {
     let p = compile(MIXED, manifest()).unwrap();
@@ -216,11 +216,7 @@ fn started_handles_require_consumption_and_do_not_erase_the_admitted_profile() {
 
 #[test]
 fn parent_await_preserves_borrowed_storage_and_unjoined_completions() {
-    let p = compile(
-        include_str!("../playground/parent_await.tellur"),
-        manifest(),
-    )
-    .unwrap();
+    let p = compile(include_str!("../playground/parent_await.vn"), manifest()).unwrap();
     let expected = p.run(&scenario()).unwrap();
     let messages: Vec<_> = expected
         .events
@@ -261,7 +257,7 @@ fn parent_await_preserves_borrowed_storage_and_unjoined_completions() {
 
 #[test]
 fn sibling_fault_restores_queued_and_nested_parent_awaits() {
-    let source = include_str!("fixtures/source_parent_await_fault.tellur");
+    let source = include_str!("fixtures/source_parent_await_fault.vn");
     for delay in 0..3 {
         for cold in [false, true] {
             let mut source = source.replacen("yield;\n    yield;", &"yield;".repeat(delay), 1);
@@ -412,7 +408,7 @@ control handoff() exits done {forward run work();}
     }
 }
 
-const HELPERS: &str = include_str!("../playground/structured_helpers.tellur");
+const HELPERS: &str = include_str!("../playground/structured_helpers.vn");
 #[test]
 fn synchronous_helpers_preserve_parent_borrows_and_explicit_handoffs() {
     let p = compile(HELPERS, manifest()).unwrap();
@@ -502,9 +498,9 @@ fn resolved_imports_and_trait_calls_use_checked_helper_bodies() {
             _ => "fault boundary {} contingency [] {escalate;}",
         };
         let faults = if mode == 2 { " faults" } else { "" };
-        fs::write(root.join("helpers.tellur"), format!("async control worker() exits done {{yield;exit done;}} pub control helper() exits done{faults} {{{body}exit done;}}")).unwrap();
-        fs::write(root.join("main.tellur"), "import \"helpers.tellur\" as helpers; async control worker() exits done {exit done;} async control startup() exits done {auto child=spawn worker();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}").unwrap();
-        let result = tellur::compile_file(root.join("main.tellur"), manifest());
+        fs::write(root.join("helpers.vn"), format!("async control worker() exits done {{yield;exit done;}} pub control helper() exits done{faults} {{{body}exit done;}}")).unwrap();
+        fs::write(root.join("main.vn"), "import \"helpers.vn\" as helpers; async control worker() exits done {exit done;} async control startup() exits done {auto child=spawn worker();helpers.helper();await child;exit done;} control main() exits done {forward run startup();}").unwrap();
+        let result = tellur::compile_file(root.join("main.vn"), manifest());
         {
             assert_eq!(
                 result.unwrap().run(&scenario()).unwrap().events.len(),
@@ -530,11 +526,7 @@ fn helper_faults_keep_unjoined_result_dispositions_and_stop_queued_children() {
     let error = compile(source, manifest()).unwrap_err();
     assert_eq!(error.code, "E_FAULT_RESOURCE", "{error:?}");
     assert!(error.message.contains("`child`"));
-    let p = compile(
-        include_str!("fixtures/source_helper_fault.tellur"),
-        manifest(),
-    )
-    .unwrap();
+    let p = compile(include_str!("fixtures/source_helper_fault.vn"), manifest()).unwrap();
     for p in [p.clone(), p.expanded("main").unwrap()] {
         let tellur::runtime::RunCompletion::Process(r) =
             p.run_completion(&scenario(), 1000).unwrap()
@@ -691,7 +683,7 @@ fn parent_await_checks_stopped_producer_obligations_and_keeps_sequential_repair(
 
 #[test]
 fn cooperative_helpers_preserve_inline_entry_borrows_and_results() {
-    let source = include_str!("../playground/cooperative_helpers.tellur");
+    let source = include_str!("../playground/cooperative_helpers.vn");
     let p = compile(source, manifest()).unwrap();
     let expected = p.run(&scenario()).unwrap();
     let messages: Vec<_> = expected
@@ -733,7 +725,7 @@ fn cooperative_helpers_preserve_inline_entry_borrows_and_results() {
 
 #[test]
 fn sibling_fault_finds_owners_below_inline_helpers_in_every_retained_location() {
-    let source = include_str!("fixtures/source_inline_helper_fault.tellur");
+    let source = include_str!("fixtures/source_inline_helper_fault.vn");
     for body in [
         "yield;yield;",
         "auto nested=spawn idle();await nested;",

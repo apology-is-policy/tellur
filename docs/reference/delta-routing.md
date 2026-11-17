@@ -6,8 +6,8 @@ Compiler 0.64 supports flat deltas that retain the producer's outcome names.
 
 ## Importing outcomes as paths
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control read_message() exits ready { string text }, absent {
     exit ready { "hello" };
 }
@@ -41,8 +41,8 @@ paths. Legacy `region` decisions keep their explicit-arm requirement.
 
 ## Grouped arm statements
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control request(bool image) exits has_image { string data }, has_message { string text } {
     exit delta image {
         true => has_image { "pixels" },
@@ -75,8 +75,8 @@ resource and lifetime rules apply throughout.
 
 ## Qualified decision paths
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control choose(bool flag) exits yes, no {
     exit delta flag { true => yes {}, false => no {} };
 }

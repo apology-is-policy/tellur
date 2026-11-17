@@ -7,8 +7,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'construction-checkpoint');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const uri = vscode.Uri.file(path.join(fixture, 'construction.tellur'));
-  const source = await fs.readFile(path.join(__dirname, '../../../playground/construction.tellur'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'construction.vn'));
+  const source = await fs.readFile(path.join(__dirname, '../../../playground/construction.vn'), 'utf8');
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
@@ -54,7 +54,7 @@ exports.run = async function (root) {
   assert.equal(report.outcome, 'done');
   assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), [
     'Hello, Ada', 'Built from nested owning values.', 'Good day, Grace',
-    'A temporary lives through this call.', 'Welcome, Tellur!'
+    'A temporary lives through this call.', 'Welcome, Villanelle!'
   ]);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'constructor outline, hover, auto type, unsaved field error/repair, formatting and native nested construction passed\n');
   console.log('TELLUR_CONSTRUCTION_EDITOR_TESTS_PASSED: constructor outline/hover, auto type, unsaved field error/repair, formatting and native nested construction');

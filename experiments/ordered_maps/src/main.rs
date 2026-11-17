@@ -1,4 +1,4 @@
-// Standalone representation experiment. The Tellur runtime does not link this crate.
+// Standalone representation experiment. The Villanelle runtime does not link this crate.
 #[cfg(feature = "allocation-counts")]
 mod allocations;
 
@@ -80,7 +80,7 @@ impl OrderedMap for BTreeMap<String, u32> {
 }
 
 // blart needs prefix-free keys. Escape zero as 00 FF and terminate with 00 00.
-// This preserves byte order, including when one Tellur string prefixes another.
+// This preserves byte order, including when one Villanelle string prefixes another.
 fn with_art_key<T>(key: &str, use_key: impl FnOnce(&[u8]) -> T) -> T {
     let zeros = key.bytes().filter(|&b| b == 0).count();
     let len = key.len() + zeros + 2;

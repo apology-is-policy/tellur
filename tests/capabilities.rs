@@ -203,10 +203,6 @@ fn bounded_fields_cannot_hide_moves_or_grant_copy_to_vectors() {
         manifest(),
     )
     .unwrap();
-    let p = compile(
-        include_str!("../playground/capabilities.tellur"),
-        manifest(),
-    )
-    .unwrap();
+    let p = compile(include_str!("../playground/capabilities.vn"), manifest()).unwrap();
     p.run(&scenario()).unwrap();
 }

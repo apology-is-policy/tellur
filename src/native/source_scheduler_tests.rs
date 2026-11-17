@@ -4,14 +4,14 @@ use super::*;
 fn compiled_source_boundary_helpers_values() {
     compare(
         "boundary_helpers_values",
-        include_str!("../../playground/boundary_helpers.tellur"),
+        include_str!("../../playground/boundary_helpers.vn"),
     );
 }
 #[test]
 fn compiled_source_boundary_helpers_fault() {
     compare(
         "boundary_helpers_fault",
-        include_str!("../../tests/fixtures/source_boundary_helper_fault.tellur"),
+        include_str!("../../tests/fixtures/source_boundary_helper_fault.vn"),
     );
 }
 #[test]
@@ -28,40 +28,40 @@ fn compiled_source_boundary_helpers_recovery_resources() {
 fn compiled_source_outcome_chains_values() {
     compare(
         "outcome_chains_values",
-        include_str!("../../playground/outcome_chain_spawn.tellur"),
+        include_str!("../../playground/outcome_chain_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_chains_guards() {
     compare(
         "outcome_chains_guards",
-        include_str!("../../tests/fixtures/source_outcome_chain_guards.tellur"),
+        include_str!("../../tests/fixtures/source_outcome_chain_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_chains_nested() {
     compare(
         "outcome_chains_nested",
-        include_str!("../../tests/fixtures/source_outcome_chain_nested.tellur"),
+        include_str!("../../tests/fixtures/source_outcome_chain_nested.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_chains_owned() {
     compare(
         "outcome_chains_owned",
-        include_str!("../../tests/fixtures/source_outcome_chain_owned.tellur"),
+        include_str!("../../tests/fixtures/source_outcome_chain_owned.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_chains_fault() {
     compare(
         "outcome_chains_fault",
-        include_str!("../../tests/fixtures/source_outcome_chain_fault.tellur"),
+        include_str!("../../tests/fixtures/source_outcome_chain_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_chains_empty_and_whole_results() {
-    let source = include_str!("../../tests/fixtures/source_outcome_chain_guards.tellur");
+    let source = include_str!("../../tests/fixtures/source_outcome_chain_guards.vn");
     let empty = source
         .replace("choice.held { borrow mutable owner }", "choice.empty {}")
         .replace(
@@ -79,7 +79,7 @@ fn compiled_source_outcome_chains_empty_and_whole_results() {
 }
 #[test]
 fn compiled_source_outcome_chains_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_outcome_chain_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_outcome_chain_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -100,35 +100,35 @@ fn compiled_source_outcome_chains_empty_resources() {
 fn compiled_source_tagged_chains_values() {
     compare(
         "tagged_chains_values",
-        include_str!("../../playground/tagged_chain_spawn.tellur"),
+        include_str!("../../playground/tagged_chain_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_chains_option() {
     compare(
         "tagged_chains_option",
-        include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_chain_option.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_chains_variant() {
     compare(
         "tagged_chains_variant",
-        include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_chain_variant.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_chains_fault() {
     compare(
         "tagged_chains_fault",
-        include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_chain_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_chains_empty_and_whole_results() {
     for (i, source) in [
-        include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),
-        include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_chain_option.vn"),
+        include_str!("../../tests/fixtures/source_tagged_chain_variant.vn"),
     ]
     .iter()
     .enumerate()
@@ -152,7 +152,7 @@ fn compiled_source_tagged_chains_empty_and_whole_results() {
 }
 #[test]
 fn compiled_source_tagged_chains_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_tagged_chain_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -173,33 +173,33 @@ fn compiled_source_tagged_chains_empty_resources() {
 fn compiled_source_record_chains_values() {
     compare(
         "record_chains_values",
-        include_str!("../../playground/record_chain_spawn.tellur"),
+        include_str!("../../playground/record_chain_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_record_chains_guards() {
     compare(
         "record_chains_guards",
-        include_str!("../../tests/fixtures/source_record_chain_guards.tellur"),
+        include_str!("../../tests/fixtures/source_record_chain_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_record_chains_owned_results() {
     compare(
         "record_chains_owned_results",
-        include_str!("../../tests/fixtures/source_record_chain_results.tellur"),
+        include_str!("../../tests/fixtures/source_record_chain_results.vn"),
     );
 }
 #[test]
 fn compiled_source_record_chains_fault() {
     compare(
         "record_chains_fault",
-        include_str!("../../tests/fixtures/source_record_chain_fault.tellur"),
+        include_str!("../../tests/fixtures/source_record_chain_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_record_chains_whole_results() {
-    let source = include_str!("../../tests/fixtures/source_record_chain_guards.tellur")
+    let source = include_str!("../../tests/fixtures/source_record_chain_guards.vn")
         .replace(
             "exit ready { borrow mutable deref input.inner.item };",
             "exit ready { input };",
@@ -212,7 +212,7 @@ fn compiled_source_record_chains_whole_results() {
 }
 #[test]
 fn compiled_source_record_chains_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_record_chain_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_record_chain_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -228,33 +228,33 @@ fn compiled_source_record_chains_resources() {
 fn compiled_source_borrowed_outcome_results_nested_outcomes() {
     compare(
         "borrowed_outcome_result_nested",
-        include_str!("../../tests/fixtures/source_borrowed_outcome_result_nested.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_outcome_result_nested.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcome_results_values() {
     compare(
         "borrowed_outcome_result_values",
-        include_str!("../../playground/borrowed_outcome_spawn_results.tellur"),
+        include_str!("../../playground/borrowed_outcome_spawn_results.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcome_results_guards() {
     compare(
         "borrowed_outcome_result_guards",
-        include_str!("../../tests/fixtures/source_borrowed_outcome_result_guards.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_outcome_result_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcome_results_fault() {
     compare(
         "borrowed_outcome_result_fault",
-        include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcome_results_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -270,33 +270,33 @@ fn compiled_source_borrowed_outcome_results_resources() {
 fn compiled_source_borrowed_tagged_results_nested_outcomes() {
     compare(
         "borrowed_tagged_result_outcomes",
-        include_str!("../../tests/fixtures/source_borrowed_tagged_result_outcomes.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_tagged_result_outcomes.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tagged_results_values() {
     compare(
         "borrowed_tagged_result_values",
-        include_str!("../../playground/borrowed_tagged_spawn_results.tellur"),
+        include_str!("../../playground/borrowed_tagged_spawn_results.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tagged_results_guards() {
     compare(
         "borrowed_tagged_result_guards",
-        include_str!("../../tests/fixtures/source_borrowed_tagged_result_guards.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_tagged_result_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tagged_results_fault() {
     compare(
         "borrowed_tagged_result_fault",
-        include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tagged_results_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -312,33 +312,33 @@ fn compiled_source_borrowed_tagged_results_resources() {
 fn compiled_source_borrowed_record_results_nested_tags() {
     compare(
         "borrowed_record_result_tags",
-        include_str!("../../tests/fixtures/source_borrowed_record_result_tags.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_record_result_tags.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_record_results_values() {
     compare(
         "borrowed_record_result_values",
-        include_str!("../../playground/borrowed_record_spawn_results.tellur"),
+        include_str!("../../playground/borrowed_record_spawn_results.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_record_results_guards() {
     compare(
         "borrowed_record_result_guards",
-        include_str!("../../tests/fixtures/source_borrowed_record_result_guards.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_record_result_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_record_results_fault() {
     compare(
         "borrowed_record_result_fault",
-        include_str!("../../tests/fixtures/source_borrowed_record_result_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_record_result_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_record_results_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_record_result_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_record_result_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -354,26 +354,26 @@ fn compiled_source_borrowed_record_results_resources() {
 fn compiled_source_borrowed_outcomes_values() {
     compare(
         "borrowed_outcome_values",
-        include_str!("../../playground/borrowed_outcome_spawn.tellur"),
+        include_str!("../../playground/borrowed_outcome_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcomes_guards() {
     compare(
         "borrowed_outcome_guards",
-        include_str!("../../tests/fixtures/source_borrowed_outcome_guards.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_outcome_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcomes_fault() {
     compare(
         "borrowed_outcome_fault",
-        include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_outcome_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_outcomes_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_outcome_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -389,26 +389,26 @@ fn compiled_source_borrowed_outcomes_resources() {
 fn compiled_source_borrowed_tags_values() {
     compare(
         "borrowed_tagged_values",
-        include_str!("../../playground/borrowed_tagged_spawn.tellur"),
+        include_str!("../../playground/borrowed_tagged_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tags_guards() {
     compare(
         "borrowed_tagged_guards",
-        include_str!("../../tests/fixtures/source_borrowed_tagged_guards.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_tagged_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tags_fault() {
     compare(
         "borrowed_tagged_fault",
-        include_str!("../../tests/fixtures/source_borrowed_tagged_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_tagged_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_tags_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_tagged_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_tagged_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -424,26 +424,26 @@ fn compiled_source_borrowed_tags_resources() {
 fn compiled_source_borrowed_records_values() {
     compare(
         "borrowed_record_values",
-        include_str!("../../playground/borrowed_record_spawn.tellur"),
+        include_str!("../../playground/borrowed_record_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_records_guards() {
     compare(
         "borrowed_record_guards",
-        include_str!("../../tests/fixtures/source_borrowed_record_guards.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_record_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_records_fault() {
     compare(
         "borrowed_record_fault",
-        include_str!("../../tests/fixtures/source_borrowed_record_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_record_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_records_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_record_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_record_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -459,26 +459,26 @@ fn compiled_source_borrowed_records_resources() {
 fn compiled_source_outcome_payloads_values() {
     compare(
         "outcome_values",
-        include_str!("../../playground/outcome_spawn.tellur"),
+        include_str!("../../playground/outcome_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_payloads_guards() {
     compare(
         "outcome_guards",
-        include_str!("../../tests/fixtures/source_outcome_guards.tellur"),
+        include_str!("../../tests/fixtures/source_outcome_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_payloads_fault() {
     compare(
         "outcome_fault",
-        include_str!("../../tests/fixtures/source_outcome_fault.tellur"),
+        include_str!("../../tests/fixtures/source_outcome_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_outcome_payloads_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_outcome_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_outcome_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -494,26 +494,26 @@ fn compiled_source_outcome_payloads_resources() {
 fn compiled_source_tagged_payloads_values() {
     compare(
         "tagged_values",
-        include_str!("../../playground/tagged_spawn.tellur"),
+        include_str!("../../playground/tagged_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_payloads_guards() {
     compare(
         "tagged_guards",
-        include_str!("../../tests/fixtures/source_tagged_guards.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_payloads_fault() {
     compare(
         "tagged_fault",
-        include_str!("../../tests/fixtures/source_tagged_fault.tellur"),
+        include_str!("../../tests/fixtures/source_tagged_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_tagged_payloads_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_tagged_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_tagged_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -529,26 +529,26 @@ fn compiled_source_tagged_payloads_resources() {
 fn compiled_source_nested_records_values() {
     compare(
         "nested_values",
-        include_str!("../../playground/nested_spawn.tellur"),
+        include_str!("../../playground/nested_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_nested_records_guards() {
     compare(
         "nested_guards",
-        include_str!("../../tests/fixtures/source_nested_guards.tellur"),
+        include_str!("../../tests/fixtures/source_nested_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_nested_records_fault() {
     compare(
         "nested_fault",
-        include_str!("../../tests/fixtures/source_nested_fault.tellur"),
+        include_str!("../../tests/fixtures/source_nested_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_nested_records_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_nested_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_nested_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -564,26 +564,26 @@ fn compiled_source_nested_records_resources() {
 fn compiled_source_flat_result_values() {
     compare(
         "flat_result_values",
-        include_str!("../../playground/carrier_spawn_results.tellur"),
+        include_str!("../../playground/carrier_spawn_results.vn"),
     );
 }
 #[test]
 fn compiled_source_flat_result_guards() {
     compare(
         "flat_result_guards",
-        include_str!("../../tests/fixtures/source_carrier_result_guards.tellur"),
+        include_str!("../../tests/fixtures/source_carrier_result_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_flat_result_fault() {
     compare(
         "flat_result_fault",
-        include_str!("../../tests/fixtures/source_carrier_result_fault.tellur"),
+        include_str!("../../tests/fixtures/source_carrier_result_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_flat_result_joined_fault() {
-    let source = include_str!("../../tests/fixtures/source_carrier_result_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_carrier_result_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -599,21 +599,21 @@ fn compiled_source_flat_result_resources() {
 fn compiled_source_flat_carrier_captures() {
     compare(
         "carrier_captures",
-        include_str!("../../playground/carrier_spawn.tellur"),
+        include_str!("../../playground/carrier_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_flat_carrier_guards() {
     compare(
         "carrier_guards",
-        include_str!("../../tests/fixtures/source_carrier_guards.tellur"),
+        include_str!("../../tests/fixtures/source_carrier_guards.vn"),
     );
 }
 #[test]
 fn compiled_source_flat_carrier_fault() {
     compare(
         "carrier_fault",
-        include_str!("../../tests/fixtures/source_carrier_fault.tellur"),
+        include_str!("../../tests/fixtures/source_carrier_fault.vn"),
     );
 }
 #[test]
@@ -622,7 +622,7 @@ fn compiled_source_flat_carrier_resources() {
 }
 #[test]
 fn compiled_source_direct_borrowed_result_guards() {
-    let source = include_str!("../../playground/guarded_task_captures.tellur")
+    let source = include_str!("../../playground/guarded_task_captures.vn")
         .replace("defer ", "spawn ")
         .replace(
             "auto moved = move pending;",
@@ -634,19 +634,19 @@ fn compiled_source_direct_borrowed_result_guards() {
 fn compiled_source_direct_borrowed_results() {
     compare(
         "borrowed_results",
-        include_str!("../../playground/borrowed_spawn_results.tellur"),
+        include_str!("../../playground/borrowed_spawn_results.vn"),
     );
 }
 #[test]
 fn compiled_source_direct_borrowed_result_fault() {
     compare(
         "borrowed_result_fault",
-        include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_result_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_direct_borrowed_result_joined_fault() {
-    let text = include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur")
+    let text = include_str!("../../tests/fixtures/source_borrowed_result_fault.vn")
         .replace(
             "    yield;\n    yield;\n    delta await result",
             "    delta await result",
@@ -656,7 +656,7 @@ fn compiled_source_direct_borrowed_result_joined_fault() {
 }
 #[test]
 fn compiled_source_direct_borrowed_result_awaited_owner_fault() {
-    let source = include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur")
+    let source = include_str!("../../tests/fixtures/source_borrowed_result_fault.vn")
         .replace(
             "control main()",
             "async control outer() exits done faults {await startup();exit done;} control main()",
@@ -672,14 +672,14 @@ fn compiled_source_direct_borrowed_result_resources() {
 fn compiled_source_borrowed_captures() {
     compare(
         "borrowed_captures",
-        include_str!("../../playground/borrowed_spawn.tellur"),
+        include_str!("../../playground/borrowed_spawn.vn"),
     );
 }
 #[test]
 fn compiled_source_borrowed_capture_fault() {
     compare(
         "borrowed_capture_fault",
-        include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
+        include_str!("../../tests/fixtures/source_borrowed_task_fault.vn"),
     );
 }
 #[test]
@@ -690,7 +690,7 @@ fn compiled_source_borrowed_capture_resources() {
 fn compiled_source_cooperative_helpers() {
     compare(
         "cooperative_helpers",
-        include_str!("../../playground/cooperative_helpers.tellur"),
+        include_str!("../../playground/cooperative_helpers.vn"),
     );
 }
 #[test]
@@ -710,7 +710,7 @@ fn compiled_source_inline_helper_queued_await_fault() {
     inline_helper_fault("await leaf(text);", true);
 }
 fn inline_helper_fault(body: &str, early: bool) {
-    let source = include_str!("../../tests/fixtures/source_inline_helper_fault.tellur");
+    let source = include_str!("../../tests/fixtures/source_inline_helper_fault.vn");
     let source = source.replace(
         "emit(\"inline started\");\n    yield;\n    yield;",
         &format!("emit(\"inline started\");{body}"),
@@ -742,19 +742,19 @@ fn compiled_source_inline_helper_resource_retirement() {
 fn compiled_source_parent_await() {
     compare(
         "parent_await",
-        include_str!("../../playground/parent_await.tellur"),
+        include_str!("../../playground/parent_await.vn"),
     );
 }
 #[test]
 fn compiled_source_parent_await_fault() {
     compare(
         "parent_await_fault",
-        include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
+        include_str!("../../tests/fixtures/source_parent_await_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_queued_parent_await_fault() {
-    let source = include_str!("../../tests/fixtures/source_parent_await_fault.tellur").replacen(
+    let source = include_str!("../../tests/fixtures/source_parent_await_fault.vn").replacen(
         "yield;\n    yield;",
         "",
         1,
@@ -763,7 +763,7 @@ fn compiled_source_queued_parent_await_fault() {
 }
 #[test]
 fn compiled_source_cold_parent_await_fault() {
-    let source = include_str!("../../tests/fixtures/source_parent_await_fault.tellur").replace(
+    let source = include_str!("../../tests/fixtures/source_parent_await_fault.vn").replace(
         "await nested(borrow mutable text);",
         "auto cold=defer nested(borrow mutable text);await cold;",
     );
@@ -773,63 +773,60 @@ fn compiled_source_cold_parent_await_fault() {
 fn compiled_source_uninterrupted_helpers() {
     compare(
         "helpers",
-        include_str!("../../playground/structured_helpers.tellur"),
+        include_str!("../../playground/structured_helpers.vn"),
     );
 }
 #[test]
 fn compiled_source_helper_fault() {
     compare(
         "helper_fault",
-        include_str!("../../tests/fixtures/source_helper_fault.tellur"),
+        include_str!("../../tests/fixtures/source_helper_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_normal_schedule() {
     compare(
         "normal",
-        include_str!("../../playground/structured_tasks.tellur"),
+        include_str!("../../playground/structured_tasks.vn"),
     );
 }
 #[test]
 fn compiled_source_task_tree() {
     compare(
         "tree",
-        include_str!("../../tests/fixtures/source_task_tree.tellur"),
+        include_str!("../../tests/fixtures/source_task_tree.vn"),
     );
 }
 #[test]
 fn compiled_source_sibling_fault() {
     compare(
         "fault",
-        include_str!("../../tests/fixtures/source_task_fault.tellur"),
+        include_str!("../../tests/fixtures/source_task_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_grandchild_fault() {
     compare(
         "grandchild_fault",
-        include_str!("../../tests/fixtures/source_task_grandchild_fault.tellur"),
+        include_str!("../../tests/fixtures/source_task_grandchild_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_task_sets() {
-    compare(
-        "task_sets",
-        include_str!("../../playground/task_sets.tellur"),
-    );
+    compare("task_sets", include_str!("../../playground/task_sets.vn"));
 }
 #[test]
 fn compiled_source_task_set_fault() {
     compare(
         "task_set_fault",
-        include_str!("../../tests/fixtures/source_task_set_fault.tellur"),
+        include_str!("../../tests/fixtures/source_task_set_fault.vn"),
     );
 }
 #[test]
 fn compiled_source_task_set_parent_fault() {
     compare(
         "task_set_parent_fault",
-        include_str!("../../tests/fixtures/source_task_set_parent_fault.tellur"),
+        include_str!("../../tests/fixtures/source_task_set_parent_fault.vn"),
     );
 }
 fn compare(label: &str, text: &str) {
@@ -1767,7 +1764,7 @@ fn compiled_checked_helper_local_recovery_and_children() {
 fn compiled_local_recovery_preserves_source_turn() {
     compare(
         "local_recovery_source",
-        include_str!("../../playground/local_recovery_tasks.tellur"),
+        include_str!("../../playground/local_recovery_tasks.vn"),
     );
 }
 
@@ -1775,6 +1772,6 @@ fn compiled_local_recovery_preserves_source_turn() {
 fn compiled_boundary_handoff_public_example() {
     compare(
         "boundary_handoff_public",
-        include_str!("../../playground/boundary_handoff_tasks.tellur"),
+        include_str!("../../playground/boundary_handoff_tasks.vn"),
     );
 }

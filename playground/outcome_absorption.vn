@@ -1,4 +1,4 @@
-// Run Tellur: Show Outcome Absorption Snapshot, or use absorption-snapshot.
+// Run Villanelle: Show Outcome Absorption Snapshot, or use absorption-snapshot.
 // The public lookup contract hides the distinction between missing and malformed.
 control inspect_record(bool present, bool valid) exits auto {
     exit delta present {

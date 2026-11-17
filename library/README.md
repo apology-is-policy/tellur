@@ -1,4 +1,4 @@
-# Tellur source library
+# Villanelle source library
 
 These first reusable slices of the standard-library work are extracted from the
 maintained settings service: JSON files in 0.75 and bounded loopback HTTP as a
@@ -10,17 +10,17 @@ For the planned collection APIs, algorithm contracts and storage experiments, se
 
 ## String-keyed map membership
 
-The experimental [membership module](membership.tellur) exports `contains_key<item>`. It borrows a string-keyed map and a key and exits `present` or `absent`. The [collection discovery example](../examples/collection_discovery/main.tellur) routes both outcomes.
+The experimental [membership module](membership.vn) exports `contains_key<item>`. It borrows a string-keyed map and a key and exits `present` or `absent`. The [collection discovery example](../examples/collection_discovery/main.vn) routes both outcomes.
 
 ## Shared vector windows
 
-The [traversal module](traversal.tellur) exports `range` and `get`. The [example](../examples/borrowed_traversal/main.tellur) reads two words from a half-open range, then appends to the original vector. From the checkout run `./bin/tellur exec examples/borrowed_traversal/main.tellur -- --json`. For the reference interpreter, use the example's [manifest](../examples/borrowed_traversal/manifest.json) and [scenario](../examples/borrowed_traversal/main.scenario.json).
+The [traversal module](traversal.vn) exports `range` and `get`. The [example](../examples/borrowed_traversal/main.vn) reads two words from a half-open range, then appends to the original vector. From the checkout run `./bin/vnc exec examples/borrowed_traversal/main.vn -- --json`. For the reference interpreter, use the example's [manifest](../examples/borrowed_traversal/manifest.json) and [scenario](../examples/borrowed_traversal/main.scenario.json).
 
 ## JSON string-map files
 
-Import [json_file.tellur](json_file.tellur) with a relative path and a local namespace.
-The [standalone example](../examples/json_file/main.tellur) and
-[settings module](../applications/settings/settings.tellur) use the same source.
+Import [json_file.vn](json_file.vn) with a relative path and a local namespace.
+The [standalone example](../examples/json_file/main.vn) and
+[settings module](../applications/settings/settings.vn) use the same source.
 Both provide the four required primitives: `file_read`, `file_replace`,
 `json_decode` and `json_encode`.
 
@@ -77,8 +77,8 @@ on the settings service or HTTP parser.
 From the repository root, with the current compiler built:
 
 ```sh
-./bin/tellurc check examples/json_file/main.tellur
-./bin/tellurc build examples/json_file/main.tellur --release
+./bin/vnc check examples/json_file/main.vn
+./bin/vnc build examples/json_file/main.vn --release
 ./examples/json_file/build/main --entry save -- /tmp/tellur-library.json theme dark
 ./examples/json_file/build/main -- /tmp/tellur-library.json
 ```
@@ -89,10 +89,10 @@ loaded document with status 0 and reports other failures with status 1. `save` u
 status 4 for uncertain replacement and status 1 for other failures.
 
 Module paths resolve relative to the manifest. Primitive declarations are still
-project-wide, with exact signatures; importing a Tellur file does not auto-load a
+project-wide, with exact signatures; importing a Villanelle file does not auto-load a
 manifest or Rust code. [Rust adapter documentation](../docs/rust-adapters.md#explicit-source-modules)
 describes composition, trust and build boundaries. The current modules are synchronous;
-they introduce no Rust future or executor contract and leave Tellur's planned async
+they introduce no Rust future or executor contract and leave Villanelle's planned async
 and LLVM coroutine model open.
 
 The [library tests](../tests/json_file_library.rs) check outcome preservation and
@@ -102,12 +102,12 @@ its original application, including fault contingency and subsequent requests.
 
 ## Bounded loopback HTTP
 
-Import [loopback_http.tellur](loopback_http.tellur) under a local namespace. Its
+Import [loopback_http.vn](loopback_http.vn) under a local namespace. Its
 eight public controls expose the transport's closed outcomes without choosing routes,
 ordinary response statuses or supervision policy. The retained opaque types
 `http_listener` and `http_connection` and matching `http_*` primitives must be supplied
 by the project manifest. The [independent hello service](../examples/http_hello/README.md)
-and [settings server](../applications/settings/server.tellur) use the same source.
+and [settings server](../applications/settings/server.vn) use the same source.
 
 | Control | Inputs | Result contract |
 | --- | --- | --- |
@@ -177,7 +177,7 @@ concurrently as task-set members.
 [host/loopback_http_accept.rs](host/loopback_http_accept.rs) and the polled send and
 finish in [host/loopback_http_send.rs](host/loopback_http_send.rs) are embedded by explicit
 `rust.modules` and depend on the project's locked `httparse` version (and, for the
-polled adapter, the internal readiness dependency; rerun `tellurc lock-native`). The
+polled adapter, the internal readiness dependency; rerun `vnc lock-native`). The
 root adapter re-exports `Listener`, `Connection` and the eight primitive functions,
 taking `http_receive`, `http_accept`, `http_send` and `http_connection_finish` from
 the polled modules. The blocking `http_receive`, `http_accept` and `http_send` stay

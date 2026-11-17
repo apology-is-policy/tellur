@@ -146,7 +146,7 @@ fn absent_option_needs_explicit_origins_and_escaping_locals_are_rejected() {
 
 #[test]
 fn options_inherit_named_payload_groups_and_keep_independent_last_uses() {
-    let s = include_str!("fixtures/outcome_origins.tellur");
+    let s = include_str!("fixtures/outcome_origins.vn");
     same(s);
     same(&s.replace("body, true)", "body, false)"));
     let bad = s.replace(
@@ -211,7 +211,7 @@ fn native_named_outcome_option_boundaries_match_both_branches_and_expansion() {
     let root = std::env::temp_dir().join(format!("tellur-outcome-origins-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     for present in [true, false] {
-        let source = include_str!("fixtures/outcome_origins.tellur")
+        let source = include_str!("fixtures/outcome_origins.vn")
             .replace("body, true)", &format!("body, {present})"));
         let p = same(&source);
         let scenario = Scenario {

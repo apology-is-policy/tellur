@@ -32,11 +32,11 @@ impl Fixture {
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
     }
     fn write(&self, source: &str) {
-        fs::write(self.root.join("entry.tellur"), source).unwrap();
+        fs::write(self.root.join("entry.vn"), source).unwrap();
     }
     fn query(&self, source: &str, query: Query) -> Result<Report, String> {
         self.write(source);
-        explain::file(self.root.join("entry.tellur"), self.manifest(), query)
+        explain::file(self.root.join("entry.vn"), self.manifest(), query)
     }
     fn selection(&self, source: &str, marker: &str) -> Report {
         self.query(source, at(source, marker)).unwrap()
@@ -82,7 +82,7 @@ fn private_outcome_queries_reuse_snapshot_evidence_and_source_links() {
     );
     f.write(&source.replace("    control lookup", "pub control lookup"));
     let snapshot =
-        tellur::modules::absorption_snapshot(f.root.join("entry.tellur"), f.manifest()).unwrap();
+        tellur::modules::absorption_snapshot(f.root.join("entry.vn"), f.manifest()).unwrap();
     assert_eq!(
         evidence,
         snapshot.controls["@entry::lookup"].outcomes["failed"]
@@ -180,18 +180,18 @@ fn selection_and_contributor_limits_are_explicit() {
 #[test]
 fn queries_read_each_current_module_once_and_map_imported_contributors() {
     let f = Fixture::new();
-    let lib = f.root.join("library.tellur");
+    let lib = f.root.join("library.vn");
     fs::write(&lib, "pub control leaf() exits missing {exit missing;}").unwrap();
-    let source = "import \"library.tellur\" as lib;control lookup() exits failed {exit delta lib.leaf() {malformed=>failed {}};}";
+    let source = "import \"library.vn\" as lib;control lookup() exits failed {exit delta lib.leaf() {malformed=>failed {}};}";
     f.write(source);
     let mut reads = BTreeMap::new();
     let report = explain::with_loader(
-        f.root.join("entry.tellur"),
+        f.root.join("entry.vn"),
         f.manifest(),
         outcome("lookup", "failed"),
         |p| {
             *reads.entry(p.to_owned()).or_insert(0) += 1;
-            if p.file_name().unwrap() == "library.tellur" {
+            if p.file_name().unwrap() == "library.vn" {
                 Ok("pub control leaf() exits malformed {exit malformed;}".into())
             } else {
                 fs::read_to_string(p)
@@ -207,12 +207,12 @@ fn queries_read_each_current_module_once_and_map_imported_contributors() {
     let imported = evidence
         .contributors
         .iter()
-        .find(|c| c.control == "file:library.tellur::leaf")
+        .find(|c| c.control == "file:library.vn::leaf")
         .unwrap();
     assert_eq!(imported.location.line, 1);
-    assert_eq!(imported.location.module, "file:library.tellur");
+    assert_eq!(imported.location.module, "file:library.vn");
     assert_eq!(imported.outcome, "malformed");
-    assert!(report.markdown.contains("library.tellur#L1)"));
+    assert!(report.markdown.contains("library.vn#L1)"));
 }
 #[test]
 fn invalid_sources_positions_and_targets_produce_no_partial_report() {
@@ -242,13 +242,13 @@ fn invalid_sources_positions_and_targets_produce_no_partial_report() {
         .contains("E_")
     );
     fs::write(
-        f.root.join("broken.tellur"),
+        f.root.join("broken.vn"),
         "control unused<t>(t value) exits done {emit(unknown);exit done;}",
     )
     .unwrap();
     assert!(
         f.query(
-            &("import \"broken.tellur\" as broken;".to_owned() + source),
+            &("import \"broken.vn\" as broken;".to_owned() + source),
             outcome("main", "done")
         )
         .is_err()
@@ -258,7 +258,7 @@ fn invalid_sources_positions_and_targets_produce_no_partial_report() {
 fn target_list_includes_private_controls_but_excludes_types_and_generic_roots() {
     let f = Fixture::new();
     f.write("struct record {u32 n;}control identity<t>(t n) exits ready {t n} {exit ready {n};}control private() exits done {exit done;}pub control public() exits done {exit done;}");
-    let program = tellur::check_file(f.root.join("entry.tellur"), f.manifest()).unwrap();
+    let program = tellur::check_file(f.root.join("entry.vn"), f.manifest()).unwrap();
     let names: Vec<_> = explain::targets(&program)
         .into_iter()
         .map(|t| (t.control, t.outcome))
@@ -278,7 +278,7 @@ fn cli_outputs_markdown_or_json_and_rejects_malformed_requests() {
     let run = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_tellurc"))
             .current_dir(&f.root)
-            .args(["explain", "entry.tellur"])
+            .args(["explain", "entry.vn"])
             .args(args)
             .output()
             .unwrap()
@@ -289,7 +289,7 @@ fn cli_outputs_markdown_or_json_and_rejects_malformed_requests() {
         "{}",
         String::from_utf8_lossy(&plain.stderr)
     );
-    assert!(String::from_utf8_lossy(&plain.stdout).contains("# Tellur outcome contributors"));
+    assert!(String::from_utf8_lossy(&plain.stdout).contains("# Villanelle outcome contributors"));
     let json = run(&["--at", "1:28", "--json"]);
     assert!(
         json.status.success(),
@@ -314,7 +314,7 @@ fn cli_outputs_markdown_or_json_and_rejects_malformed_requests() {
 #[test]
 fn settings_private_validation_and_public_failure_queries_are_useful_without_execution() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let source = root.join("applications/settings/settings.tellur");
+    let source = root.join("applications/settings/settings.vn");
     let manifest = root.join("applications/settings/manifest.json");
     let manifest =
         Manifest::from_json_at(&fs::read_to_string(&manifest).unwrap(), &manifest).unwrap();

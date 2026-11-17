@@ -6,7 +6,7 @@ fn compiled_owner_await_sibling_faults_restore_lexical_and_named_parent_trackers
     let root = std::env::temp_dir().join(format!("tellur-owner-await-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_owner_await.tellur"),
+        include_str!("../../tests/fixtures/native_owner_await.vn"),
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )

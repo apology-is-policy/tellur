@@ -4,7 +4,7 @@ Accepted direction, 25 October 2026. This document records design commitments;
 examples marked proposed are not a claim of implemented syntax. The ordered work
 queue is in [the roadmap](language-revision.md#active-checkpoint-queue).
 
-Tellur will combine nominal algebraic data types, explicit generic constraints,
+Villanelle will combine nominal algebraic data types, explicit generic constraints,
 traits with associated types, and ownership-aware control signatures. Composition
 provides reuse. There is no implementation inheritance or implicit struct subtyping.
 Type-first declarations, snake_case names and explicit public contracts remain the
@@ -27,7 +27,7 @@ propagate through structs, variants and collections.
 
 ## Data declarations
 
-Expose the existing record/variant semantics in Tellur source. Struct fields are
+Expose the existing record/variant semantics in Villanelle source. Struct fields are
 written `type name;`, with named nominal types and composition. Variant alternatives
 use the existing outcome-style brace payload declarations, with comma separation.
 Construction supports positional braces and named struct fields (0.19), with
@@ -41,7 +41,7 @@ questions. Copy, owning moves and must-complete obligations derive from fields u
 the existing rules. Resource completion must never become an implicit destructor
 that hides failing cleanup.
 
-The accepted module spelling is `import "people.tellur" as people;`, with explicit
+The accepted module spelling is `import "people.vn" as people;`, with explicit
 public declarations and private-by-default internals. Paths are resolved relative
 to the importing file. Logical package-name resolution is deferred. Source data
 declarations shipped in 0.17; [file modules and visibility](modules.md) shipped in
@@ -68,7 +68,7 @@ library use cases before inclusion.
 Executable generic trait syntax (with the outcome declared below). The [trait checkpoint design](traits.md) records
 implementation/coherence rules and the accepted qualification for this sketch (`reader<r>.item` / `reader<r>.read`):
 
-```tellur
+```villanelle
 outcome read_result<item, error> {
     received { item value },
     end,
@@ -126,9 +126,9 @@ causal order, task scope and cleanup, including failure and cancellation.
 ## Influences and limits
 
 Haskell's algebraic data types, polymorphism and type-class constraints are useful
-influences; adopting them does not require changing Tellur to lazy evaluation or
+influences; adopting them does not require changing Villanelle to lazy evaluation or
 implicit public signatures. Rust-style traits and Swift-style associated types are
-also relevant precedents. Tellur retains its borrowing and path-sensitive obligations.
+also relevant precedents. Villanelle retains its borrowing and path-sensitive obligations.
 There is no commitment to reproduce any one language's complete type system.
 
 Background: [Haskell types and classes](https://www.haskell.org/onlinereport/haskell2010/haskellch4.html),

@@ -1,4 +1,4 @@
-# Tellur semantic foundation — draft 3
+# Villanelle semantic foundation — draft 3
 
 25 October 2026. Compiler checkpoint 0.16.0.
 
@@ -164,7 +164,7 @@ There are different operations on different domains:
 
 Kleene algebra with tests provides equational program reasoning with Boolean tests
 and regular-event operations. This motivates a finite abstraction, but importing
-its laws does not establish a complete model of Tellur's data, ownership or
+its laws does not establish a complete model of Villanelle's data, ownership or
 nontermination. See [Cornell's KAT project](https://www.cs.cornell.edu/Projects/KAT/)
 and [Kozen's treatment of nonlocal control flow](https://ecommons.cornell.edu/entities/publication/26393b5f-a8d7-4a40-879b-272b8780de9c).
 
@@ -203,7 +203,7 @@ unimplemented. Rechecking alone does not establish the equation above. Expansion
 
 The executable syntax follows the identity-routing interpretation:
 
-```tellur
+```villanelle
 display(first);             // Exactly one outcome, with no payload: continue.
 forward display(second);    // Invoke once, then forward every declared alternative.
 exit saved;                 // Forward an already completed outcome.
@@ -213,7 +213,7 @@ A call statement rejects multiple outcomes and any payload, including a Copy
 payload. It establishes no source-visible path name. Keep an explicit delta when a
 semantic path name is useful. Internal call/decision identities still survive.
 
-```tellur
+```villanelle
 exit delta lookup(key) {
     found => forward,       // Tag-only pattern retains the entire payload.
     missing => unavailable {}
@@ -256,12 +256,12 @@ not proof of divergence. A borrowed entry requires an owning observer harness.
 From the project root:
 
 ```sh
-./bin/tellurc compare playground/algebra/original.tellur playground/manifest.json \
-  playground/algebra/identity.tellur playground/algebra/scenarios.json
+./bin/vnc compare playground/algebra/original.vn playground/manifest.json \
+  playground/algebra/identity.vn playground/algebra/scenarios.json
 
 # Expected counterexample; reports changed event order and exits unsuccessfully.
-./bin/tellurc compare playground/algebra/original.tellur playground/manifest.json \
-  playground/algebra/reordered.tellur playground/algebra/scenarios.json
+./bin/vnc compare playground/algebra/original.vn playground/manifest.json \
+  playground/algebra/reordered.vn playground/algebra/scenarios.json
 ```
 
 The JSON claim is deliberately `agreement_on_supplied_scenarios_only`. Contract

@@ -7,7 +7,7 @@ exit. This complements contract comparison: a private helper can add `malformed`
 and its caller can map that outcome to an existing public `unavailable`. The public
 signature stays the same; its contributor evidence changes.
 
-Try [the runnable example](../../playground/outcome_absorption.tellur). Its public
+Try [the runnable example](../../playground/outcome_absorption.vn). Its public
 `lookup` returns `ready` or `unavailable`. The latter records both private `missing`
 and `malformed` contributors, including the intervening capture and handling.
 
@@ -16,10 +16,10 @@ and `malformed` contributors, including the intervening capture and handling.
 From the compiler checkout:
 
 ```sh
-./bin/tellurc absorption-snapshot playground/outcome_absorption.tellur > /tmp/before.absorption.json
+./bin/vnc absorption-snapshot playground/outcome_absorption.vn > /tmp/before.absorption.json
 # Edit an internal outcome and its handling, keeping the public contract unchanged.
-./bin/tellurc absorption-snapshot playground/outcome_absorption.tellur > /tmp/after.absorption.json
-./bin/tellurc absorption-diff /tmp/before.absorption.json /tmp/after.absorption.json
+./bin/vnc absorption-snapshot playground/outcome_absorption.vn > /tmp/after.absorption.json
+./bin/vnc absorption-diff /tmp/before.absorption.json /tmp/after.absorption.json
 ```
 
 `absorption-snapshot SOURCE [MANIFEST]` checks the complete explicit import graph
@@ -41,8 +41,8 @@ shell redirection has its usual overwrite behavior.
 The settings application carries [a baseline](../../applications/settings/settings.absorption.json):
 
 ```sh
-./bin/tellurc absorption-snapshot applications/settings/settings.tellur > /tmp/settings.absorption.json
-./bin/tellurc absorption-diff applications/settings/settings.absorption.json /tmp/settings.absorption.json --check
+./bin/vnc absorption-snapshot applications/settings/settings.vn > /tmp/settings.absorption.json
+./bin/vnc absorption-diff applications/settings/settings.absorption.json /tmp/settings.absorption.json --check
 ```
 
 Its regression introduces a private `blank` validation outcome absorbed into the
@@ -51,14 +51,14 @@ The baseline currently fits the contributor budget for every exported outcome.
 
 ## Editor workflow
 
-With a saved Tellur file active, run **Tellur: Show Outcome Absorption Snapshot**.
+With a saved Villanelle file active, run **Villanelle: Show Outcome Absorption Snapshot**.
 The language server checks the current buffer and unsaved imports, then opens an
 editable JSON document. Save As can retain the snapshot. Rerun the command after
 editing source; the JSON view is a fixed snapshot rather than a live document.
 
 The command requires a running server, a trusted workspace, a file identity and
 a valid manifest. A failed check opens no partial or cached report. It does not
-save or alter the source. **Tellur: Show Public Contract Snapshot** remains available
+save or alter the source. **Villanelle: Show Public Contract Snapshot** remains available
 when only the public interface is wanted.
 
 ## Reading the evidence
@@ -66,7 +66,7 @@ when only the public interface is wanted.
 The artifact has `format: "tellur.outcome-absorption"`, `version: 1`, an `analysis`
 profile, an embedded `contracts` snapshot, and a `controls` map. Module/declaration
 identities follow [public contract snapshots](contract-snapshots.md): `@entry::lookup`
-or `file:relative/path.tellur::lookup`. No checkout-specific compiler hashes appear.
+or `file:relative/path.vn::lookup`. No checkout-specific compiler hashes appear.
 
 Each nongeneric public control has an `outcomes` map. Each outcome contains a bounded
 set of `contributors` and a `truncated` flag. Contributor kinds are:
@@ -89,7 +89,7 @@ Sites distinguish occurrences within a control. A named decision such as
 component is a local source-order ordinal over checked instructions, excluding
 emit/drop/release-only positions. It is stable across formatting and declaration
 reordering, but inserting or removing contributing statements can renumber sites.
-It is an explanation identifier, not new Tellur syntax or a permanent source ID.
+It is an explanation identifier, not new Villanelle syntax or a permanent source ID.
 
 The comparison treats contributors as sets, preserving distinct sites. Import
 alias changes, checkout relocation, comments and formatting do not create evidence

@@ -973,87 +973,87 @@ mod tests {
     #[test]
     fn source_schedules_retire_every_context_at_every_fuel_cut() {
         for text in [
-            include_str!("../../playground/boundary_helpers.tellur"),
-            include_str!("../../playground/boundary_handoff_tasks.tellur"),
-            include_str!("../../tests/fixtures/source_boundary_helper_fault.tellur"),
-            include_str!("../../playground/structured_tasks.tellur"),
-            include_str!("../../tests/fixtures/source_task_tree.tellur"),
-            include_str!("../../tests/fixtures/source_task_fault.tellur"),
-            include_str!("../../tests/fixtures/source_task_grandchild_fault.tellur"),
-            include_str!("../../playground/structured_helpers.tellur"),
-            include_str!("../../tests/fixtures/source_helper_fault.tellur"),
-            include_str!("../../playground/parent_await.tellur"),
-            include_str!("../../playground/cooperative_helpers.tellur"),
-            include_str!("../../playground/borrowed_spawn.tellur"),
-            include_str!("../../playground/carrier_spawn.tellur"),
-            include_str!("../../playground/carrier_spawn_results.tellur"),
-            include_str!("../../playground/nested_spawn.tellur"),
-            include_str!("../../playground/tagged_spawn.tellur"),
-            include_str!("../../playground/outcome_spawn.tellur"),
-            include_str!("../../playground/borrowed_record_spawn.tellur"),
-            include_str!("../../playground/borrowed_tagged_spawn.tellur"),
-            include_str!("../../playground/borrowed_outcome_spawn.tellur"),
-            include_str!("../../playground/borrowed_record_spawn_results.tellur"),
-            include_str!("../../playground/borrowed_tagged_spawn_results.tellur"),
-            include_str!("../../playground/borrowed_outcome_spawn_results.tellur"),
-            include_str!("../../playground/record_chain_spawn.tellur"),
-            include_str!("../../playground/tagged_chain_spawn.tellur"),
-            include_str!("../../playground/outcome_chain_spawn.tellur"),
-            include_str!("../../tests/fixtures/source_outcome_chain_guards.tellur"),
-            include_str!("../../tests/fixtures/source_outcome_chain_nested.tellur"),
-            include_str!("../../tests/fixtures/source_outcome_chain_owned.tellur"),
-            include_str!("../../tests/fixtures/source_outcome_chain_fault.tellur"),
+            include_str!("../../playground/boundary_helpers.vn"),
+            include_str!("../../playground/boundary_handoff_tasks.vn"),
+            include_str!("../../tests/fixtures/source_boundary_helper_fault.vn"),
+            include_str!("../../playground/structured_tasks.vn"),
+            include_str!("../../tests/fixtures/source_task_tree.vn"),
+            include_str!("../../tests/fixtures/source_task_fault.vn"),
+            include_str!("../../tests/fixtures/source_task_grandchild_fault.vn"),
+            include_str!("../../playground/structured_helpers.vn"),
+            include_str!("../../tests/fixtures/source_helper_fault.vn"),
+            include_str!("../../playground/parent_await.vn"),
+            include_str!("../../playground/cooperative_helpers.vn"),
+            include_str!("../../playground/borrowed_spawn.vn"),
+            include_str!("../../playground/carrier_spawn.vn"),
+            include_str!("../../playground/carrier_spawn_results.vn"),
+            include_str!("../../playground/nested_spawn.vn"),
+            include_str!("../../playground/tagged_spawn.vn"),
+            include_str!("../../playground/outcome_spawn.vn"),
+            include_str!("../../playground/borrowed_record_spawn.vn"),
+            include_str!("../../playground/borrowed_tagged_spawn.vn"),
+            include_str!("../../playground/borrowed_outcome_spawn.vn"),
+            include_str!("../../playground/borrowed_record_spawn_results.vn"),
+            include_str!("../../playground/borrowed_tagged_spawn_results.vn"),
+            include_str!("../../playground/borrowed_outcome_spawn_results.vn"),
+            include_str!("../../playground/record_chain_spawn.vn"),
+            include_str!("../../playground/tagged_chain_spawn.vn"),
+            include_str!("../../playground/outcome_chain_spawn.vn"),
+            include_str!("../../tests/fixtures/source_outcome_chain_guards.vn"),
+            include_str!("../../tests/fixtures/source_outcome_chain_nested.vn"),
+            include_str!("../../tests/fixtures/source_outcome_chain_owned.vn"),
+            include_str!("../../tests/fixtures/source_outcome_chain_fault.vn"),
 
-            include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),
-            include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur"),
-            include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur"),
+            include_str!("../../tests/fixtures/source_tagged_chain_option.vn"),
+            include_str!("../../tests/fixtures/source_tagged_chain_variant.vn"),
+            include_str!("../../tests/fixtures/source_tagged_chain_fault.vn"),
 
-            include_str!("../../tests/fixtures/source_record_chain_guards.tellur"),
-            include_str!("../../tests/fixtures/source_record_chain_results.tellur"),
-            include_str!("../../tests/fixtures/source_record_chain_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_outcome_result_guards.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_outcome_result_nested.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_tagged_result_guards.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_tagged_result_outcomes.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_record_result_tags.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_record_result_guards.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_record_result_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_outcome_guards.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_tagged_guards.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_tagged_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_record_guards.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_record_fault.tellur"),
-            include_str!("../../tests/fixtures/source_outcome_guards.tellur"),
-            include_str!("../../tests/fixtures/source_outcome_fault.tellur"),
-            include_str!("../../tests/fixtures/source_tagged_guards.tellur"),
-            include_str!("../../tests/fixtures/source_tagged_fault.tellur"),
-            include_str!("../../tests/fixtures/source_nested_guards.tellur"),
-            include_str!("../../tests/fixtures/source_nested_fault.tellur"),
-            include_str!("../../tests/fixtures/source_carrier_result_guards.tellur"),
-            include_str!("../../tests/fixtures/source_carrier_result_fault.tellur"),
-            include_str!("../../tests/fixtures/source_carrier_guards.tellur"),
-            include_str!("../../tests/fixtures/source_carrier_fault.tellur"),
-            include_str!("../../playground/borrowed_spawn_results.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur"),
-            include_str!("../../tests/fixtures/source_borrowed_task_fault.tellur"),
-            include_str!("../../tests/fixtures/source_inline_helper_fault.tellur"),
-            include_str!("../../tests/fixtures/source_parent_await_fault.tellur"),
-            include_str!("../../playground/task_sets.tellur"),
-            include_str!("../../tests/fixtures/source_task_set_fault.tellur"),
-            include_str!("../../tests/fixtures/source_task_set_parent_fault.tellur"),
+            include_str!("../../tests/fixtures/source_record_chain_guards.vn"),
+            include_str!("../../tests/fixtures/source_record_chain_results.vn"),
+            include_str!("../../tests/fixtures/source_record_chain_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_outcome_result_guards.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_outcome_result_nested.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_tagged_result_guards.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_tagged_result_outcomes.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_record_result_tags.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_record_result_guards.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_record_result_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_outcome_guards.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_outcome_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_tagged_guards.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_tagged_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_record_guards.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_record_fault.vn"),
+            include_str!("../../tests/fixtures/source_outcome_guards.vn"),
+            include_str!("../../tests/fixtures/source_outcome_fault.vn"),
+            include_str!("../../tests/fixtures/source_tagged_guards.vn"),
+            include_str!("../../tests/fixtures/source_tagged_fault.vn"),
+            include_str!("../../tests/fixtures/source_nested_guards.vn"),
+            include_str!("../../tests/fixtures/source_nested_fault.vn"),
+            include_str!("../../tests/fixtures/source_carrier_result_guards.vn"),
+            include_str!("../../tests/fixtures/source_carrier_result_fault.vn"),
+            include_str!("../../tests/fixtures/source_carrier_guards.vn"),
+            include_str!("../../tests/fixtures/source_carrier_fault.vn"),
+            include_str!("../../playground/borrowed_spawn_results.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_result_fault.vn"),
+            include_str!("../../tests/fixtures/source_borrowed_task_fault.vn"),
+            include_str!("../../tests/fixtures/source_inline_helper_fault.vn"),
+            include_str!("../../tests/fixtures/source_parent_await_fault.vn"),
+            include_str!("../../playground/task_sets.vn"),
+            include_str!("../../tests/fixtures/source_task_set_fault.vn"),
+            include_str!("../../tests/fixtures/source_task_set_parent_fault.vn"),
         ]
         .into_iter()
         .map(str::to_owned)
         // Members complete or fault before the parent first awaits its set.
         .chain([
-            include_str!("../../playground/task_sets.tellur").replace(
+            include_str!("../../playground/task_sets.vn").replace(
                 "    loop reap(",
                 "    yield;\n    yield;\n    yield;\n    yield;\n    loop reap(",
             ),
-            include_str!("../../tests/fixtures/source_task_set_fault.tellur")
+            include_str!("../../tests/fixtures/source_task_set_fault.vn")
                 .replace(
                     "spawn work(\"slow\", false) into active;",
                     "spawn work(\"slow\", false) into active;\n    spawn work(\"fast\", false) into active;",
@@ -1070,61 +1070,61 @@ mod tests {
                 "auto cold=defer leaf(text);await cold;",
             ]
             .map(|body| {
-                include_str!("../../tests/fixtures/source_inline_helper_fault.tellur").replace(
+                include_str!("../../tests/fixtures/source_inline_helper_fault.vn").replace(
                     "emit(\"inline started\");\n    yield;\n    yield;",
                     &format!("emit(\"inline started\");{body}"),
                 )
             }),
         )
         .chain([
-            include_str!("../../playground/guarded_task_captures.tellur")
+            include_str!("../../playground/guarded_task_captures.vn")
                 .replace("defer ", "spawn ")
                 .replace(
                     "auto moved = move pending;",
                     "yield;yield;auto moved = move pending;",
                 ),
         ])
-        .chain([include_str!("../../tests/fixtures/source_record_chain_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_record_chain_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_tagged_chain_option.tellur"),include_str!("../../tests/fixtures/source_tagged_chain_variant.tellur")].into_iter().flat_map(|s| [s.replace("some { borrow mutable owner }", "none {}").replace("choice.held { borrow mutable owner }", "choice.empty {}").replace("auto moved = move child;", "owner=\"available\";auto moved = move child;"),s.replace("exit ready { borrow mutable deref input.item };", "exit ready { input };").replace("delta value {", "delta value.item {")]))
-        .chain([include_str!("../../tests/fixtures/source_tagged_chain_fault.tellur").replace("    yield;\n    yield;\n    delta await result", "    delta await result").replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_outcome_chain_guards.tellur")].into_iter().flat_map(|s| [s.replace("choice.held { borrow mutable owner }", "choice.empty {}").replace("auto moved = move child;", "owner=\"available\";auto moved = move child;"),s.replace("exit ready { borrow mutable deref input.item };", "exit ready { input };").replace("delta value {", "delta value.item {")]))
-        .chain([include_str!("../../tests/fixtures/source_outcome_chain_fault.tellur").replace("    yield;\n    yield;\n    delta await result", "    delta await result").replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_record_chain_guards.tellur")
+        .chain([include_str!("../../tests/fixtures/source_tagged_chain_option.vn"),include_str!("../../tests/fixtures/source_tagged_chain_variant.vn")].into_iter().flat_map(|s| [s.replace("some { borrow mutable owner }", "none {}").replace("choice.held { borrow mutable owner }", "choice.empty {}").replace("auto moved = move child;", "owner=\"available\";auto moved = move child;"),s.replace("exit ready { borrow mutable deref input.item };", "exit ready { input };").replace("delta value {", "delta value.item {")]))
+        .chain([include_str!("../../tests/fixtures/source_tagged_chain_fault.vn").replace("    yield;\n    yield;\n    delta await result", "    delta await result").replace("emit(\"stopped parent resumed\");", "yield;yield;")])
+        .chain([include_str!("../../tests/fixtures/source_outcome_chain_guards.vn")].into_iter().flat_map(|s| [s.replace("choice.held { borrow mutable owner }", "choice.empty {}").replace("auto moved = move child;", "owner=\"available\";auto moved = move child;"),s.replace("exit ready { borrow mutable deref input.item };", "exit ready { input };").replace("delta value {", "delta value.item {")]))
+        .chain([include_str!("../../tests/fixtures/source_outcome_chain_fault.vn").replace("    yield;\n    yield;\n    delta await result", "    delta await result").replace("emit(\"stopped parent resumed\");", "yield;yield;")])
+        .chain([include_str!("../../tests/fixtures/source_record_chain_guards.vn")
             .replace("exit ready { borrow mutable deref input.inner.item };", "exit ready { input };")
             .replace("borrow mutable deref value.text", "borrow mutable deref value.inner.item.text")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_outcome_result_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_tagged_result_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_record_result_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_record_result_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_outcome_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_outcome_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_tagged_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_tagged_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_record_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_record_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_outcome_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_outcome_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_tagged_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_tagged_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_nested_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_nested_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_carrier_result_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_carrier_result_fault.vn")
             .replace("    yield;\n    yield;\n    delta await result", "    delta await result")
             .replace("emit(\"stopped parent resumed\");", "yield;yield;")])
-        .chain([include_str!("../../tests/fixtures/source_borrowed_result_fault.tellur")
+        .chain([include_str!("../../tests/fixtures/source_borrowed_result_fault.vn")
             .replace("control main()", "async control outer() exits done faults {await startup();exit done;} control main()")
             .replace("run startup();", "run outer();")]) {
             let p = crate::compile(

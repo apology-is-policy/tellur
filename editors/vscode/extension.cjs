@@ -15,10 +15,10 @@ async function start(context) {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const configured = configuration(vscode).get('serverPath', '');
   const { command, args } = resolveCommand(context.extensionPath, root, configured, true);
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{json,tellur,path}');
+  const watcher = vscode.workspace.createFileSystemWatcher('**/*.{json,vn,tellur,path}');
   fileWatcher = watcher;
-  const next = new LanguageClient('tellurLanguage', 'Tellur Language', { command, args, options: { env: process.env } }, {
-    documentSelector: ['tellur', 'path'].flatMap(language => ['file', 'untitled'].map(scheme => ({ language, scheme }))),
+  const next = new LanguageClient('villanelleLanguage', 'Villanelle Language', { command, args, options: { env: process.env } }, {
+    documentSelector: ['villanelle', 'tellur', 'path'].flatMap(language => ['file', 'untitled'].map(scheme => ({ language, scheme }))),
     initializationOptions: { manifestPath: configuration(vscode).get('manifestPath', '') },
     synchronize: { fileEvents: watcher },
     middleware: {
@@ -45,7 +45,7 @@ async function start(context) {
     watcher.dispose();
     if (client === next) client = undefined;
     await next.dispose();
-    void vscode.window.showErrorMessage(`Tellur language server could not start (${command}). Build tellur or set tellurLanguage.serverPath. ${error.message}`);
+    void vscode.window.showErrorMessage(`Villanelle language server could not start (${command}). Build vnc or set villanelleLanguage.serverPath. ${error.message}`);
     throw error;
   }
 
@@ -56,20 +56,26 @@ function scheduleStart(context) {
 }
 async function activate(context) {
   registerBuildCommands(context);
+  // Keep the installed extension identity and existing command bindings across upgrades.
+  for (const entry of context.extension.packageJSON.contributes.commands) {
+    const previous = entry.command.replace('villanelle.', 'tellur.');
+    context.subscriptions.push(vscode.commands.registerCommand(entry.command,
+      (...args) => vscode.commands.executeCommand(previous, ...args)));
+  }
   for (const [command, selection] of [
     ['tellur.explainSelection', true],
     ['tellur.explainOutcome', false],
   ]) context.subscriptions.push(vscode.commands.registerCommand(command, async (target) => {
     const editor = vscode.window.activeTextEditor;
     const source = editor?.document;
-    if (!source || !['tellur', 'path'].includes(source.languageId)) {
-      void vscode.window.showWarningMessage('Open a Tellur source file to request an explanation.');
+    if (!source || !['villanelle', 'tellur', 'path'].includes(source.languageId)) {
+      void vscode.window.showWarningMessage('Open a Villanelle source file to request an explanation.');
       return null;
     }
     const position = editor.selection.active;
     await startQueue;
     if (!client) {
-      void vscode.window.showWarningMessage('The Tellur language server must be running in a trusted workspace.');
+      void vscode.window.showWarningMessage('The Villanelle language server must be running in a trusted workspace.');
       return null;
     }
     try {
@@ -98,7 +104,7 @@ async function activate(context) {
       await vscode.window.showTextDocument(document, { preview: false });
       return report;
     } catch (error) {
-      void vscode.window.showErrorMessage(`Tellur explanation failed: ${error.message}`);
+      void vscode.window.showErrorMessage(`Villanelle explanation failed: ${error.message}`);
       return null;
     }
   }));
@@ -107,13 +113,13 @@ async function activate(context) {
     ['tellur.showAbsorptionSnapshot', 'tellur/absorptionSnapshot', 'outcome absorption snapshot'],
   ]) context.subscriptions.push(vscode.commands.registerCommand(command, async () => {
     const source = vscode.window.activeTextEditor?.document;
-    if (!source || !['tellur', 'path'].includes(source.languageId)) {
-      void vscode.window.showWarningMessage('Open a Tellur source file to inspect its public contract.');
+    if (!source || !['villanelle', 'tellur', 'path'].includes(source.languageId)) {
+      void vscode.window.showWarningMessage('Open a Villanelle source file to inspect its public contract.');
       return null;
     }
     await startQueue;
     if (!client) {
-      void vscode.window.showWarningMessage('The Tellur language server must be running in a trusted workspace.');
+      void vscode.window.showWarningMessage('The Villanelle language server must be running in a trusted workspace.');
       return null;
     }
     try {
@@ -122,7 +128,7 @@ async function activate(context) {
       await vscode.window.showTextDocument(document, { preview: false });
       return snapshot;
     } catch (error) {
-      void vscode.window.showErrorMessage(`Tellur ${label} failed: ${error.message}`);
+      void vscode.window.showErrorMessage(`Villanelle ${label} failed: ${error.message}`);
       return null;
     }
   }));
@@ -131,11 +137,11 @@ async function activate(context) {
   }
   context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => { void scheduleStart(context).catch(() => {}); }));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (event.affectsConfiguration('tellurLanguage.serverPath') || event.affectsConfiguration('pathLanguage.serverPath')) {
+    if (event.affectsConfiguration('villanelleLanguage.serverPath') || event.affectsConfiguration('tellurLanguage.serverPath') || event.affectsConfiguration('pathLanguage.serverPath')) {
       void scheduleStart(context).catch(() => {});
-    } else if (event.affectsConfiguration('tellurLanguage') || event.affectsConfiguration('pathLanguage')) {
+    } else if (event.affectsConfiguration('villanelleLanguage') || event.affectsConfiguration('tellurLanguage') || event.affectsConfiguration('pathLanguage')) {
       void startQueue.then(() => client?.sendNotification('workspace/didChangeConfiguration', {
-        settings: { tellurLanguage: { manifestPath: configuration(vscode).get('manifestPath', '') } },
+        settings: { villanelleLanguage: { manifestPath: configuration(vscode).get('manifestPath', '') } },
       })).catch(() => {});
     }
   }));

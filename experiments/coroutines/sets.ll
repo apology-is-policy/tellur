@@ -1,4 +1,4 @@
-; E2.1: experiments/coroutines/sets.tellur lowered by hand (see cancellation.ll for
+; E2.1: experiments/coroutines/sets.vn lowered by hand (see cancellation.ll for
 ; the lowering rules). A task set is runtime state; `await next` is a loop that
 ; suspends while no member has completed, then joins the earliest completed one.
 ;

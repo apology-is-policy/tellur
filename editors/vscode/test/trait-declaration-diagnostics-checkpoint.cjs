@@ -8,9 +8,9 @@ exports.run = async function (root) {
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
   // Keep the runnable trait example and add an independent unused interface.
-  const example = await fs.readFile(path.join(__dirname, '../../../playground/traits.tellur'), 'utf8');
+  const example = await fs.readFile(path.join(__dirname, '../../../playground/traits.vn'), 'utf8');
   const source = example + '\ntrait reporter {control report() exits done;}\n';
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

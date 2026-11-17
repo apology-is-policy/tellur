@@ -1,4 +1,4 @@
-import "people.tellur" as people;
+import "people.vn" as people;
 
 control main() exits process_result {
     delta people.create("Ada", 37) { ready { people.person value } => created }

@@ -6,15 +6,15 @@ const vscode = require('vscode');
 exports.run = async function (root) {
   const fixture = path.join(root, 'loopback-library-checkpoint');
   for (const file of [
-    'library/loopback_http.tellur', 'library/host/loopback_http.rs',
-    'examples/http_hello/main.tellur', 'examples/http_hello/manifest.json',
+    'library/loopback_http.vn', 'library/host/loopback_http.rs',
+    'examples/http_hello/main.vn', 'examples/http_hello/manifest.json',
     'examples/http_hello/host.rs', 'examples/http_hello/Cargo.lock'
   ]) {
     const destination = path.join(fixture, file);
     await fs.mkdir(path.dirname(destination), {recursive:true});
     await fs.copyFile(path.join(__dirname, '../../..', file), destination);
   }
-  const uri = vscode.Uri.file(path.join(fixture, 'examples/http_hello/main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'examples/http_hello/main.vn'));
   const document = await vscode.workspace.openTextDocument(uri);
   const source = document.getText();
   await vscode.window.showTextDocument(document);
@@ -64,7 +64,7 @@ exports.run = async function (root) {
         let body = '';
         response.setEncoding('utf8'); response.on('data', part => body += part);
         response.on('end', () => {
-          try { assert.equal(response.statusCode, 200); assert.equal(body, 'Hello from Tellur 🙂'); resolve(true); }
+          try { assert.equal(response.statusCode, 200); assert.equal(body, 'Hello from Villanelle 🙂'); resolve(true); }
           catch (error) { reject(error); }
         });
         response.on('error', reject);

@@ -124,7 +124,7 @@ fn live_socket_registration_preserves_source_waits_quotas_and_fault_settlement()
     let root = std::env::temp_dir().join(format!("tellur-live-backend-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_pending_operation.tellur"),
+        include_str!("../../tests/fixtures/native_source_pending_operation.vn"),
         live_manifest(&root),
     )
     .unwrap()

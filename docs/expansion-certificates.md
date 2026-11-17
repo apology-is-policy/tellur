@@ -17,9 +17,9 @@ but it cannot rescue an incorrect semantic rule shared by the design.
 From the compiler directory:
 
 ```sh
-./bin/tellurc certify-expansion playground/forwarding.tellur playground/manifest.json main > expansion.json
-./bin/tellurc verify-expansion playground/forwarding.tellur playground/manifest.json expansion.json
-./bin/tellurc exec playground/forwarding.tellur --expanded
+./bin/vnc certify-expansion playground/forwarding.vn playground/manifest.json main > expansion.json
+./bin/vnc verify-expansion playground/forwarding.vn playground/manifest.json expansion.json
+./bin/vnc exec playground/forwarding.vn --expanded
 ```
 
 The first command emits JSON containing the expanded graph and correspondence.

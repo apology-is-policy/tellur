@@ -5,7 +5,7 @@ fn compiled_cold_await_preparation_advances_parent_beside_retained_borrowers() {
     let root = std::env::temp_dir().join(format!("tellur-cold-progress-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../playground/owner_await_progress.tellur"),
+        include_str!("../../playground/owner_await_progress.vn"),
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )

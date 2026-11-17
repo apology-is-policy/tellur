@@ -203,7 +203,7 @@ fn generic_borrowed_sums_keep_ownership_and_expansion() {
 }
 #[test]
 fn native_borrowed_sum_carriers_match_before_and_after_expansion() {
-    let populated = include_str!("fixtures/sum_carriers.tellur");
+    let populated = include_str!("fixtures/sum_carriers.vn");
     let absent = populated.replace(
         "text_result.found { borrow mutable owner }",
         "text_result.missing {}",

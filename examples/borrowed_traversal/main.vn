@@ -1,4 +1,4 @@
-import "../../library/traversal.tellur" as traversal;
+import "../../library/traversal.vn" as traversal;
 
 control print_words(ref traversal.window<string> view) exits done {
     loop visit(u32 offset = 0) {

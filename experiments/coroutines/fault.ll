@@ -1,4 +1,4 @@
-; E2.1: experiments/coroutines/fault.tellur lowered by hand (see cancellation.ll for
+; E2.1: experiments/coroutines/fault.vn lowered by hand (see cancellation.ll for
 ; the lowering rules). `fault` records the fault in the runtime and suspends; the
 ; driver then settles the owning domain: pending operations stop without events
 ; and every frame, suspended or completed, is destroyed (children first). A frame

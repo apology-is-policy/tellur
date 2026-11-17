@@ -1572,7 +1572,7 @@ mod tests {
         let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
             .unwrap();
         let original =
-            crate::compile(include_str!("../playground/local_carrier_tasks.tellur"), m).unwrap();
+            crate::compile(include_str!("../playground/local_carrier_tasks.vn"), m).unwrap();
         original.verify().unwrap();
         original.expanded("startup").unwrap().verify().unwrap();
         for kind in 0..4 {
@@ -1612,11 +1612,8 @@ mod tests {
     fn complete_carrier_ancestors_must_be_direct_supported_prefixes() {
         let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
             .unwrap();
-        let original = crate::compile(
-            include_str!("../playground/aliased_carrier_tasks.tellur"),
-            m,
-        )
-        .unwrap();
+        let original =
+            crate::compile(include_str!("../playground/aliased_carrier_tasks.vn"), m).unwrap();
         for kind in 0..3 {
             let mut p = original.clone();
             let region = p.regions.get_mut("startup").unwrap();
@@ -1667,7 +1664,7 @@ mod tests {
         let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
             .unwrap();
         let original =
-            crate::compile(include_str!("../playground/local_carrier_tasks.tellur"), m).unwrap();
+            crate::compile(include_str!("../playground/local_carrier_tasks.vn"), m).unwrap();
         for kind in 0..3 {
             let mut p = original.clone();
             let r = p.regions.get_mut("startup").unwrap();
@@ -1723,7 +1720,7 @@ mod tests {
         let m = crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
             .unwrap();
         let original =
-            crate::compile(include_str!("../playground/local_guarded_tasks.tellur"), m).unwrap();
+            crate::compile(include_str!("../playground/local_guarded_tasks.vn"), m).unwrap();
         for kind in 0..6 {
             let mut p = original.clone();
             let r = p.regions.get_mut("startup").unwrap();
@@ -1938,7 +1935,7 @@ control main() exits done {
     #[test]
     fn guarded_input_structure_requires_original_materialization_and_whole_holder() {
         let original = crate::compile(
-            include_str!("../playground/guarded_input_tasks.tellur"),
+            include_str!("../playground/guarded_input_tasks.vn"),
             crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
                 .unwrap(),
         )
@@ -2004,7 +2001,7 @@ control main() exits done {
     #[test]
     fn carrier_input_structure_requires_every_original_field_and_broad_root() {
         let original = crate::compile(
-            include_str!("../playground/incoming_carrier_tasks.tellur"),
+            include_str!("../playground/incoming_carrier_tasks.vn"),
             crate::manifest::Manifest::from_json(include_str!("../playground/manifest.json"))
                 .unwrap(),
         )

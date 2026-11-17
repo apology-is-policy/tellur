@@ -1,4 +1,4 @@
-// Rust performs the text analysis; Tellur routes its closed outcomes.
+// Rust performs the text analysis; Villanelle routes its closed outcomes.
 control main(string text) exits result {
     forward summarize(borrow text);
 }

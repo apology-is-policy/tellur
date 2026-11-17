@@ -12,8 +12,8 @@ fault into an outcome of the failed work.
 Compiler 0.66 adds a lexical form. This is the recommended form for new code;
 [named boundaries](#declaration-and-invocation) remain compatible.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control work(bool broken) exits done {
     delta broken {
         true => fault "request invariant failed",
@@ -98,8 +98,8 @@ JSON failure report retains its richer cause chain and source metadata.
 
 ## Entry-only process termination
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     fault boundary {
         fault "startup invariant failed";
@@ -117,17 +117,17 @@ or generic specialization. Public contract snapshots and declaration hover expos
 this restriction. This is not a transitive permission granted to library calls.
 
 Process termination carries no outcome tag or payload. Native execution and
-`tellurc run` return the status. JSON uses `termination: "process"`, `status`, and
+`vnc run` return the status. JSON uses `termination: "process"`, `status`, and
 `events`, with no `outcome` or `fields`. The reference library's `run_completion`
 API returns `RunCompletion::Outcome` or `RunCompletion::Process`; the older
 outcome-only APIs report `E_PROCESS_EXIT` when used on an administrative result.
-That API mismatch is not a Tellur source fault. Scenario comparisons observe the
+That API mismatch is not a Villanelle source fault. Scenario comparisons observe the
 termination status separately from ordinary outcomes.
 
 ## Compatibility example: named boundaries
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 @contingent
 control report(string reason) exits done {
     emit(reason);
@@ -178,8 +178,8 @@ A boundary is a named execution root:
 
 _Context fragment: provide an application response-channel type and bodies with complete resource dispositions._
 
-<!-- tellur:fragment application response-channel type and complete bodies required -->
-```tellur
+<!-- villanelle:fragment application response-channel type and complete bodies required -->
+```villanelle
 pub boundary request(string input, response_channel channel)
     retains channel
 {
@@ -208,7 +208,7 @@ the current unsaved declaration, including imported aliases. A body that faults 
 settles its contingency does not by itself make that boundary's interface `faults`.
 
 `terminate;` ends the current boundary body or contingency administratively. It
-does not exit the process and does not create a Tellur outcome. It is rejected in
+does not exit the process and does not create a Villanelle outcome. It is rejected in
 ordinary controls. Every live history in either body needs an explicit terminal
 disposition; normal `exit` cannot invent a boundary result. Flat path selection
 still persists until the next label: use `[entry]: terminate;` to finish all live
@@ -251,8 +251,8 @@ Normal code can also call it. Public and trait operations require the annotation
 private helpers infer eligibility from their bodies. A contingency body is checked
 as contingent without needing its own annotation.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 trait reporter {
     @contingent
     control report(self value) exits done;
@@ -302,8 +302,8 @@ fault, preserving the original in the diagnostic causal chain. Neither re-enters
 the same contingency. An outer boundary may run its own contingency; without one,
 the entry invocation fails.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 pub boundary request() faults {
     fault "request invariant failed";
 }
@@ -329,7 +329,7 @@ Diagnostic activation identities continue increasing across supervised requests.
 
 ## Current scope and the settings server
 
-The [settings server](../../applications/settings/server.tellur) runs each accepted
+The [settings server](../../applications/settings/server.vn) runs each accepted
 connection as a task-set member that supervises the named boundary `request`, which
 retains the connection. Its contingency calls the trusted `http_reply_failure`
 operation, then closes the connection. That operation attempts a fixed generic
@@ -343,7 +343,7 @@ Service `completed` and `idle` describe the accept loop's lifecycle. They do not
 aggregate request failures. Responses and diagnostic events describe individual
 requests; no failure outcome crosses the boundary.
 
-This release handles explicit Tellur source faults. Driver errors, fuel exhaustion,
+This release handles explicit Villanelle source faults. Driver errors, fuel exhaustion,
 foreign panics, aborts and forced termination do not become recoverable source
 faults. There is no blanket Rust panic catcher. Storage is activation-owned but
 execution remains sequential: recursion, suspension, async children and LLVM

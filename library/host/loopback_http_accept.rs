@@ -1,5 +1,5 @@
 // Polled connection acceptance for the bounded loopback HTTP profile. The
-// awaiting Tellur task parks until the nonblocking listener is readable or the
+// awaiting Villanelle task parks until the nonblocking listener is readable or the
 // idle timeout elapses; other tasks keep running. Outcomes and limits match the
 // blocking baseline in loopback_http.rs.
 use super::http::{Connection, Listener};

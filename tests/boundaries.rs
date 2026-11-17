@@ -327,9 +327,9 @@ fn imported_boundary_contracts_keep_retention_and_contingency_permissions() {
     use std::fs;
     let root = std::env::temp_dir().join(format!("tellur-boundary-import-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
-    fs::write(root.join("library.tellur"),"@contingent pub control report(string reason) exits done {emit(reason);exit done;} pub boundary request(string context) retains context {fault \"broken\";} contingency(string reason) {report(reason);emit(context);terminate;}").unwrap();
-    let main = root.join("main.tellur");
-    fs::write(&main,"import \"library.tellur\" as library; pub control main() exits done {supervise library.request(\"retained\");exit done;}").unwrap();
+    fs::write(root.join("library.vn"),"@contingent pub control report(string reason) exits done {emit(reason);exit done;} pub boundary request(string context) retains context {fault \"broken\";} contingency(string reason) {report(reason);emit(context);terminate;}").unwrap();
+    let main = root.join("main.vn");
+    fs::write(&main,"import \"library.vn\" as library; pub control main() exits done {supervise library.request(\"retained\");exit done;}").unwrap();
     let p = tellur::compile_file(&main, manifest()).unwrap();
     assert_eq!(p.run(&scenario()).unwrap().outcome, "done");
     let snapshot =

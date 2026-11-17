@@ -1,6 +1,6 @@
 # E2.1: LLVM coroutine experiment
 
-This standalone experiment asks whether Tellur's checked async controls can be
+This standalone experiment asks whether Villanelle's checked async controls can be
 lowered to LLVM's switched-resume coroutines while keeping the reference
 executor's observable behavior. The production backend is unchanged: generated
 executables still use the Rust continuation machinery. Nothing here is a
@@ -12,11 +12,11 @@ supported compiler feature.
 | --- | --- |
 | `runtime.c` | Single-thread runtime: FIFO runnable tasks, scripted host operations, round-robin idle readiness signals, sticky structured cancellation, joins, task sets, fault settlement, loan and frame accounting |
 | `intrinsics.ll` | `coro_resume`, `coro_destroy` and `coro_done` for the runtime (C cannot name the intrinsics) |
-| `cancellation.ll` | [`playground/cancellation.tellur`](../../playground/cancellation.tellur), the Milestone 5 specimen |
-| `sets.tellur`, `sets.ll` | A task set whose first completion cancels the remaining members, drained in completion order |
-| `fault.tellur`, `fault.ll` | A sibling fault while another child's operation is pending |
+| `cancellation.ll` | [`playground/cancellation.vn`](../../playground/cancellation.vn), the Milestone 5 specimen |
+| `sets.vn`, `sets.ll` | A task set whose first completion cancels the remaining members, drained in completion order |
+| `fault.vn`, `fault.ll` | A sibling fault while another child's operation is pending |
 
-Each `.ll` file was lowered by hand from its Tellur source, following the rules in
+Each `.ll` file was lowered by hand from its Villanelle source, following the rules in
 the header of `cancellation.ll`:
 
 - An async control is a coroutine (`presplitcoroutine`, `llvm.coro.id`/`begin`/
@@ -137,7 +137,7 @@ arena; the runtime retires frames individually and frees arena chunks after doma
 settlement. This bounded experiment uses one 4096-byte chunk per run, not a production
 allocator or a claim that arena space is fully utilized.
 
-`nested-fault.tellur` and both corresponding lowerings add a fault inside an awaited
+`nested-fault.vn` and both corresponding lowerings add a fault inside an awaited
 child. Cleanup destroys the inline/heap child before its parent. Runtime checks reject
 retiring a parent that still owns an inline child, duplicate retirement, unjoined
 borrowers and surviving frames/loans. Direct-await entry hands off before the child
@@ -161,7 +161,7 @@ CARGO_INCREMENTAL=0 TELLUR_REQUIRE_COROUTINE_EXPERIMENT=1 \
 python3 experiments/coroutines/measure.py --out /tmp/tellur-frame-measurements
 ```
 
-The measurement script uses `bin/tellurc llvm-smoke` and its embedded LLVM/LLD22.1.8
+The measurement script uses `bin/vnc llvm-smoke` and its embedded LLVM/LLD22.1.8
 for both models. Homebrew clang22.1.4 only translates the shared C test runtime and
 benchmark driver to IR. All inputs, tool versions and hashes are recorded in
 [the raw evidence](measurements-0.250.json). The unchanged 0.249 compiler engine was

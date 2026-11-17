@@ -1,4 +1,4 @@
-; E2.1: playground/cancellation.tellur lowered by hand to LLVM switched-resume
+; E2.1: playground/cancellation.vn lowered by hand to LLVM switched-resume
 ; coroutines (llvm.coro.id / begin / suspend / free / end). Pinned: LLVM 22.1.x.
 ;
 ; Lowering rules used here:

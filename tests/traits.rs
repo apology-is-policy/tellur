@@ -236,7 +236,7 @@ fn traits_preserve_outcome_and_resource_completion_obligations() {
     assert_eq!(compile(source, m()).unwrap_err().code, "E_RESOURCE");
     let source = "outcome answer {yes,no} trait completer {control finish(self value) exits done;} impl completer for answer {control finish(self value) exits done {exit done;}}";
     assert_eq!(compile(source, m()).unwrap_err().code, "E_OUTCOME");
-    let p = compile(include_str!("../playground/traits.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/traits.vn"), m()).unwrap();
     p.run(&scenario()).unwrap();
 }
 

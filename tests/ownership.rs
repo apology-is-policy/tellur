@@ -135,7 +135,7 @@ fn closing(place: &str, suffix: &str) -> String {
 }
 #[test]
 fn owned_record_fixture_preserves_both_errors() {
-    let p = checked(include_str!("../examples/partial_moves.tellur"));
+    let p = checked(include_str!("../examples/partial_moves.vn"));
     for a in ["Closed", "Failed"] {
         for b in ["Closed", "Failed"] {
             let s = Scenario {

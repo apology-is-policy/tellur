@@ -78,7 +78,7 @@ jobs:
           python ci/prepare-windows-crt.py $env:TELLUR_WINDOWS_SYSROOT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = "-Ctarget-feature=+crt-static"
-          cargo build --target x86_64-pc-windows-msvc --release --locked --bin tellur
+          cargo build --target x86_64-pc-windows-msvc --release --locked --bin vnc
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -91,20 +91,20 @@ jobs:
           if ($env:RELEASE_TAG -and $env:RELEASE_TAG -cne "v$version") { throw "Release tag does not match Windows package version $version" }
           $dist = "$env:GITHUB_WORKSPACE/dist"
           New-Item -ItemType Directory -Force $dist, editors/vscode/server | Out-Null
-          Copy-Item target/x86_64-pc-windows-msvc/release/tellur.exe editors/vscode/server/tellur.exe
+          Copy-Item target/x86_64-pc-windows-msvc/release/vnc.exe editors/vscode/server/vnc.exe
           Copy-Item "$env:LLVM_SYS_221_PREFIX/libxml2-Copyright.txt" editors/vscode/server/libxml2-Copyright.txt
-          Compress-Archive -LiteralPath target/x86_64-pc-windows-msvc/release/tellur.exe, LICENSE, editors/vscode/server/libxml2-Copyright.txt -DestinationPath "$dist/tellur-$version-win32-x64.zip"
+          Compress-Archive -LiteralPath target/x86_64-pc-windows-msvc/release/vnc.exe, LICENSE, editors/vscode/server/libxml2-Copyright.txt -DestinationPath "$dist/villanelle-$version-win32-x64.zip"
           Set-Location editors/vscode
           npm ci
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./node_modules/.bin/vsce.cmd package --no-dependencies --target win32-x64 --out "$dist/tellur-$version-win32-x64.vsix"
+          ./node_modules/.bin/vsce.cmd package --no-dependencies --target win32-x64 --out "$dist/villanelle-$version-win32-x64.vsix"
       - name: Qualify the packaged Windows compiler and stdio LSP
         run: python ci/check-windows-host.py dist
       - uses: actions/upload-artifact@v4
         with:
-          name: tellur-win32-x64
+          name: villanelle-win32-x64
           path: dist/*
           if-no-files-found: error
           compression-level: 0

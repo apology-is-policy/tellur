@@ -1,4 +1,4 @@
-import "../../library/json_file.tellur" as json_file;
+import "../../library/json_file.vn" as json_file;
 
 // Reuse the storage contract without the settings application's key/default policy.
 control main(string path) exits display_result {

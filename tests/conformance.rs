@@ -4,9 +4,9 @@ use tellur::{
     manifest::Manifest,
     runtime::{Event, Scenario, ScriptCall},
 };
-const LOAD: &str = include_str!("../examples/load.tellur");
-const PORT: &str = include_str!("../examples/port.tellur");
-const REFRESH: &str = include_str!("../examples/refresh.tellur");
+const LOAD: &str = include_str!("../examples/load.vn");
+const PORT: &str = include_str!("../examples/port.vn");
+const REFRESH: &str = include_str!("../examples/refresh.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../examples/manifest.json")).unwrap()
 }
@@ -377,7 +377,7 @@ fn c16_internal_failure_keeps_caller_valid() {
 }
 #[test]
 fn retry_fixture_compiles() {
-    checked(include_str!("../examples/fetch_retry.tellur"));
+    checked(include_str!("../examples/fetch_retry.vn"));
 }
 
 #[test]

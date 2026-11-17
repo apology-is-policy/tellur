@@ -12,7 +12,7 @@ fn related_compiled_children_settle_borrowers_before_the_owning_contingency() {
     );
     fs::write(root.join("host.rs"), host).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_siblings.tellur"),
+        include_str!("../../tests/fixtures/native_siblings.vn"),
         manifest,
     )
     .unwrap()
@@ -218,7 +218,7 @@ fn process_termination_settles_all_compiled_contexts_before_status_delivery() {
     );
     fs::write(root.join("host.rs"), host).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_siblings.tellur"),
+        include_str!("../../tests/fixtures/native_siblings.vn"),
         manifest,
     )
     .unwrap()

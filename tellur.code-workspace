@@ -1,12 +1,12 @@
 {
   "folders": [
     {
-      "name": "Tellur language",
+      "name": "Villanelle language",
       "path": "."
     }
   ],
   "settings": {
-    "[tellur]": {
+    "[villanelle]": {
       "editor.tabSize": 4,
       "editor.insertSpaces": true,
       "editor.wordWrap": "off",
@@ -21,6 +21,6 @@
       "**/.tellur-cache": true,
       "**/*.tellur-build": true
     },
-    "tellurLanguage.entryRegion": "main"
+    "villanelleLanguage.entryRegion": "main"
   }
 }

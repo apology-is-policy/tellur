@@ -219,27 +219,27 @@ fn reserved_future_features_do_not_silently_compile() {
 #[test]
 fn all_revised_playground_programs_check() {
     for source in [
-        include_str!("../playground/hello.tellur"),
-        include_str!("../playground/count.tellur"),
-        include_str!("../playground/port.tellur"),
-        include_str!("../playground/read_file.tellur"),
-        include_str!("../playground/ownership.tellur"),
-        include_str!("../playground/references.tellur"),
-        include_str!("../playground/collections.tellur"),
-        include_str!("../playground/adapters.tellur"),
-        include_str!("../playground/outcomes.tellur"),
-        include_str!("../playground/stored_adapters.tellur"),
-        include_str!("../playground/named_outcomes.tellur"),
-        include_str!("../playground/forwarding.tellur"),
-        include_str!("../playground/protocol/finite_retry.tellur"),
-        include_str!("../playground/algebra/original.tellur"),
-        include_str!("../playground/algebra/identity.tellur"),
-        include_str!("../playground/algebra/reordered.tellur"),
+        include_str!("../playground/hello.vn"),
+        include_str!("../playground/count.vn"),
+        include_str!("../playground/port.vn"),
+        include_str!("../playground/read_file.vn"),
+        include_str!("../playground/ownership.vn"),
+        include_str!("../playground/references.vn"),
+        include_str!("../playground/collections.vn"),
+        include_str!("../playground/adapters.vn"),
+        include_str!("../playground/outcomes.vn"),
+        include_str!("../playground/stored_adapters.vn"),
+        include_str!("../playground/named_outcomes.vn"),
+        include_str!("../playground/forwarding.vn"),
+        include_str!("../playground/protocol/finite_retry.vn"),
+        include_str!("../playground/algebra/original.vn"),
+        include_str!("../playground/algebra/identity.vn"),
+        include_str!("../playground/algebra/reordered.vn"),
     ] {
         compile(source, manifest()).unwrap();
     }
     assert!(matches!(
-        run(include_str!("../playground/hello.tellur"), "main", vec![]).events[0],
+        run(include_str!("../playground/hello.vn"), "main", vec![]).events[0],
         Event::Emit { .. }
     ));
 }

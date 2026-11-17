@@ -55,18 +55,18 @@ jobs:
           echo "TELLUR_WINDOWS_DLLTOOL=$RUNNER_TEMP/llvm-dlltool" >> "$GITHUB_ENV"
       - name: Emit COFF and link a PE executable using the embedded drivers
         run: |
-          cargo build --locked --release --features windows-gnu-pack --bin tellur --example windows-coff-smoke
+          cargo build --locked --release --features windows-gnu-pack --bin vnc --example windows-coff-smoke
           PATH=/absent target/release/examples/windows-coff-smoke "$RUNNER_TEMP/coff"
       - name: Build Windows Hello and settings using the embedded link pack
         run: |
           target=x86_64-pc-windows-gnu
-          compiler="$PWD/target/release/tellur"
+          compiler="$PWD/target/release/vnc"
           output="$RUNNER_TEMP/coff"
           CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-Cdlltool=$TELLUR_WINDOWS_DLLTOOL" \
-            "$compiler" pack-adapter applications/settings/main.tellur --target "$target" --out "$output/settings.adapter"
+            "$compiler" pack-adapter applications/settings/main.vn --target "$target" --out "$output/settings.adapter"
           export PATH=/absent TELLUR_NATIVE_TARGET_DIR="$RUNNER_TEMP/clean-windows-target"
-          "$compiler" build playground/hello.tellur --target "$target" --out "$output/hello-standalone.exe"
-          "$compiler" build applications/settings/main.tellur --target "$target" --adapter-pack "$output/settings.adapter" --out "$output/settings-standalone.exe"
+          "$compiler" build playground/hello.vn --target "$target" --out "$output/hello-standalone.exe"
+          "$compiler" build applications/settings/main.vn --target "$target" --adapter-pack "$output/settings.adapter" --out "$output/settings-standalone.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: windows-coff-smoke
@@ -93,7 +93,7 @@ jobs:
           if ($process.ExitCode -ne 42) { throw "Expected exit code 42, got $($process.ExitCode)" }
       - name: Run both standalone programs with an empty tool path
         run: python ci/check-release.py --windows-target probe
-      - name: Build the runtime and check the compiled Tellur Hello program
+      - name: Build the runtime and check the compiled Villanelle Hello program
         shell: pwsh
         run: |
           rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
@@ -113,5 +113,5 @@ jobs:
             link.exe /nologo /subsystem:console "/out:$exe" probe/hello.obj "$env:RUNNER_TEMP/runtime/release/tellur_runtime_abi.lib" kernel32.lib ntdll.lib userenv.lib ws2_32.lib dbghelp.lib msvcrt.lib
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $report = & $exe --json | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0 -or $report.outcome -ne 'done' -or $report.events[0].message -ne 'Hello from Tellur!') { throw "Unexpected $profile Hello result" }
+            if ($LASTEXITCODE -ne 0 -or $report.outcome -ne 'done' -or $report.events[0].message -ne 'Hello from Villanelle!') { throw "Unexpected $profile Hello result" }
           }

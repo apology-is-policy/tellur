@@ -26,7 +26,7 @@ control main() exits done {{forward run startup();}}
 #[test]
 fn selected_result_origins_survive_completion_join_and_quota_partitions() {
     let p = compile(
-        include_str!("../playground/borrowed_spawn_results.tellur"),
+        include_str!("../playground/borrowed_spawn_results.vn"),
         manifest(),
     )
     .unwrap();
@@ -188,7 +188,7 @@ fn local_and_owned_storage_cannot_escape_as_spawned_results() {
 }
 #[test]
 fn completed_borrowed_result_settles_before_the_owning_contingency() {
-    let text = include_str!("fixtures/source_borrowed_result_fault.tellur");
+    let text = include_str!("fixtures/source_borrowed_result_fault.vn");
     for text in [
         text.to_owned(),
         text.replace(
@@ -225,7 +225,7 @@ fn completed_borrowed_result_settles_before_the_owning_contingency() {
 
 #[test]
 fn direct_results_keep_detached_carrier_guard_authority() {
-    let source = include_str!("../playground/guarded_task_captures.tellur")
+    let source = include_str!("../playground/guarded_task_captures.vn")
         .replace("defer ", "spawn ")
         .replace(
             "auto moved = move pending;",

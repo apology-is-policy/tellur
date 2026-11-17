@@ -106,8 +106,8 @@ quotas pause the selected chain and never introduce a source handoff. Emergency
 cleanup retires spawned borrowers before their backing storage, then unwinds suspended
 await callers. The owning boundary waits for complete settlement before contingency.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control worker(string name) exits done {
     emit(borrow name);
     yield;
@@ -129,7 +129,7 @@ control main() exits done { forward run startup(); }
 ```
 
 This emits `queued`, `first`, `second`, `first`, `second`. See the runnable
-[structured tasks example](../../playground/structured_tasks.tellur) for local
+[structured tasks example](../../playground/structured_tasks.vn) for local
 handle moves and parent work between handoffs. Every normal path must await its
 children. Handles cannot be copied, cloned, dropped, returned, or carried across a
 fault boundary. Local moves preserve the original invocation and spawning domain.
@@ -167,9 +167,9 @@ Direct inline boundary statements still require joining children first. Helpers
 retain ordinary isolation, borrowing, result-origin and fault checks; the new
 admission does not let handles enter or escape a different invocation or boundary.
 Only reached `await`/`yield` sites switch tasks. Boundary entry, recovery, `run` and
-host quotas do not. See [boundary handoffs](../../playground/boundary_handoff_tasks.tellur)
+host quotas do not. See [boundary handoffs](../../playground/boundary_handoff_tasks.vn)
 for named recovery, lexical handoffs and borrowed parent/child results, and
-[uninterrupted helpers](../../playground/boundary_helpers.tellur) for work without handoffs.
+[uninterrupted helpers](../../playground/boundary_helpers.vn) for work without handoffs.
 
 Spawn also requires every resource owner retained across a producer's handoff to
 permit fault settlement. This includes transitive callees, locally acquired owners,
@@ -181,8 +181,8 @@ producer's contract. Sequential cold/direct use remains legal where no spawned
 owner can stop it. Complete an owner before handing off, or use a resource type
 with a declared fault disposition.
 
-<!-- tellur:reject E_ASYNC -->
-```tellur
+<!-- villanelle:reject E_ASYNC -->
+```villanelle
 async control finish(handle h) exits done {
     yield;
     delta close(h) { closed => closed, failed { close_error e } => failed }
@@ -198,8 +198,8 @@ async control startup(handle h) exits done {
 The manifest's `handle` has no fault disposition. Moving the handoff after normal
 resource completion makes the producer admissible:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control finish(handle h) exits done {
     delta close(h) { closed => closed, failed { close_error e } => failed }
     [closed | failed]: yield; exit done;
@@ -222,7 +222,7 @@ its owning continuation resumes immediately. The contingency and recovered work
 keep the selected source turn until a reached `await` or `yield`; local recovery
 is not an implicit handoff to an unaffected sibling. Compiler 0.188 corrects native
 execution to follow this rule. The runnable
-[local recovery example](../../playground/local_recovery_tasks.tellur) emits
+[local recovery example](../../playground/local_recovery_tasks.vn) emits
 `local recovery` before `outside finished`. Contingencies themselves cannot invoke
 async operations or hand off, including through synchronous helper calls.
 
@@ -248,8 +248,8 @@ The opt-in LLVM backend supports this bounded task-set profile since 0.261; its
 - `count(borrow set)` returns the number of members that have not been joined, both
   running and completed, as `u32`.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control work(string name, u32 rounds) exits done { string name } {
     yield;
     delta (rounds >= 2) { true => longer, false => short }
@@ -292,8 +292,8 @@ handle, it may not be in scope at a direct inline fault boundary. Put per-member
 isolation inside the producer instead.
 
 Bound the number of live members with an ordinary decision on
-`count(borrow set)`, as in [the task-set example](../../playground/task_sets.tellur)
-and, since 0.226, the [settings server](../../applications/settings/server.tellur), which
+`count(borrow set)`, as in [the task-set example](../../playground/task_sets.vn)
+and, since 0.226, the [settings server](../../applications/settings/server.vn), which
 serves up to 64 connections at once.
 Faults follow the spawned-children rules:
 
@@ -311,8 +311,8 @@ captures and results remain gated. The producer may not declare an outcome named
 `empty`. Owners retained across the producer's handoffs need fault dispositions,
 exactly as for `spawn`.
 
-<!-- tellur:reject E_RESOURCE -->
-```tellur
+<!-- villanelle:reject E_RESOURCE -->
+```villanelle
 async control work() exits done { yield; exit done; }
 async control startup() exits done {
     tasks<work> active = tasks();
@@ -333,8 +333,8 @@ after the child has completed. Joining one shared reader does not release anothe
 reader's loan. Local handle moves preserve these obligations. Handles with borrowed
 captures remain local bindings; storing them in wrappers is still rejected.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control edit(ref mutable string text) exits done {
     yield;
     deref text = "edited";
@@ -355,7 +355,7 @@ Moving `emit(borrow text)` before the join is an `E_LOAN` error. Extra `yield`
 statements do not release the loan. Reference arguments are reborrowed unless
 explicitly moved; the same origin and authority rules apply to stored references,
 concrete generic calls and concrete trait calls. Captures must refer to existing
-storage, not a temporary constructor result. The [borrowed spawn example](../../playground/borrowed_spawn.tellur)
+storage, not a temporary constructor result. The [borrowed spawn example](../../playground/borrowed_spawn.vn)
 combines two shared readers and two disjoint exclusive field captures.
 
 Child faults and instruction-budget exhaustion settle retained borrowers before
@@ -371,8 +371,8 @@ The capture loan remains live while the child is queued, running or completed bu
 unjoined. Consuming `await` adopts the selected result's origins and releases
 unrelated capture loans. The result's loan then lasts through its final use.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control lend(ref mutable string text)
     exits ready { ref mutable string value from text } {
     yield;
@@ -399,7 +399,7 @@ their declared result origins; same-producer task instances keep separate captur
 Explicitly moving an exclusive reference into a child still consumes the original
 reference. Generic forwarding, `capture await` and inline result adapters preserve
 these relationships. A result cannot borrow a child's owned input or local storage.
-See [borrowed spawned results](../../playground/borrowed_spawn_results.tellur).
+See [borrowed spawned results](../../playground/borrowed_spawn_results.vn).
 
 Completed but unjoined results remain retirement obligations. Sibling faults settle
 them before supplier storage and the owning contingency. Owned result records
@@ -414,8 +414,8 @@ reference-free values, including resources whose existing fault dispositions per
 stop settlement. Named outcome fields retain mandatory handling. References to carriers,
 anonymous reference-bearing outcomes and reference-bearing collections remain outside this profile.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct view['text] { ref mutable string text <- 'text; }
 async control edit(view input) exits ready { view[input['text]] value } {
     yield;
@@ -451,9 +451,9 @@ records follow ordinary Copy rules; exclusive records transfer their permissions
 Field-sensitive final use releases each leaf loan independently. A shared reference to
 a result record cannot mutate an exclusive field through shared authority.
 
-See [flat record captures](../../playground/carrier_spawn.tellur) and
-[flat record results](../../playground/carrier_spawn_results.tellur), and
-[nested record payloads](../../playground/nested_spawn.tellur). Borrowed carriers,
+See [flat record captures](../../playground/carrier_spawn.vn) and
+[flat record results](../../playground/carrier_spawn_results.vn), and
+[nested record payloads](../../playground/nested_spawn.vn). Borrowed carriers,
 anonymous reference-bearing outcome payloads, reference-bearing collections and aggregate wrappers of borrowed
 handles remain gated. Completed unjoined result records remain obligations and settle
 before supplying storage on an owning fault, including owned resource fields.
@@ -466,8 +466,8 @@ at join, including through generic forwarding and imported contracts. Moving an 
 resource out of a carrier before entering an isolated boundary still follows the
 ordinary boundary rules; nesting does not grant access to outer references.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct cell['a] { ref mutable string text <- 'a; }
 struct request['a] { cell['a] item; }
 async control relay(request input) exits ready { request[input['a]] result } {
@@ -504,8 +504,8 @@ exclusive references keep their parent and carrier-storage guards after being wr
 in an option or variant. Owned resources in completed tagged results remain retirement
 obligations and settle before the owning contingency on a sibling fault.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control relay(option<ref mutable string> input)
     exits ready { option<ref mutable string>[input['source]] result }
 {
@@ -523,7 +523,7 @@ async control startup() exits done {
 control main() exits done { forward run startup(); }
 ```
 
-See [tagged spawned payloads](../../playground/tagged_spawn.tellur) for generic
+See [tagged spawned payloads](../../playground/tagged_spawn.vn) for generic
 variant alternatives, empty payloads, nested record capture and selected result
 origins. Named outcome payloads are also supported under their mandatory handling rules
 below; ordinary `capture await` and outcome adapters keep working.
@@ -547,8 +547,8 @@ leaving it unhandled on a normal exit remain rejected. Wrapping it in another va
 cannot hide its obligation. Declared selected origins and detached carrier guards
 remain live until the contained references' final use.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome reply['a] { found { ref string text <- 'a }, absent }
 async control relay(reply input) exits ready { reply[input['a]] value } {
     yield;
@@ -565,7 +565,7 @@ async control startup() exits done {
 control main() exits done { forward run startup(); }
 ```
 
-See [named outcome tasks](../../playground/outcome_spawn.tellur). Normal handling and
+See [named outcome tasks](../../playground/outcome_spawn.vn). Normal handling and
 resource completion remain separate: unpacking an outcome still requires completing
 or transferring its resource fields. On an owning fault, stopped children and retained
 outcomes settle under existing resource fault dispositions before contingency; stopped
@@ -583,8 +583,8 @@ live while the child is queued, running or completed but unjoined. Moving a hand
 preserves these loans. Shared siblings may borrow the same holder; disjoint fields
 may be borrowed exclusively under the ordinary field-sensitive rules.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct pair['a, 'b] { ref string left <- 'a; ref string right <- 'b; }
 async control first(ref pair input) exits ready { ref string value from input['a] } {
     yield;
@@ -611,7 +611,7 @@ its selected supplier. A reference detached from exclusive contents also retains
 holder storage guard and caller reborrow ancestry until its final use. Returning a
 shared reborrow preserves that guard without granting write authority. The caller
 cannot destroy the holder, mutate overlapping contents or reuse an exclusive ancestor
-while those permissions remain borrowed. See the [runnable example](../../playground/borrowed_record_spawn.tellur).
+while those permissions remain borrowed. See the [runnable example](../../playground/borrowed_record_spawn.vn).
 
 On an owning fault, borrowers retire before holder storage and external suppliers;
 completed unjoined results remain settlement obligations. Declared resource fault
@@ -627,8 +627,8 @@ storage. A borrow of the holder retains its storage even when the active alterna
 contains no references. Empty alternatives do not invent a supplier loan. Joining one
 shared sibling leaves another sibling's holder loan live until its own join.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 variant choice['a] { held { ref string text <- 'a }, empty }
 async control inspect(ref choice input) exits ready { ref string value from input['a] }, empty {
     yield;
@@ -651,7 +651,7 @@ Selected result origins retain only their declared suppliers plus any detached h
 guards. Exclusive reborrows retain their mutable ancestry; shared reborrows do not gain
 write authority. When projecting a non-Copy tagged field through a borrowed record,
 use an explicit shared/exclusive field borrow for the delta, rather than moving storage
-through the reference. See [borrowed tagged tasks](../../playground/borrowed_tagged_spawn.tellur).
+through the reference. See [borrowed tagged tasks](../../playground/borrowed_tagged_spawn.vn).
 
 The same fault dispositions and borrower-before-holder settlement apply to resources
 inside tagged holders. Stopped nested handlers do not run. Deeper reference chains through reference-bearing tagged
@@ -666,8 +666,8 @@ still owns that outcome and must handle it exactly once on every normal path. In
 it through a child's borrow does not discharge that obligation, even for an empty or
 shared-reference alternative. Consuming join ends the capture loan, not the obligation.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome reply['a] { held { ref string text <- 'a }, empty }
 async control inspect(ref reply input) exits done {
     yield;
@@ -694,7 +694,7 @@ loan without inventing absent supplier loans. Sibling borrows remain independent
 
 Leaving an outcome unhandled, discarding it, cloning it or hiding it in an unhandled
 wrapper remains rejected. Borrowing does not erase nominal identity or permit consuming
-an owned resource through a reference. See the [runnable example](../../playground/borrowed_outcome_spawn.tellur).
+an owned resource through a reference. See the [runnable example](../../playground/borrowed_outcome_spawn.vn).
 On an owning fault, declared resource dispositions settle borrowed outcome storage and
 stopped children before contingency; nested stopped handlers do not run. Anonymous
 reference-bearing contracts and reference-bearing tagged nodes in deeper chains retain their existing limits.
@@ -707,8 +707,8 @@ The result keeps two permissions: authority over its holder storage and the decl
 origins of its contained references. Completing the child does not release those loans;
 joining transfers the selected result permissions to the caller until their final use.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct view['a] { ref mutable string text <- 'a; }
 async control lend(ref mutable view input)
     exits ready { ref mutable view[input['a]] value from input }
@@ -743,7 +743,7 @@ Exclusive result moves transfer authority. A copied shared contained leaf may ou
 the holder after the whole-record references' final use; detached reborrows of exclusive
 contents retain their holder guards. Selected alternatives keep only their declared
 result origins, and independent sibling joins do not release another child's loans.
-See the [runnable example](../../playground/borrowed_record_spawn_results.tellur).
+See the [runnable example](../../playground/borrowed_record_spawn_results.vn).
 
 Fault settlement retires completed whole-record borrowers before retained holder owners
 and external suppliers, applying resource dispositions before the owning contingency.
@@ -758,8 +758,8 @@ active tag is empty. An empty alternative contributes no absent supplier loan. A
 with reference fields retains the declared tag-specific contained permissions alongside
 its whole storage origin until final use.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control lend(ref mutable option<ref mutable string> input)
     exits ready { ref mutable option<ref mutable string>[input['source]] value from input }
 {
@@ -788,7 +788,7 @@ Borrowed matching preserves nominal variant identity. If admitted tagged storage
 a named outcome, its owning caller still handles that outcome on every normal path:
 returning a borrow does not transfer its handling obligation. Public whole-result contracts
 state both storage origins and contained origin bindings. Child-owned/local holder
-escapes remain invalid. See the [runnable example](../../playground/borrowed_tagged_spawn_results.tellur).
+escapes remain invalid. See the [runnable example](../../playground/borrowed_tagged_spawn_results.vn).
 
 Completed/unjoined whole tagged references and stopped children retire before holder
 resources and external suppliers. Declared resource dispositions run before the owning
@@ -803,8 +803,8 @@ storage origin and contained permissions together. Empty alternatives retain hol
 storage without adding absent supplier loans. Borrowing the outcome, including matching
 its returned reference, leaves mandatory handling with the owning caller.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome reply['a] { held { ref mutable string text <- 'a }, empty }
 async control lend(ref mutable reply input)
     exits ready { ref mutable reply[input['a]] value from input }
@@ -834,7 +834,7 @@ outer reference does not grant writes through exclusive contents.
 
 Public contracts state storage and contained origins explicitly. Nominal outcome
 identity and child-local storage escape checks still apply. See the
-[runnable example](../../playground/borrowed_outcome_spawn_results.tellur).
+[runnable example](../../playground/borrowed_outcome_spawn_results.vn).
 Completed and joined borrowers retire before outcome-holder resources and their external
 suppliers on an owning fault. Declared resource dispositions run before the owning
 contingency; stopped nested handlers do not run. Anonymous
@@ -849,8 +849,8 @@ shared/exclusive references to them. Reference-free contents remain allowed. Thi
 extends the previous direct-leaf profile. The following tagged-chain profile admits
 options, closed variants and named outcomes too, with ordinary handling obligations.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct view['a] { ref mutable string text <- 'a; }
 struct link['holder, 'a] { ref mutable view['a] item <- 'holder; }
 async control lend(ref mutable link input)
@@ -881,7 +881,7 @@ Shared outer authority never grants writes through exclusive inner fields.
 
 Public result contracts distinguish holder-storage groups from contained supplier
 groups. Generic forwarding, nominal types and child-local escape checks remain unchanged.
-See the [runnable example](../../playground/record_chain_spawn.tellur).
+See the [runnable example](../../playground/record_chain_spawn.vn).
 On an owning fault, completed result borrows and stopped work retire before resources
 in their backing records. Only the owning contingency runs after declared resource
 dispositions; stopped nested handlers remain suppressed. Anonymous reference-bearing
@@ -896,8 +896,8 @@ and whole borrowed roots. Every traversed holder remains live while its child is
 running or completed but unjoined. Joining adopts the selected result dependencies.
 An empty tag keeps its holder storage without creating a loan on an absent supplier.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct link['holder, 'a] {
     ref mutable option<ref mutable string>['a] item <- 'holder;
 }
@@ -923,7 +923,7 @@ reference cannot grant mutable access to an exclusive field. Shared copies can d
 leaves under ordinary final-use rules; exclusive projected leaves retain their holder
 guards. Whole and owned results preserve these dependencies through another spawn/join.
 Public contracts still name holder storage separately from contained supplier origins.
-The [runnable selection example](../../playground/tagged_chain_spawn.tellur) releases
+The [runnable selection example](../../playground/tagged_chain_spawn.vn) releases
 unselected suppliers after join and retains only the selected result dependencies.
 
 On an owning fault, borrowers retire before backing-holder resources and external
@@ -947,8 +947,8 @@ instead transfers its handling obligation into the child and back with an owned 
 subsequent spawn/join transfers preserve that obligation. Dropping, cloning or hiding an
 unhandled outcome in a wrapper remains invalid.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome reply['a] { held { ref mutable string text <- 'a }, empty }
 struct link['holder, 'a] { ref mutable reply['a] item <- 'holder; }
 async control lend(ref mutable link input) exits ready... {
@@ -974,7 +974,7 @@ holder, while an exclusive reborrow keeps its holder guards until final use. Sha
 outer authority never grants mutable access through an exclusive inner field. Public
 contracts continue to distinguish holder storage from contained origins, and imported
 contract changes invalidate dependent callers. See the
-[runnable selection example](../../playground/outcome_chain_spawn.tellur).
+[runnable selection example](../../playground/outcome_chain_spawn.vn).
 
 On an owning fault, completed results and stopped borrowers retire before backing
 outcome resources and external suppliers. Resource dispositions precede the owning
@@ -989,8 +989,8 @@ children remain unjoined. The awaited work may borrow parent storage. Those loan
 last through the awaited completion, and the existing ownership rules still prevent
 conflicting access. Spawned sibling captures retain their own checked loans until consuming join.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control worker() exits done { yield; exit done; }
 async control edit(ref mutable string text) exits done {
     yield;
@@ -1015,7 +1015,7 @@ suspended. The executor restores the original owning continuation and diagnostic
 chain, retires awaited borrowers before supplying storage, and runs only the owning
 boundary's contingency. Stopped nested contingencies and normal await delivery do
 not run. Quotas do not add handoffs. See the runnable
-[parent await example](../../playground/parent_await.tellur).
+[parent await example](../../playground/parent_await.vn).
 
 The awaited producer must permit enclosing stop settlement for its owners across
 handoffs, even if the currently known siblings do not fault. This is the same
@@ -1031,8 +1031,8 @@ children. `run` stays in the same execution context and does not itself switch t
 A reached `await` or `yield` inside that work is still an explicit handoff. The caller
 waits for the helper's normal result, including declared borrowed results.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control pause() exits done { yield; exit done; }
 control helper() exits done { forward run pause(); }
 async control startup() exits done {
@@ -1050,7 +1050,7 @@ named or lexical boundaries use the same retained-owner proof, including structu
 reachable handoffs in branches that are not selected at runtime. Direct parent
 boundary statements still require joining children first.
 An awaited control has a separate retained context and may use its already-supported
-nested boundaries. See [cooperative helpers](../../playground/cooperative_helpers.tellur)
+nested boundaries. See [cooperative helpers](../../playground/cooperative_helpers.vn)
 for parent borrowing and a returned reference.
 
 Every owner retained through the helper's handoffs must permit enclosing stop
@@ -1085,14 +1085,14 @@ outcomes through the existing `delta`, `capture`, forwarding and single-completi
 call forms. Ordinary synchronous controls remain directly callable from either kind
 of control. There is no implicit await or automatic parallel execution.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control greeting(string name) exits ready { string text } {
     exit ready { concat("Hello, ", name) };
 }
 
 async control startup() exits done {
-    delta await greeting("Tellur") {
+    delta await greeting("Villanelle") {
         ready { string text } => ready,
     }
 
@@ -1122,8 +1122,8 @@ The executable or host-scenario entry remains synchronous. To launch an async
 control, write a synchronous wrapper using `run`. Process exit-code policy belongs
 to the wrapper's final contract. See [process entry](process-entry.md).
 
-<!-- tellur:reject E_ASYNC -->
-```tellur
+<!-- villanelle:reject E_ASYNC -->
+```villanelle
 async control work() exits done { exit done; }
 control main() exits done { forward work(); }
 ```
@@ -1139,8 +1139,8 @@ Compiler 0.217 admits **async host operations**. A manifest primitive marked
 the operation's single completion. Its declared outcomes are handled through the
 same `delta`, `capture` and forwarding forms, and faults are never outcomes.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control next_chunk(ref handle input) exits chunk { bytes data }, finished {} {
     delta await receive(input) {
         data { bytes data } => received,
@@ -1191,7 +1191,7 @@ The profile has deliberate limits:
   completed child that has not been joined yet, or a member holding it across a
   handoff. Settlement releases it before the task's borrowed suppliers retire.
 - The reference interpreter and, since 0.218, native executables run host
-  operations from scripted scenarios (`tellurc run`, or `--scenario FILE` for a
+  operations from scripted scenarios (`vnc run`, or `--scenario FILE` for a
   native executable). A scenario call may add `"waits": N` to report pending `N`
   times before completing. Each idle point readies one pending operation in FIFO
   order. The completion is bound when the operation starts, so scripts list
@@ -1205,8 +1205,8 @@ The profile has deliberate limits:
 
 A plain call of a host operation is rejected, as for an async control:
 
-<!-- tellur:reject E_ASYNC -->
-```tellur
+<!-- villanelle:reject E_ASYNC -->
+```villanelle
 async control early(ref handle input) exits done {
     delta receive(input) {
         data { bytes data } => received,
@@ -1245,8 +1245,8 @@ is then selected. An operation that already completed delivers its ordinary
 outcome. Joins, `await next`, `yield` and operations without the arm are never
 interrupted, so the cancelled task reports cancellation through its own outcomes:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control reader(ref handle input) exits chunk { bytes data }, stopped {
     delta await receive(input) {
         data { bytes data } => received,
@@ -1276,8 +1276,8 @@ async control watch(ref handle input) exits done {
 manifest async primitive may not declare an outcome with that name. Awaiting an async
 control with a `cancelled` arm is an ordinary unknown-outcome error:
 
-<!-- tellur:reject E_ARMS -->
-```tellur
+<!-- villanelle:reject E_ARMS -->
+```villanelle
 async control work() exits done { yield; exit done; }
 async control startup() exits done {
     delta await work() {
@@ -1289,7 +1289,7 @@ async control startup() exits done {
 }
 ```
 
-The [cancellation example](../../playground/cancellation.tellur) is the Milestone 5
+The [cancellation example](../../playground/cancellation.vn) is the Milestone 5
 acceptance specimen. Two readers receive concurrently through borrowed handles; the
 first answer cancels the other reader, which is still joined. If the other reader
 had already completed, its ordinary outcome is delivered instead. Both handles are
@@ -1350,15 +1350,15 @@ Direct shared and exclusive references to existing storage are also
 supported; see the borrowing rules below. A constructor can use transient borrows
 while producing an owned argument with no references.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control greeting(string name) exits ready { string text } {
     emit("body started");
     exit ready { concat("Hello, ", name) };
 }
 
 async control startup() exits done {
-    auto pending = defer greeting("Tellur");
+    auto pending = defer greeting("Villanelle");
     emit("arguments captured");
     auto moved = move pending;
     delta await moved {
@@ -1375,7 +1375,7 @@ control main() exits done {
 }
 ```
 
-The messages are `arguments captured`, `body started`, then `Hello, Tellur`.
+The messages are `arguments captured`, `body started`, then `Hello, Villanelle`.
 `await pending` consumes the task exactly once and exposes its normal outcomes.
 It works with `delta`, `capture`, `forward`, inline adapters and the existing
 single-outcome call statement rules. `capture await pending` stores a completed
@@ -1399,8 +1399,8 @@ captures exclude overlapping reads, writes and other borrows. Disjoint record fi
 can be captured independently. Moving the task keeps its loans and original backing
 storage; it does not copy the referent or make the owner available early.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control update(ref mutable string text) exits done {
     deref text = "updated";
     exit done;
@@ -1429,8 +1429,8 @@ handle. The task must still be awaited on normal paths. On a faulting path its l
 last until boundary settlement. A borrowed resource's owner still needs its own
 fault disposition when a possible fault can retire that owner.
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 async control display(ref string text) exits done { emit(text); exit done; }
 async control startup() exits done {
     mutable string text = "original";
@@ -1457,7 +1457,7 @@ guard for that carrier. Passing the detached reference into a task preserves thi
 guard through task moves and borrowed completion delivery. A shared reborrow of the
 exclusive field still retains the guard. Copying an already shared field can instead
 release the carrier while retaining the field's external owner. The runnable
-[guarded capture example](../../playground/guarded_task_captures.tellur) demonstrates
+[guarded capture example](../../playground/guarded_task_captures.vn) demonstrates
 both cases, including a detached reference returned by an ordinary control.
 
 ## Borrowed completions
@@ -1468,8 +1468,8 @@ by the producer's checked contract. This includes shared/exclusive references,
 references in returned records and sums, and ordinary inferred result contracts.
 No new lifetime annotation is needed at await.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 async control first(ref string left, ref string right)
     exits ready { ref string value from left }
 {
@@ -1512,8 +1512,8 @@ or transfers exclusive references and owned fields. Moving the task preserves ea
 field's origin and each sum's tagged payload. Captures remain retained even on a
 faulting path that never awaits the task.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct view['a] { ref string text <- 'a; }
 
 async control first(view input)
@@ -1555,8 +1555,8 @@ A task parameter may borrow an entire record or sum that contains references.
 The capture retains both the carrier storage and its nested external dependencies.
 The same rules apply when the carrier is reached through another reference.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct view['a] { ref string text <- 'a; }
 async control show(ref view input) exits done { emit(input.text); exit done; }
 async control startup() exits done {
@@ -1582,11 +1582,11 @@ References reached through exclusive carrier fields also retain their checked
 storage guards. Await preserves these distinctions, including nested origin paths
 and active sum payloads; it does not flatten them into one lifetime.
 
-See [carrier_tasks.tellur](../../playground/carrier_tasks.tellur) for a detached
+See [carrier_tasks.vn](../../playground/carrier_tasks.vn) for a detached
 shared completion that releases the carrier at await but still protects its source.
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 struct view['a] { ref string text <- 'a; }
 async control show(ref view input) exits done { emit(input.text); exit done; }
 async control startup() exits done {

@@ -1,6 +1,6 @@
 use tellur::{CheckedProgram, compile, manifest::Manifest, runtime::Scenario};
 
-const SOURCE: &str = include_str!("../playground/guarded_task_captures.tellur");
+const SOURCE: &str = include_str!("../playground/guarded_task_captures.vn");
 
 fn check(source: &str) -> CheckedProgram {
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();

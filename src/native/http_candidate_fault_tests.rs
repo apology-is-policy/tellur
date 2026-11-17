@@ -247,7 +247,7 @@ fn live_http_candidates_retire_before_owning_fault_contingency() {
     let root = std::env::temp_dir().join(format!("tellur-http-candidate-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_http_candidate_fault.tellur"),
+        include_str!("../../tests/fixtures/native_http_candidate_fault.vn"),
         candidate_manifest(&root),
     )
     .unwrap()

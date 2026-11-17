@@ -153,10 +153,7 @@ fn every_maintained_source_is_parseable_and_idempotent_after_formatting() {
                 {
                     walk(&path, count);
                 }
-            } else if path
-                .extension()
-                .is_some_and(|e| e == "tellur" || e == "path")
-            {
+            } else if path.extension().is_some_and(|e| e == "vn" || e == "path") {
                 let source = fs::read_to_string(&path).unwrap();
                 for max_width in [40, 240] {
                     let options = Options {
@@ -258,7 +255,7 @@ fn formatting_preserves_selected_execution_and_expansion() {
 fn cli_stdout_check_write_and_syntax_errors_need_no_manifest() {
     let root = std::env::temp_dir().join(format!("tellur-format-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
-    let path = root.join("file with spaces.tellur");
+    let path = root.join("file with spaces.vn");
     let original = "control main() exits done {exit done;}";
     fs::write(&path, original).unwrap();
     let run = |flags: &[&str]| {
@@ -337,7 +334,7 @@ fn width_wraps_signatures_conditions_calls_and_payloads_with_stable_label_layout
 
 #[test]
 fn user_server_style_keeps_labels_and_indents_nested_adapter_bodies() {
-    let source = include_str!("../applications/settings/server.tellur");
+    let source = include_str!("../applications/settings/server.vn");
     let result = formatted(source);
     assert!(result.contains("    [invalid]: exit invalid_configuration;"));
     assert!(result.contains("    [listening]:\n        emit("));
@@ -390,7 +387,7 @@ fn lexical_contingency_and_supervised_loop_layout_is_idempotent() {
 
 #[test]
 fn structured_task_handoffs_keep_tokens_and_checked_behavior() {
-    let text = include_str!("../playground/structured_tasks.tellur");
+    let text = include_str!("../playground/structured_tasks.vn");
     let result = formatted(text);
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
     let scenario = Scenario {

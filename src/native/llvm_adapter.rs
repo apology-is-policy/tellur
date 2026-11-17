@@ -89,7 +89,7 @@ pub(super) fn library(
         )));
     }
     // The custom Rust sysroot identifies its crates by the JSON target spec.
-    // Keep the Tellur triple for the pack identity and Cargo output directory.
+    // Keep the Villanelle triple for the pack identity and Cargo output directory.
     let mut cargo_build = cargo_command();
     cargo_build.arg("build");
     let mut hasher = std::hash::DefaultHasher::new();

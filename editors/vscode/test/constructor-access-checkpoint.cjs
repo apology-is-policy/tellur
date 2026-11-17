@@ -7,12 +7,12 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'constructor-access');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  for (const name of ['main.tellur', 'messages.tellur']) {
+  for (const name of ['main.vn', 'messages.vn']) {
     await fs.copyFile(path.join(__dirname, '../../../playground/constructor_access', name), path.join(fixture, name));
   }
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   const document = await vscode.workspace.openTextDocument(uri);
-  const dependency = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(fixture, 'messages.tellur')));
+  const dependency = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(fixture, 'messages.vn')));
   const original = dependency.getText();
   await vscode.window.showTextDocument(document);
   await vscode.extensions.getExtension('tellur-language-local.tellur-language').activate();

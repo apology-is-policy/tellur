@@ -46,7 +46,7 @@ fn production_and_probes_keep_named_boundaries_private() {
 fn compiled_named_supervision_preserves_handover_borrowed_awaits_and_repeated_requests() {
     compare_fixture(
         "supervision",
-        include_str!("../../tests/fixtures/native_resume_supervision.tellur"),
+        include_str!("../../tests/fixtures/native_resume_supervision.vn"),
         [&[7, 9], &[7, 9]],
         400,
         false,
@@ -87,7 +87,7 @@ control main(bool stop) exits done faults {
 fn compiled_calls_awaits_and_constructors_preserve_every_fuel_cut_and_fault() {
     compare_fixture(
         "calls",
-        include_str!("../../tests/fixtures/native_resume.tellur"),
+        include_str!("../../tests/fixtures/native_resume.vn"),
         [&[7], &[7]],
         150,
         false,
@@ -98,7 +98,7 @@ fn compiled_calls_awaits_and_constructors_preserve_every_fuel_cut_and_fault() {
 fn compiled_nested_loops_preserve_restarts_expanded_completion_and_faults() {
     compare_fixture(
         "loops",
-        include_str!("../../tests/fixtures/native_resume_loops.tellur"),
+        include_str!("../../tests/fixtures/native_resume_loops.vn"),
         [&[7, 9], &[7, 9]],
         350,
         true,
@@ -109,7 +109,7 @@ fn compiled_nested_loops_preserve_restarts_expanded_completion_and_faults() {
 fn compiled_lexical_recovery_preserves_nested_completion_borrows_and_fault_reports() {
     compare_fixture(
         "boundaries",
-        include_str!("../../tests/fixtures/native_resume_boundaries.tellur"),
+        include_str!("../../tests/fixtures/native_resume_boundaries.vn"),
         [&[7], &[7, 9]],
         400,
         false,
@@ -358,7 +358,7 @@ control main() exits done {run startup();exit done;}
 
 #[test]
 fn compiled_direct_awaits_preserve_named_and_lexical_fault_context() {
-    let text = include_str!("../../tests/fixtures/native_resume_supervision.tellur").replace(
+    let text = include_str!("../../tests/fixtures/native_resume_supervision.vn").replace(
         "    auto pending = defer visit(context, stop);\n    await pending;",
         "    await visit(context, stop);",
     );

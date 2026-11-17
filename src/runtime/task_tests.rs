@@ -597,7 +597,7 @@ control main() exits done {forward run start();}
 
 #[test]
 fn direct_and_cold_awaits_share_nested_storage_and_quota_invariants() {
-    let original = checked(include_str!("../../playground/direct_await.tellur"));
+    let original = checked(include_str!("../../playground/direct_await.vn"));
     for p in [
         original.clone(),
         original

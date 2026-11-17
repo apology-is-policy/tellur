@@ -13,7 +13,7 @@ aggregate trait contracts follow in 0.42 and local shared-reference collections 
 
 ## Executable surface
 
-```tellur
+```villanelle
 struct text_pair['a, 'b] {
     ref string left <- 'a;
     ref string right <- 'b;
@@ -44,7 +44,7 @@ without brackets, and inherits the checked value's origins.
 
 The compact alternative is executable too:
 
-```tellur
+```villanelle
 control pair(ref string a, ref string b) exits ready... {
     exit ready { text_pair { left: a, right: b } };
 }
@@ -58,7 +58,7 @@ Forwarding and immediate nested adapters retain checked origins.
 
 ## Nested and generic structs
 
-```tellur
+```villanelle
 struct view<t>['source] {
     ref t value <- 'source;
 }
@@ -122,7 +122,7 @@ instructions and the result's origin metadata. Tail extraction rechecks the comp
 candidate and rejects changed borrowing contracts; general aggregate extraction is
 not claimed.
 
-See [the executable example](../playground/origin_groups.tellur) and
+See [the executable example](../playground/origin_groups.vn) and
 [the current language reference](language-reference.md).
 
 ## Carrier boundaries and remaining accepted design
@@ -161,7 +161,7 @@ while lifetime anchors and carrier guards retain the combined dependencies.
 
 Whole-carrier reference results are delivered in 0.39. Rebinding, reference-bearing
 loop state and borrowed-record trait contracts remain unsupported. Direct `from input` trait
-contracts keep their existing semantics. See [the carrier example](../playground/record_inputs.tellur).
+contracts keep their existing semantics. See [the carrier example](../playground/record_inputs.vn).
 
 ## Checked opaque splitting — delivered in 0.32
 
@@ -203,7 +203,7 @@ retention, copies/moves, nested reborrows, shared groups, path-dependent swaps,
 traits, generics, private modules and original/expanded native execution. This is
 an executable checking rule, not a mechanized soundness proof.
 
-See [opaque_splits.tellur](../playground/opaque_splits.tellur).
+See [opaque_splits.vn](../playground/opaque_splits.vn).
 
 Local tagged loans now extend to variants, optional references and completed outcomes.
 Only constructed payloads contribute active loans; delta transfers the selected
@@ -237,7 +237,7 @@ syntax is introduced. Whole borrowed-sum inputs are delivered in 0.38;
 direct whole-carrier reference results follow in 0.39. Stored carrier references,
 reference-bearing collections, rebinding and reference-bearing loop state retain their gates.
 
-See [nested_borrows.tellur](../playground/nested_borrows.tellur).
+See [nested_borrows.vn](../playground/nested_borrows.vn).
 
 
 ## Grouped variant boundaries — delivered in 0.35
@@ -265,7 +265,7 @@ Unproduced reference leaves require explicit result origin mappings. The indepen
 IR verifier validates tagged result/source paths and rejects corrupted metadata.
 
 See [the reference](language-reference.md#grouped-variant-contracts) and
-[public_variants.tellur](../playground/public_variants.tellur).
+[public_variants.vn](../playground/public_variants.vn).
 
 ## Borrowed sum carriers — delivered in 0.38
 
@@ -334,7 +334,7 @@ The checker reconstructs the authorization chain without reading inactive payloa
 shared outer authority cannot grant exclusive inner access. Public group selectors
 retain storage guards where needed. The independent IR verifier checks every layer.
 See [the reference](language-reference.md#public-nested-reference-contracts) and
-[the example](../playground/public_carriers.tellur).
+[the example](../playground/public_carriers.vn).
 
 Aggregate trait origin contracts arrived in 0.42; local shared-reference collections
 follow in 0.43 below. Exclusive/nested elements, public collection schemas, abstract

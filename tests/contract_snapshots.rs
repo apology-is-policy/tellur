@@ -35,8 +35,8 @@ impl Fixture {
         fs::write(self.root.join(name), source).unwrap();
     }
     fn snapshot(&self, source: &str) -> Snapshot {
-        self.write("entry.tellur", source);
-        modules::contract_snapshot(self.root.join("entry.tellur"), self.manifest())
+        self.write("entry.vn", source);
+        modules::contract_snapshot(self.root.join("entry.vn"), self.manifest())
             .unwrap_or_else(|e| panic!("{e}\n{source}"))
     }
 }
@@ -55,7 +55,7 @@ fn entry(snapshot: &Snapshot) -> Value {
 #[test]
 fn public_snapshot_ignores_bodies_comments_formatting_and_private_declarations() {
     let f = Fixture::new();
-    let source = include_str!("fixtures/public_contracts.tellur");
+    let source = include_str!("fixtures/public_contracts.vn");
     let before = f.snapshot(source);
     let changed = source.replace("exit ready { 42 }", "exit ready { 17 }")
         + "\ncontrol unrelated() exits auto {exit elsewhere;}";
@@ -101,35 +101,37 @@ fn module_identities_survive_relocation_alias_changes_and_import_order() {
     let a = Fixture::new();
     let b = Fixture::new();
     for f in [&a, &b] {
-        f.write("types.tellur", "pub struct record {pub u32 value;}");
-        f.write("helper.tellur", "control private() exits done {exit done;}");
+        f.write("types.vn", "pub struct record {pub u32 value;}");
+        f.write("helper.vn", "control private() exits done {exit done;}");
     }
-    let source = "import \"types.tellur\" as types; import \"helper.tellur\" as helper; pub control echo(types.record input) exits ready {types.record value} {exit ready {input};}";
+    let source = "import \"types.vn\" as types; import \"helper.vn\" as helper; pub control echo(types.record input) exits ready {types.record value} {exit ready {input};}";
     let first = a.snapshot(source);
     let second = b.snapshot(
         &source
             .replace(
-                "import \"types.tellur\" as types; import \"helper.tellur\" as helper;",
-                "import \"helper.tellur\" as helper; import \"types.tellur\" as renamed;",
+                "import \"types.vn\" as types; import \"helper.vn\" as helper;",
+                "import \"helper.vn\" as helper; import \"types.vn\" as renamed;",
             )
             .replace("types.record", "renamed.record"),
     );
     assert_eq!(first, second);
     assert_eq!(
         entry(&first)["echo"]["parameters"][0]["type"],
-        "file:types.tellur::record"
+        "file:types.vn::record"
     );
     assert_eq!(
         first.modules.len(),
         2,
         "private-only imports should not add empty public modules"
     );
-    b.write("types.tellur", "pub struct record {pub string value;}");
+    b.write("types.vn", "pub struct record {pub string value;}");
     let difference = first.compare(&b.snapshot(source)).unwrap();
-    assert!(difference.changes.iter().any(|c| {
-        c.path
-            .contains("file:types.tellur/declarations/record/fields")
-    }));
+    assert!(
+        difference
+            .changes
+            .iter()
+            .any(|c| { c.path.contains("file:types.vn/declarations/record/fields") })
+    );
 }
 
 #[test]
@@ -190,8 +192,8 @@ fn symbolic_capabilities_include_private_generic_and_nested_storage() {
         let concrete = format!(
             "{source}control carry(wrapper<{ty}> input) exits ready {{wrapper<{ty}> value}} {{exit ready {{input}};}}"
         );
-        f.write("entry.tellur", &concrete);
-        let program = modules::compile_file(f.root.join("entry.tellur"), f.manifest()).unwrap();
+        f.write("entry.vn", &concrete);
+        let program = modules::compile_file(f.root.join("entry.vn"), f.manifest()).unwrap();
         let canonical = tellur::manifest::canonical_type(ty);
         let application = format!("wrapper<{canonical}>");
         assert_eq!(
@@ -383,7 +385,7 @@ fn only_referenced_manifest_types_are_included_recursively() {
         panic!("record")
     };
     fields[0].ty = "string".into();
-    let normalized = modules::contract_snapshot(f.root.join("entry.tellur"), direct).unwrap();
+    let normalized = modules::contract_snapshot(f.root.join("entry.vn"), direct).unwrap();
     assert_eq!(
         value(&normalized)["manifest_types"]["envelope"]["capabilities"],
         json!({"copy":null,"clone":[],"drop":[]})
@@ -397,11 +399,11 @@ fn failed_checking_never_returns_a_partial_snapshot() {
         "pub control f() exits auto {exit done;}",
         "pub control f<t>() exits done {exit wrong;}",
         "pub control f() exits done {u32 n=true;exit done;}",
-        "import \"missing.tellur\" as missing;pub control f() exits done {exit done;}",
+        "import \"missing.vn\" as missing;pub control f() exits done {exit done;}",
     ] {
-        f.write("entry.tellur", source);
+        f.write("entry.vn", source);
         assert!(
-            modules::contract_snapshot(f.root.join("entry.tellur"), f.manifest()).is_err(),
+            modules::contract_snapshot(f.root.join("entry.vn"), f.manifest()).is_err(),
             "{source}"
         );
     }
@@ -435,19 +437,18 @@ fn settings_application_supplies_a_reviewable_unchanged_baseline() {
     let manifest =
         Manifest::from_json_at(&fs::read_to_string(&manifest_path).unwrap(), &manifest_path)
             .unwrap();
-    let snapshot =
-        modules::contract_snapshot(root.join("settings.tellur"), manifest.clone()).unwrap();
+    let snapshot = modules::contract_snapshot(root.join("settings.vn"), manifest.clone()).unwrap();
     assert_eq!(
         snapshot,
         Snapshot::from_json(&fs::read_to_string(root.join("settings.contract.json")).unwrap())
             .unwrap()
     );
     assert_eq!(entry(&snapshot).as_object().unwrap().len(), 7);
-    let source = fs::read_to_string(root.join("settings.tellur")).unwrap();
+    let source = fs::read_to_string(root.join("settings.vn")).unwrap();
     let changed = source.replace("1048576", "2097152");
     let after =
-        modules::contract_snapshot_with_loader(root.join("settings.tellur"), manifest, |path| {
-            if path == root.join("settings.tellur") {
+        modules::contract_snapshot_with_loader(root.join("settings.vn"), manifest, |path| {
+            if path == root.join("settings.vn") {
                 Ok(changed.clone())
             } else {
                 fs::read_to_string(path)
@@ -471,7 +472,7 @@ fn all_maintained_tellur_sources_export_checked_roundtrippable_contracts() {
                 {
                     walk(&path, count);
                 }
-            } else if path.extension().is_some_and(|e| e == "tellur") {
+            } else if path.extension().is_some_and(|e| e == "vn") {
                 let manifest_path = corpus::manifest_path(&path);
                 let manifest = Manifest::from_json_at(
                     &fs::read_to_string(&manifest_path).unwrap(),
@@ -500,11 +501,11 @@ fn all_maintained_tellur_sources_export_checked_roundtrippable_contracts() {
 #[test]
 fn cli_exports_compares_checks_and_rejects_bad_inputs_without_writing_sources() {
     let f = Fixture::new();
-    f.write("entry.tellur", "pub control f() exits done {exit done;}");
+    f.write("entry.vn", "pub control f() exits done {exit done;}");
     let compiler = env!("CARGO_BIN_EXE_tellurc");
     let snapshot = Command::new(compiler)
         .arg("contract-snapshot")
-        .arg(f.root.join("entry.tellur"))
+        .arg(f.root.join("entry.vn"))
         .output()
         .unwrap();
     assert!(
@@ -543,10 +544,10 @@ fn cli_exports_compares_checks_and_rejects_bad_inputs_without_writing_sources() 
     let bad = run("bad.json", false);
     assert!(!bad.status.success());
     assert!(bad.stdout.is_empty());
-    f.write("entry.tellur", "pub control bad() exits auto {exit done;}");
+    f.write("entry.vn", "pub control bad() exits auto {exit done;}");
     let invalid = Command::new(compiler)
         .arg("contract-snapshot")
-        .arg(f.root.join("entry.tellur"))
+        .arg(f.root.join("entry.vn"))
         .output()
         .unwrap();
     assert!(!invalid.status.success());

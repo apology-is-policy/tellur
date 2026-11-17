@@ -1,6 +1,6 @@
-import "settings.tellur" as settings;
+import "settings.vn" as settings;
 
-// HTTP response policy stays in Tellur; the host only frames/writes the reply.
+// HTTP response policy stays in Villanelle; the host only frames/writes the reply.
 pub outcome response {
     json { u32 status, string body },
     text { u32 status, string body },

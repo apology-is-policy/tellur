@@ -5,7 +5,7 @@ function resolveCommand(extensionPath, root, configured, server) {
   if (configured) return { command: path.resolve(root || extensionPath, configured), args: [] };
 
   const suffix = process.platform === 'win32' ? '.exe' : '';
-  const unified = { name: 'tellur' + suffix, args: server ? ['lsp'] : [] };
+  const unified = { name: 'vnc' + suffix, args: server ? ['lsp'] : [] };
   const legacy = { name: (server ? 'tellur-lsp' : 'tellurc') + suffix, args: [] };
   const directories = [path.join(extensionPath, 'server')];
   if (server) directories.push(path.resolve(extensionPath, '../../target/debug'));
@@ -13,7 +13,7 @@ function resolveCommand(extensionPath, root, configured, server) {
   directories.push(...(process.env.PATH || '').split(path.delimiter).filter(Boolean));
 
   for (const directory of directories) {
-    for (const { name, args } of [unified, legacy]) {
+    for (const { name, args } of [unified, { name: 'tellur' + suffix, args: unified.args }, legacy]) {
       const command = path.resolve(directory, name);
       try {
         fs.accessSync(command, fs.constants.X_OK);

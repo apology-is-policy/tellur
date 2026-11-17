@@ -269,17 +269,17 @@ fn imported_carrier_results_preserve_private_contained_origins() {
         std::process::id()
     ));
     std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("view.tellur"), r#"pub struct view['a] {ref string text <- 'a;}
+    std::fs::write(root.join("view.vn"), r#"pub struct view['a] {ref string text <- 'a;}
  pub control make(ref string input) exits ready {view[input] value} {exit ready {view {input}};}
  pub control lend(ref view input) exits ready {ref view[input['a]] value from input} {exit ready {input};}
  pub control display(ref view input) exits done {emit(input.text);exit done;}"#).unwrap();
-    let source = r#"import "view.tellur" as v;
+    let source = r#"import "view.vn" as v;
  control main() exits done {mutable string owner="module";
  delta v.make(borrow owner) {ready {auto saved}=>made}
  [made]:delta v.lend(borrow saved) {ready {auto result}=>ready}
  [ready]:v.display(result);drop(saved);owner="free";exit done;}"#;
-    std::fs::write(root.join("main.tellur"), source).unwrap();
-    let p = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap();
+    std::fs::write(root.join("main.vn"), source).unwrap();
+    let p = tellur::compile_file(root.join("main.vn"), manifest()).unwrap();
     let s = Scenario {
         entry: "main".into(),
         arguments: vec![],
@@ -290,12 +290,12 @@ fn imported_carrier_results_preserve_private_contained_origins() {
         p.expanded("main").unwrap().run(&s).unwrap()
     );
     std::fs::write(
-        root.join("main.tellur"),
+        root.join("main.vn"),
         source.replace("v.display(result)", "owner=\"bad\";v.display(result)"),
     )
     .unwrap();
     assert_eq!(
-        tellur::compile_file(root.join("main.tellur"), manifest())
+        tellur::compile_file(root.join("main.vn"), manifest())
             .unwrap_err()
             .diagnostic
             .code,
@@ -311,7 +311,7 @@ fn native_carrier_results_match_interpreter_and_expansion() {
         RECORD,
         SUM,
         absent.as_str(),
-        include_str!("fixtures/carrier_results.tellur"),
+        include_str!("fixtures/carrier_results.vn"),
     ]
     .iter()
     .enumerate()

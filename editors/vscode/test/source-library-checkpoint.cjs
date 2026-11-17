@@ -6,15 +6,15 @@ const vscode = require('vscode');
 exports.run = async function (root) {
   const fixture = path.join(root, 'source-library-checkpoint');
   for (const file of [
-    'library/json_file.tellur', 'library/host/text_file.rs', 'library/host/json_string_map.rs',
-    'examples/json_file/main.tellur', 'examples/json_file/manifest.json',
+    'library/json_file.vn', 'library/host/text_file.rs', 'library/host/json_string_map.rs',
+    'examples/json_file/main.vn', 'examples/json_file/manifest.json',
     'examples/json_file/host.rs', 'examples/json_file/Cargo.lock'
   ]) {
     const destination = path.join(fixture, file);
     await fs.mkdir(path.dirname(destination), {recursive:true});
     await fs.copyFile(path.join(__dirname, '../../..', file), destination);
   }
-  const uri = vscode.Uri.file(path.join(fixture, 'examples/json_file/main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'examples/json_file/main.vn'));
   const source = await fs.readFile(uri.fsPath, 'utf8');
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
@@ -50,7 +50,7 @@ exports.run = async function (root) {
   await replace(source);
   await waitFor(() => diagnostics().length === 0, 'library argument repair');
   await document.save();
-  const libraryUri = vscode.Uri.file(path.join(fixture, 'library/json_file.tellur'));
+  const libraryUri = vscode.Uri.file(path.join(fixture, 'library/json_file.vn'));
   const library = await vscode.workspace.openTextDocument(libraryUri);
   const librarySource = library.getText();
   async function replaceLibrary(text) {

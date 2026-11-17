@@ -26,7 +26,7 @@ in the roadmap have not yet added execution semantics to these terms.
 | Field | A named part of a struct, or a name documenting a payload position in a contract. A contract field name is not a body-local variable. |
 | Forwarding | Explicit delegation of compatible completions, preserving labels, payload types, transfers and borrow dependencies. |
 | History | A modeled sequence of control-flow choices and operations. Structural analysis may include histories impossible for concrete inputs. |
-| Host failure | Failure outside a declared Tellur contract, such as allocation failure or an unavailable live adapter. It is not an implicit outcome. |
+| Host failure | Failure outside a declared Villanelle contract, such as allocation failure or an unavailable live adapter. It is not an implicit outcome. |
 | Invocation | A particular call occurrence, distinct from the reusable control declaration. Expansion retains this identity. |
 | Grouped selection | `[path]: { ... }` explicitly bounds a selection. Its closing brace restores the enclosing body's entry; it introduces no value/lifetime scope. |
 | Last use | The last use relevant to the conservative liveness analysis. A loan may end here before the reference's lexical scope ends. |

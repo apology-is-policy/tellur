@@ -22,7 +22,7 @@ impl Completed {
 }
 fn program(expanded: bool) -> CheckedProgram {
     let p = crate::compile(
-        include_str!("../../tests/fixtures/task_completion_model.tellur"),
+        include_str!("../../tests/fixtures/task_completion_model.vn"),
         Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
     )
     .unwrap();

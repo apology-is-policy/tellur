@@ -34,9 +34,9 @@ impl Fixture {
         fs::write(self.root.join(name), text).unwrap();
     }
     fn snapshot(&self, source: &str) -> Snapshot {
-        self.write("entry.tellur", source);
+        self.write("entry.vn", source);
         modules::absorption_snapshot(
-            self.root.join("entry.tellur"),
+            self.root.join("entry.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_or_else(|e| panic!("{e}\n{source}"))
@@ -211,13 +211,10 @@ fn module_relocation_aliases_and_declaration_order_preserve_evidence() {
     let a = Fixture::new();
     let b = Fixture::new();
     for f in [&a, &b] {
-        f.write(
-            "leaf.tellur",
-            "pub control leaf() exits ready {exit ready;}",
-        );
+        f.write("leaf.vn", "pub control leaf() exits ready {exit ready;}");
     }
     let source =
-        "import \"leaf.tellur\" as lib; pub control lookup() exits ready {forward lib.leaf();}";
+        "import \"leaf.vn\" as lib; pub control lookup() exits ready {forward lib.leaf();}";
     let before = a.snapshot(source);
     let after = b.snapshot(&source.replace("lib", "renamed"));
     assert_eq!(before, b.snapshot(source));
@@ -227,7 +224,7 @@ fn module_relocation_aliases_and_declaration_order_preserve_evidence() {
         &before,
         "@entry::lookup",
         "ready",
-        "file:leaf.tellur::leaf",
+        "file:leaf.vn::leaf",
         "ready"
     ));
     let before = a.snapshot(BEFORE);
@@ -328,13 +325,10 @@ fn invalid_sources_and_forged_or_unsupported_snapshots_are_refused() {
     ] {
         assert!(Snapshot::from_json(&changed).is_err());
     }
-    f.write(
-        "entry.tellur",
-        "pub control broken() exits auto {exit done;}",
-    );
+    f.write("entry.vn", "pub control broken() exits auto {exit done;}");
     let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
         .arg("absorption-snapshot")
-        .arg(f.root.join("entry.tellur"))
+        .arg(f.root.join("entry.vn"))
         .output()
         .unwrap();
     assert!(!output.status.success());
@@ -347,7 +341,7 @@ fn cli_exports_and_separately_reports_contract_and_contributor_changes() {
     let compiler = env!("CARGO_BIN_EXE_tellurc");
     let output = Command::new(compiler)
         .arg("absorption-snapshot")
-        .arg(f.root.join("entry.tellur"))
+        .arg(f.root.join("entry.vn"))
         .output()
         .unwrap();
     assert!(
@@ -382,7 +376,7 @@ fn cli_exports_and_separately_reports_contract_and_contributor_changes() {
 }
 #[test]
 fn settings_new_internal_failure_is_visible_without_changing_its_public_baseline() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("applications/settings/settings.tellur");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("applications/settings/settings.vn");
     let manifest_path = path.with_file_name("manifest.json");
     let manifest =
         Manifest::from_json_at(&fs::read_to_string(&manifest_path).unwrap(), &manifest_path)
@@ -439,7 +433,7 @@ fn all_maintained_sources_export_and_roundtrip_bounded_evidence() {
                 {
                     walk(&path, count);
                 }
-            } else if path.extension().is_some_and(|e| e == "tellur") {
+            } else if path.extension().is_some_and(|e| e == "vn") {
                 let m = corpus::manifest_path(&path);
                 let snapshot = modules::absorption_snapshot(
                     &path,

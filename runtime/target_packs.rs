@@ -132,7 +132,9 @@ fn prepare(out: &Path, triple: &str, sysroot: Option<&Path>, descriptors: &mut S
         if profile == "polled" {
             cargo.args(["--features", "polled"]);
         }
-        let result = cargo.output().expect("start Cargo for the Tellur runtime");
+        let result = cargo
+            .output()
+            .expect("start Cargo for the Villanelle runtime");
         assert!(
             result.status.success(),
             "building {triple} {profile} runtime: {}",

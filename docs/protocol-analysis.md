@@ -2,7 +2,7 @@
 
 Introduced in compiler 0.15.0; source-fault terminals added in 0.62.0.
 
-Tellur can now build a finite protocol model and answer: **after this prefix, what may
+Villanelle can now build a finite protocol model and answer: **after this prefix, what may
 happen next?** It also compares the terminated finite trace languages of two such
 models and produces counterexamples when they differ. This implements a first
 restricted form of the residual operation proposed in the vision.
@@ -16,7 +16,7 @@ compatible types, safe API substitution or equivalent infinite behavior.
 From the compiler directory:
 
 ```sh
-./bin/tellurc protocol playground/read_file.tellur playground/manifest.json show_file playground/protocol/read_failed.json
+./bin/vnc protocol playground/read_file.vn playground/manifest.json show_file playground/protocol/read_failed.json
 ```
 
 The prefix file contains:
@@ -35,7 +35,7 @@ handle implementation obeys its resource protocol.
 
 Omit the prefix filename to export the complete graph as JSON. Edge symbols of
 `null` are silent transitions. Each edge also identifies its expanded instruction;
-`tellurc expand` can inspect the corresponding graph and provenance. The model does
+`vnc expand` can inspect the corresponding graph and provenance. The model does
 not execute the program or perform its file operations.
 
 The residual report includes:
@@ -53,7 +53,7 @@ The residual report includes:
 
 A false `may_silently_diverge` does not rule out infinite executions containing
 observable events. A true value is only an abstract possibility. Run the terminating
-`playground/protocol/finite_retry.tellur` and query it with
+`playground/protocol/finite_retry.vn` and query it with
 `playground/protocol/empty.json`: forgetting the loop's Boolean update also permits
 an endless silent retry in the model.
 
@@ -104,7 +104,7 @@ which need not extend to a completion. The report keeps those two questions sepa
 a silently diverging model can have a possible prefix and no completing suffix.
 
 ```sh
-./bin/tellurc protocol-compare playground/algebra/original.tellur playground/manifest.json playground/algebra/identity.tellur main
+./bin/vnc protocol-compare playground/algebra/original.vn playground/manifest.json playground/algebra/identity.vn main
 ```
 
 The command checks inclusion in both directions. Each direction explores reachable
@@ -122,7 +122,7 @@ and the other silently loops. Unused declared exits, parameter/payload types, an
 infinite-trace or fairness properties are outside this comparison.
 
 There is a useful deliberate counterexample in the playground: compare
-`original.tellur` with `reordered.tellur`. `tellurc compare` finds a concrete difference in
+`original.vn` with `reordered.vn`. `tellurc compare` finds a concrete difference in
 emit order. `protocol-compare` accepts both inclusions because the messages have
 been erased and both produce two indistinguishable emit tokens before their exits.
 The JSON claim is `inclusion_of_completed_structural_traces_only` when neither

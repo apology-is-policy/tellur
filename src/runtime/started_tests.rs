@@ -3,7 +3,7 @@ use super::*;
 
 fn program(expanded: bool) -> CheckedProgram {
     let p = crate::compile(
-        include_str!("../../tests/fixtures/reference_started_tasks.tellur"),
+        include_str!("../../tests/fixtures/reference_started_tasks.vn"),
         Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
     )
     .unwrap();

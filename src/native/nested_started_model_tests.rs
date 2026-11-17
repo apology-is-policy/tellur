@@ -5,7 +5,7 @@ fn compiled_awaited_owners_join_children_with_nested_awaits_and_borrowed_results
     let root = std::env::temp_dir().join(format!("tellur-nested-started-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/native_nested_started.tellur"),
+        include_str!("../../tests/fixtures/native_nested_started.vn"),
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )

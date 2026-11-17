@@ -193,7 +193,7 @@ fn http_outcomes_and_deadlines_match_retained_continuations_at_all_fuel_cuts() {
         std::env::temp_dir().join(format!("tellur-http-continuation-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_pending_http.tellur"),
+        include_str!("../../tests/fixtures/native_pending_http.vn"),
         http_manifest(&root),
     )
     .unwrap()

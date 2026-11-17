@@ -4,7 +4,7 @@ use tellur::{compile, manifest::Manifest, runtime::Scenario};
 fn m() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
-const SOURCE: &str = include_str!("fixtures/public_contracts.tellur");
+const SOURCE: &str = include_str!("fixtures/public_contracts.vn");
 fn reject(source: &str, code: &str) -> tellur::Diagnostic {
     let e = compile(source, m()).unwrap_err();
     assert_eq!(e.code, code, "{e}");

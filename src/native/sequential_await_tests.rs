@@ -10,7 +10,7 @@ fn host() -> Host {
                     id,
                     fault::Site {
                         control: format!("site_{id}"),
-                        path: Some("await.tellur".into()),
+                        path: Some("await.vn".into()),
                         line: id,
                         column: 3,
                         label: Some(format!("path_{id}")),

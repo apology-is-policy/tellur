@@ -105,7 +105,7 @@ fn malformed_boolean_driver_representation_is_rejected() {
 
 #[test]
 fn bounded_mutations_of_valid_source_are_diagnosed_without_panics() {
-    let source = include_str!("../examples/optional_handle.tellur");
+    let source = include_str!("../examples/optional_handle.vn");
     for (index, _) in source.char_indices().step_by(3) {
         let mut edited = source.to_string();
         edited.remove(index);

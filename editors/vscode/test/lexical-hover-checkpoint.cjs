@@ -7,8 +7,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'lexical-hover');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const source = 'struct item { u32 shadow; }\n' + await fs.readFile(path.join(__dirname, '../../../playground/trait_aliases.tellur'), 'utf8');
-  const uri = vscode.Uri.file(path.join(fixture, 'aliases.tellur'));
+  const source = 'struct item { u32 shadow; }\n' + await fs.readFile(path.join(__dirname, '../../../playground/trait_aliases.vn'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'aliases.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
@@ -51,8 +51,8 @@ exports.run = async function (root) {
   const report = JSON.parse(result.stdout);
   assert.equal(report.outcome, 'done');
   assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['Hello through lexical trait aliases']);
-  const aggregateUri = vscode.Uri.file(path.join(fixture, 'aggregate.tellur'));
-  await fs.copyFile(path.join(__dirname, '../../../playground/aggregate_traits.tellur'), aggregateUri.fsPath);
+  const aggregateUri = vscode.Uri.file(path.join(fixture, 'aggregate.vn'));
+  await fs.copyFile(path.join(__dirname, '../../../playground/aggregate_traits.vn'), aggregateUri.fsPath);
   const aggregate = await vscode.workspace.openTextDocument(aggregateUri);
   await vscode.window.showTextDocument(aggregate);
   await waitFor(async () => (await hover(aggregate, 'prepare<text_editor>(borrow')).includes("exits preparation<string>[input, input['text]]"), 'normalized named helper contract');

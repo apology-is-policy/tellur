@@ -1,4 +1,4 @@
-import "messages.tellur" as messages;
+import "messages.vn" as messages;
 
 control first() exits ready { messages.message value } {
     exit ready { messages.message("First constructor") };

@@ -1,4 +1,4 @@
-import "../../library/loopback_http.tellur" as http;
+import "loopback_http.vn" as http;
 
 outcome service_result {
     @exit 0 completed,
@@ -38,7 +38,7 @@ control run(ref http_listener listener, ref string authority, u32 limit, u32 idl
             difference { u32 next } => available,
             underflow => exit completed
         }
-        [available]: delta run http.accept(listener, idle_ms) {
+        [available]: delta http.accept(listener, idle_ms) {
             accepted { http_connection connection } => accepted,
             idle => exit idle,
             failed { string message } => exit failed { message }
@@ -48,7 +48,7 @@ control run(ref http_listener listener, ref string authority, u32 limit, u32 idl
             string request_authority = clone(authority);
             fault boundary {
                 auto result = capture exchange(borrow connection, borrow request_authority);
-                auto cleanup = capture run http.finish(connection);
+                auto cleanup = capture http.close(connection);
                 delta result {
                     sent => sent,
                     disconnected => disconnected,
@@ -88,7 +88,7 @@ control exchange(ref http_connection connection, ref string authority)
     disconnected,
     failed { string message }
 {
-    delta run http.receive(connection) {
+    delta http.receive(connection) {
         request {
             string method,
             string target,
@@ -109,12 +109,12 @@ control exchange(ref http_connection connection, ref string authority)
         delta route(authority, method, target, headers, body) {
             response { u32 status, string content, string allow } => response
         }
-    [response]: forward run http.send(
+    [response]: forward http.send(
         connection,
         status,
-        content,
-        "text/plain; charset=utf-8",
-        allow
+        borrow content,
+        borrow "text/plain; charset=utf-8",
+        borrow allow
     );
     [malformed]: forward reply(connection, 400, "Malformed request");
     [headers_too_large]: forward reply(connection, 431, "Headers too large");
@@ -125,7 +125,13 @@ control exchange(ref http_connection connection, ref string authority)
 }
 
 control reply(ref http_connection connection, u32 status, string body) exits http.send_result {
-    forward run http.send(connection, status, body, "text/plain; charset=utf-8", "");
+    forward http.send(
+        connection,
+        status,
+        borrow body,
+        borrow "text/plain; charset=utf-8",
+        borrow ""
+    );
 }
 
 control route(
@@ -158,7 +164,7 @@ control route(
         false => exit response { 405, "Method not allowed", "GET, HEAD" }
     }
     [readable]: delta (body == "") {
-        true => exit response { 200, "Hello from Tellur 🙂", "" },
+        true => exit response { 200, "Hello from Villanelle 🙂", "" },
         false => exit response { 400, "Expected an empty body", "" }
     }
 }

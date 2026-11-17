@@ -13,7 +13,7 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-const SOURCE: &str = include_str!("../playground/tagged_spawn.tellur");
+const SOURCE: &str = include_str!("../playground/tagged_spawn.vn");
 fn same(source: &str) -> tellur::CheckedProgram {
     let p = compile(source, manifest()).unwrap();
     assert_eq!(
@@ -84,7 +84,7 @@ fn tagged_permissions_survive_queue_completion_join_and_selection() {
 }
 #[test]
 fn tagged_result_guards_keep_parent_and_carrier_authority() {
-    let source = include_str!("fixtures/source_tagged_guards.tellur");
+    let source = include_str!("fixtures/source_tagged_guards.vn");
     same(source);
     for marker in [
         "auto moved = move pending;",
@@ -111,7 +111,7 @@ fn tagged_result_guards_keep_parent_and_carrier_authority() {
 }
 #[test]
 fn tagged_results_settle_before_awaited_owner_contingency() {
-    let source = include_str!("fixtures/source_tagged_fault.tellur");
+    let source = include_str!("fixtures/source_tagged_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

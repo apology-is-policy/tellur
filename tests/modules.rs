@@ -30,7 +30,7 @@ impl Fixture {
         fs::write(p, source).unwrap();
     }
     fn check(&self) -> std::result::Result<tellur::CheckedProgram, ModuleError> {
-        compile_file(self.root.join("main.tellur"), m())
+        compile_file(self.root.join("main.vn"), m())
     }
     fn reject(&self, code: &str) -> ModuleError {
         let e = self.check().unwrap_err();
@@ -59,18 +59,18 @@ fn same(p: &tellur::CheckedProgram) {
         p.expanded("main").unwrap().run(&scenario()).unwrap()
     );
 }
-const PEOPLE: &str = include_str!("../playground/modules/people.tellur");
-const MAIN: &str = include_str!("../playground/modules/main.tellur");
+const PEOPLE: &str = include_str!("../playground/modules/people.vn");
+const MAIN: &str = include_str!("../playground/modules/main.vn");
 #[test]
 fn exported_payloads_are_explicit_while_importers_can_infer() {
     let f = Fixture::new();
     f.write(
-        "lookup.tellur",
+        "lookup.vn",
         "pub control lookup() exits ready {string text} {exit ready {\"hello\"};}",
     );
     f.write(
-        "main.tellur",
-        "import \"lookup.tellur\" as lookup;control main() exits ready... {forward lookup.lookup();}",
+        "main.vn",
+        "import \"lookup.vn\" as lookup;control main() exits ready... {forward lookup.lookup();}",
     );
     let p = f.check().unwrap();
     same(&p);
@@ -83,27 +83,27 @@ fn exported_payloads_are_explicit_while_importers_can_infer() {
 fn imported_stored_views_preserve_construction_and_pointee_privacy() {
     let f = Fixture::new();
     f.write(
-        "views.tellur",
+        "views.vn",
         "pub struct view {pub ref string text;}pub struct hidden {ref string text;}",
     );
-    let source = "import \"views.tellur\" as views; control main() exits done {string owner=\"hello\";views.view v=views.view {borrow owner};emit(v.text);exit done;}";
-    f.write("main.tellur", source);
+    let source = "import \"views.vn\" as views; control main() exits done {string owner=\"hello\";views.view v=views.view {borrow owner};emit(v.text);exit done;}";
+    f.write("main.vn", source);
     same(&f.check().unwrap());
-    f.write("main.tellur", &source.replace("views.view", "views.hidden"));
+    f.write("main.vn", &source.replace("views.view", "views.hidden"));
     f.reject("E_VISIBILITY");
-    f.write("people.tellur", PEOPLE);
-    f.write("main.tellur", "import \"people.tellur\" as people;struct view {ref people.person value;}control main() exits done {delta people.create(\"Ada\",37) {ready {auto person}=>ready}[ready]:view v=view {borrow person};emit(borrow v.value.name);exit done;}");
+    f.write("people.vn", PEOPLE);
+    f.write("main.vn", "import \"people.vn\" as people;struct view {ref people.person value;}control main() exits done {delta people.create(\"Ada\",37) {ready {auto person}=>ready}[ready]:view v=view {borrow person};emit(borrow v.value.name);exit done;}");
     f.reject("E_VISIBILITY");
 }
 #[test]
 fn imports_private_representation_public_fields_and_borrowed_results_work() {
     let f = Fixture::new();
-    f.write("people.tellur", PEOPLE);
-    f.write("main.tellur", MAIN);
+    f.write("people.vn", PEOPLE);
+    f.write("main.vn", MAIN);
     let p = f.check().unwrap();
     same(&p);
     assert_eq!(p.source_files().len(), 2);
-    assert!(p.inspect("main").unwrap().contains("people.tellur"));
+    assert!(p.inspect("main").unwrap().contains("people.vn"));
     assert_eq!(
         p.source_files().len(),
         p.expanded("main").unwrap().source_files().len()
@@ -112,25 +112,25 @@ fn imports_private_representation_public_fields_and_borrowed_results_work() {
 #[test]
 fn private_controls_fields_and_constructors_cannot_be_reached() {
     let f = Fixture::new();
-    f.write("people.tellur", PEOPLE);
+    f.write("people.vn", PEOPLE);
     for source in [
-        "import \"people.tellur\" as people;control main() exits done {forward people.internal_note();}",
-        "import \"people.tellur\" as people;control main() exits done {people.person value=people.person {\"Ada\",37};exit done;}",
-        "import \"people.tellur\" as people;control main() exits done {delta people.create(\"Ada\",37) {ready {auto value}=>created}[created]:emit(value.name);exit done;}",
-        "import \"people.tellur\" as people;control main() exits done {delta people.create(\"Ada\",37) {ready {auto value}=>created}[created]:auto view=&value.name;exit done;}",
-        "import \"people.tellur\" as people;control main() exits done {delta people.create(\"Ada\",37) {ready {auto value}=>created}[created]:mutable people.person owner=value;owner.name=\"changed\";exit done;}",
+        "import \"people.vn\" as people;control main() exits done {forward people.internal_note();}",
+        "import \"people.vn\" as people;control main() exits done {people.person value=people.person {\"Ada\",37};exit done;}",
+        "import \"people.vn\" as people;control main() exits done {delta people.create(\"Ada\",37) {ready {auto value}=>created}[created]:emit(value.name);exit done;}",
+        "import \"people.vn\" as people;control main() exits done {delta people.create(\"Ada\",37) {ready {auto value}=>created}[created]:auto view=&value.name;exit done;}",
+        "import \"people.vn\" as people;control main() exits done {delta people.create(\"Ada\",37) {ready {auto value}=>created}[created]:mutable people.person owner=value;owner.name=\"changed\";exit done;}",
     ] {
-        f.write("main.tellur", source);
+        f.write("main.vn", source);
         let e = f.reject("E_VISIBILITY");
-        assert_eq!(e.path, f.root.join("main.tellur"));
+        assert_eq!(e.path, f.root.join("main.vn"));
     }
 }
 #[test]
 fn private_type_names_and_public_interface_leaks_are_rejected() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"lib.tellur\" as lib;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"lib.vn\" as lib;control main() exits done {exit done;}",
     );
     for source in [
         "struct secret {u32 value;} pub control leak() exits ready {secret value} {exit ready {secret {1}};}",
@@ -138,27 +138,27 @@ fn private_type_names_and_public_interface_leaks_are_rejected() {
         "struct secret {u32 value;} pub variant public_choice {yes {secret value},no}",
         "struct secret {u32 value;} pub outcome public_result {yes {secret value},no}",
     ] {
-        f.write("lib.tellur", source);
+        f.write("lib.vn", source);
         let e = f.reject("E_VISIBILITY");
-        assert_eq!(e.path, f.root.join("lib.tellur"));
+        assert_eq!(e.path, f.root.join("lib.vn"));
     }
     f.write(
-        "lib.tellur",
+        "lib.vn",
         "struct secret {u32 value;} pub struct public_box {secret value;}",
     );
     f.check().unwrap();
     f.write(
-        "main.tellur",
-        "import \"lib.tellur\" as lib;control main(lib.secret value) exits done {exit done;}",
+        "main.vn",
+        "import \"lib.vn\" as lib;control main(lib.secret value) exits done {exit done;}",
     );
     f.reject("E_VISIBILITY");
 }
 #[test]
 fn aliases_and_diamond_imports_share_one_nominal_identity() {
     let f = Fixture::new();
-    f.write("people.tellur", PEOPLE);
-    f.write("relay.tellur","import \"people.tellur\" as staff;pub control relay(staff.person value) exits ready {staff.person value} {exit ready {value};}");
-    f.write("main.tellur","import \"people.tellur\" as first;import \"./people.tellur\" as second;import \"relay.tellur\" as relay;control main() exits done {delta first.create(\"Ada\",37) {ready {second.person value}=>created}[created]:delta relay.relay(value) {ready {first.person returned}=>returned}[returned]:exit done;}");
+    f.write("people.vn", PEOPLE);
+    f.write("relay.vn","import \"people.vn\" as staff;pub control relay(staff.person value) exits ready {staff.person value} {exit ready {value};}");
+    f.write("main.vn","import \"people.vn\" as first;import \"./people.vn\" as second;import \"relay.vn\" as relay;control main() exits done {delta first.create(\"Ada\",37) {ready {second.person value}=>created}[created]:delta relay.relay(value) {ready {first.person returned}=>returned}[returned]:exit done;}");
     let p = f.check().unwrap();
     assert_eq!(p.source_files().len(), 3);
     same(&p);
@@ -166,67 +166,67 @@ fn aliases_and_diamond_imports_share_one_nominal_identity() {
 #[test]
 fn separate_files_with_same_type_spelling_stay_nominally_distinct() {
     let f = Fixture::new();
-    for name in ["a.tellur", "b.tellur"] {
+    for name in ["a.vn", "b.vn"] {
         f.write(name, "pub struct id {pub u32 value;}");
     }
-    f.write("main.tellur","import \"a.tellur\" as a;import \"b.tellur\" as b;control main() exits done {a.id first=a.id {7};b.id second=first;exit done;}");
+    f.write("main.vn","import \"a.vn\" as a;import \"b.vn\" as b;control main() exits done {a.id first=a.id {7};b.id second=first;exit done;}");
     f.reject("E_TYPE");
 }
 #[test]
 fn private_constructor_tags_do_not_pollute_other_modules_or_builtin_options() {
     let f = Fixture::new();
     f.write(
-        "lib.tellur",
+        "lib.vn",
         "variant hidden {some {string text},none} pub variant public_choice {yes,no}",
     );
-    f.write("main.tellur","import \"lib.tellur\" as lib;control main() exits ready {option<u32> value} {option<u32> value=some {7};exit ready {value};}");
+    f.write("main.vn","import \"lib.vn\" as lib;control main() exits ready {option<u32> value} {option<u32> value=some {7};exit ready {value};}");
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
-        "import \"lib.tellur\" as lib;control main() exits done {auto value=yes {};exit done;}",
+        "main.vn",
+        "import \"lib.vn\" as lib;control main() exits done {auto value=yes {};exit done;}",
     );
     f.reject("E_NAME");
-    f.write("main.tellur","import \"lib.tellur\" as lib;control main() exits done {auto value=lib.public_choice.yes {};exit done;}");
+    f.write("main.vn","import \"lib.vn\" as lib;control main() exits done {auto value=lib.public_choice.yes {};exit done;}");
     same(&f.check().unwrap());
 }
 #[test]
 fn imports_resolve_relative_to_importer_and_report_cycles_and_missing_files() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"sub/a.tellur\" as a;control main() exits done {forward a.go();}",
+        "main.vn",
+        "import \"sub/a.vn\" as a;control main() exits done {forward a.go();}",
     );
     f.write(
-        "sub/a.tellur",
-        "import \"../b.tellur\" as b;pub control go() exits done {forward b.go();}",
+        "sub/a.vn",
+        "import \"../b.vn\" as b;pub control go() exits done {forward b.go();}",
     );
-    f.write("b.tellur", "pub control go() exits done {exit done;}");
+    f.write("b.vn", "pub control go() exits done {exit done;}");
     same(&f.check().unwrap());
     f.write(
-        "b.tellur",
-        "import \"main.tellur\" as root;pub control go() exits done {exit done;}",
+        "b.vn",
+        "import \"main.vn\" as root;pub control go() exits done {exit done;}",
     );
     f.reject("E_IMPORT_CYCLE");
-    fs::remove_file(f.root.join("b.tellur")).unwrap();
+    fs::remove_file(f.root.join("b.vn")).unwrap();
     let e = f.reject("E_IMPORT");
-    assert_eq!(e.path, f.root.join("sub/a.tellur"));
+    assert_eq!(e.path, f.root.join("sub/a.vn"));
 }
 #[test]
 fn dependency_diagnostics_have_original_file_and_line_and_unsaved_loader_is_used() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"lib.tellur\" as lib;\ncontrol main() exits done {forward lib.go();}",
+        "main.vn",
+        "import \"lib.vn\" as lib;\ncontrol main() exits done {forward lib.go();}",
     );
     f.write(
-        "lib.tellur",
+        "lib.vn",
         "// Header\npub control go() exits done {\n string value=7;\n exit done;\n}",
     );
     let e = f.reject("E_TYPE");
-    assert_eq!(e.path, f.root.join("lib.tellur"));
+    assert_eq!(e.path, f.root.join("lib.vn"));
     assert_eq!(e.diagnostic.span.line, 3);
-    let p = tellur::modules::compile_with_loader(f.root.join("main.tellur"), m(), |p| {
-        if p.ends_with("lib.tellur") {
+    let p = tellur::modules::compile_with_loader(f.root.join("main.vn"), m(), |p| {
+        if p.ends_with("lib.vn") {
             Ok("pub control go() exits done {exit done;}".into())
         } else {
             fs::read_to_string(p)
@@ -238,27 +238,25 @@ fn dependency_diagnostics_have_original_file_and_line_and_unsaved_loader_is_used
 #[test]
 fn namespace_collisions_and_text_only_import_compilation_are_diagnosed() {
     let f = Fixture::new();
-    f.write("lib.tellur", "pub control go() exits done {exit done;}");
+    f.write("lib.vn", "pub control go() exits done {exit done;}");
     for source in [
-        "import \"lib.tellur\" as lib;control lib() exits done {exit done;}",
-        "import \"lib.tellur\" as lib;control main() exits done {u32 lib=7;exit done;}",
-        "import \"lib.tellur\" as lib;import \"lib.tellur\" as lib;",
+        "import \"lib.vn\" as lib;control lib() exits done {exit done;}",
+        "import \"lib.vn\" as lib;control main() exits done {u32 lib=7;exit done;}",
+        "import \"lib.vn\" as lib;import \"lib.vn\" as lib;",
     ] {
-        f.write("main.tellur", source);
+        f.write("main.vn", source);
         f.reject("E_NAME");
     }
     assert_eq!(
-        compile("import \"lib.tellur\" as lib;", m())
-            .unwrap_err()
-            .code,
+        compile("import \"lib.vn\" as lib;", m()).unwrap_err().code,
         "E_IMPORT"
     );
 }
 #[test]
 fn imported_resources_retain_ownership_and_completion_requirements() {
     let f = Fixture::new();
-    f.write("lib.tellur","pub struct resource_box {handle file;} pub control wrap(handle file) exits ready {resource_box value} {exit ready {resource_box {file}};} pub control unwrap(resource_box value) exits ready {handle file} {exit ready {value.file};}");
-    f.write("main.tellur","import \"lib.tellur\" as lib;control main(handle file) exits ready {handle file} {delta lib.wrap(file) {ready {auto box}=>wrapped}[wrapped]:forward lib.unwrap(box);}");
+    f.write("lib.vn","pub struct resource_box {handle file;} pub control wrap(handle file) exits ready {resource_box value} {exit ready {resource_box {file}};} pub control unwrap(resource_box value) exits ready {handle file} {exit ready {value.file};}");
+    f.write("main.vn","import \"lib.vn\" as lib;control main(handle file) exits ready {handle file} {delta lib.wrap(file) {ready {auto box}=>wrapped}[wrapped]:forward lib.unwrap(box);}");
     let p = f.check().unwrap();
     let s = Scenario {
         entry: "main".into(),
@@ -272,7 +270,7 @@ fn imported_resources_retain_ownership_and_completion_requirements() {
         p.run(&s).unwrap(),
         p.expanded("main").unwrap().run(&s).unwrap()
     );
-    f.write("main.tellur","import \"lib.tellur\" as lib;control main(handle file) exits done {delta lib.wrap(file) {ready {auto box}=>wrapped}[wrapped]:exit done;}");
+    f.write("main.vn","import \"lib.vn\" as lib;control main(handle file) exits done {delta lib.wrap(file) {ready {auto box}=>wrapped}[wrapped]:exit done;}");
     f.reject("E_RESOURCE");
 }
 
@@ -289,20 +287,20 @@ fn public_interface_rules_also_apply_to_text_compilation() {
 #[test]
 fn symlinks_share_identity_and_cannot_hide_an_import_cycle() {
     let f = Fixture::new();
-    f.write("lib.tellur", "pub struct id {pub u32 value;}");
-    std::os::unix::fs::symlink(f.root.join("lib.tellur"), f.root.join("link.tellur")).unwrap();
-    f.write("main.tellur","import \"lib.tellur\" as a;import \"link.tellur\" as b;control main() exits done {a.id first=a.id {7};b.id second=first;exit done;}");
+    f.write("lib.vn", "pub struct id {pub u32 value;}");
+    std::os::unix::fs::symlink(f.root.join("lib.vn"), f.root.join("link.vn")).unwrap();
+    f.write("main.vn","import \"lib.vn\" as a;import \"link.vn\" as b;control main() exits done {a.id first=a.id {7};b.id second=first;exit done;}");
     let p = f.check().unwrap();
     assert_eq!(p.source_files().len(), 2);
     same(&p);
-    f.write("lib.tellur", "import \"link.tellur\" as alias;");
+    f.write("lib.vn", "import \"link.vn\" as alias;");
     f.reject("E_IMPORT_CYCLE");
 }
 #[test]
 fn source_map_errors_and_cli_imports_survive_a_different_working_directory() {
     let f = Fixture::new();
-    f.write("people.tellur", PEOPLE);
-    f.write("main.tellur", MAIN);
+    f.write("people.vn", PEOPLE);
+    f.write("main.vn", MAIN);
     fs::write(
         f.root.join("manifest.json"),
         include_str!("../playground/manifest.json"),
@@ -310,7 +308,7 @@ fn source_map_errors_and_cli_imports_survive_a_different_working_directory() {
     .unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_tellurc"))
         .args(["check"])
-        .arg(f.root.join("main.tellur"))
+        .arg(f.root.join("main.vn"))
         .current_dir(std::env::temp_dir())
         .output()
         .unwrap();
@@ -323,8 +321,8 @@ fn source_map_errors_and_cli_imports_survive_a_different_working_directory() {
 #[test]
 fn native_modules_preserve_borrows_and_effect_order_before_and_after_expansion() {
     let f = Fixture::new();
-    f.write("people.tellur", PEOPLE);
-    f.write("main.tellur", MAIN);
+    f.write("people.vn", PEOPLE);
+    f.write("main.vn", MAIN);
     let original = f.check().unwrap();
     let expected = serde_json::to_value(original.run(&scenario()).unwrap()).unwrap();
     let expanded = original.expanded("main").unwrap();
@@ -358,26 +356,26 @@ fn native_modules_preserve_borrows_and_effect_order_before_and_after_expansion()
 #[test]
 fn import_budget_is_an_error_instead_of_a_partial_program() {
     let f = Fixture::new();
-    f.write("main.tellur", &" ".repeat(8 * 1024 * 1024 + 1));
+    f.write("main.vn", &" ".repeat(8 * 1024 * 1024 + 1));
     f.reject("E_IMPORT_LIMIT");
-    f.write("main.tellur", "import \"m1.tellur\" as next;");
+    f.write("main.vn", "import \"m1.vn\" as next;");
     for i in 1..257 {
         f.write(
-            &format!("m{i}.tellur"),
-            &format!("import \"m{}.tellur\" as next;", i + 1),
+            &format!("m{i}.vn"),
+            &format!("import \"m{}.vn\" as next;", i + 1),
         );
     }
-    f.write("m257.tellur", "struct last {}");
+    f.write("m257.vn", "struct last {}");
     f.reject("E_IMPORT_LIMIT");
 }
 
 #[test]
 fn constructor_resolution_respects_lexical_binding_order_and_scopes() {
     let f = Fixture::new();
-    f.write("lib.tellur","variant state {empty,full {u32 value}} pub control go() exits done {auto first=state.empty; state state=state.empty {};exit done;}");
+    f.write("lib.vn","variant state {empty,full {u32 value}} pub control go() exits done {auto first=state.empty; state state=state.empty {};exit done;}");
     f.write(
-        "main.tellur",
-        "import \"lib.tellur\" as lib;control main() exits done {forward lib.go();}",
+        "main.vn",
+        "import \"lib.vn\" as lib;control main() exits done {forward lib.go();}",
     );
     same(&f.check().unwrap());
 }
@@ -385,23 +383,17 @@ fn constructor_resolution_respects_lexical_binding_order_and_scopes() {
 #[test]
 fn named_fields_resolve_namespaces_and_preserve_representation_privacy() {
     let f = Fixture::new();
-    f.write("people.tellur","pub struct person {pub string name;pub u32 age;} pub control create() exits ready {person value} {exit ready {person {age:36,name:\"Ada\"}};}");
-    f.write("main.tellur","import \"people.tellur\" as people; control main() exits auto {auto value=people.person {age:36,name:\"Ada\"};exit ready {value.name,value.age};}");
+    f.write("people.vn","pub struct person {pub string name;pub u32 age;} pub control create() exits ready {person value} {exit ready {person {age:36,name:\"Ada\"}};}");
+    f.write("main.vn","import \"people.vn\" as people; control main() exits auto {auto value=people.person {age:36,name:\"Ada\"};exit ready {value.name,value.age};}");
     let p = f.check().unwrap();
     same(&p);
     assert_eq!(
         p.run(&scenario()).unwrap().fields,
         vec![Value::String("Ada".into()), Value::U32(36)]
     );
-    f.write(
-        "people.tellur",
-        "pub struct person {string name;pub u32 age;}",
-    );
+    f.write("people.vn", "pub struct person {string name;pub u32 age;}");
     f.reject("E_VISIBILITY");
-    f.write(
-        "people.tellur",
-        "struct person {pub string name;pub u32 age;}",
-    );
+    f.write("people.vn", "struct person {pub string name;pub u32 age;}");
     f.reject("E_VISIBILITY");
 }
 
@@ -409,60 +401,60 @@ fn named_fields_resolve_namespaces_and_preserve_representation_privacy() {
 fn generic_modules_keep_shared_nominal_identity_and_private_representation() {
     let f = Fixture::new();
     let source = "pub struct box<t>{pub t value;} pub variant choice<t>{some {t value},none} pub outcome result<t>{ready {t value},empty}";
-    f.write("data.tellur", source);
-    f.write("main.tellur","import \"data.tellur\" as a;import \"data.tellur\" as b;control main() exits a.result<string> {a.box<string> first=a.box<string>{value:\"Ada\"};b.box<string> second=first;auto tag=b.choice<string>.some {second.value};exit delta tag {some {auto value}=>ready {value},none=>empty {}};}");
+    f.write("data.vn", source);
+    f.write("main.vn","import \"data.vn\" as a;import \"data.vn\" as b;control main() exits a.result<string> {a.box<string> first=a.box<string>{value:\"Ada\"};b.box<string> second=first;auto tag=b.choice<string>.some {second.value};exit delta tag {some {auto value}=>ready {value},none=>empty {}};}");
     let p = f.check().unwrap();
     same(&p);
     assert_eq!(
         p.run(&scenario()).unwrap().fields,
         vec![Value::String("Ada".into())]
     );
-    f.write("data.tellur", &source.replace("pub t value", "t value"));
+    f.write("data.vn", &source.replace("pub t value", "t value"));
     f.reject("E_VISIBILITY");
-    f.write("data.tellur","pub struct box<t>{pub t value;}struct hidden{}pub control leak() exits ready {box<hidden> value} {exit ready {box<hidden>{hidden{}}};}");
+    f.write("data.vn","pub struct box<t>{pub t value;}struct hidden{}pub control leak() exits ready {box<hidden> value} {exit ready {box<hidden>{hidden{}}};}");
     f.write(
-        "main.tellur",
-        "import \"data.tellur\" as data;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"data.vn\" as data;control main() exits done {exit done;}",
     );
     f.reject("E_VISIBILITY");
-    f.write("data.tellur","struct box<t>{pub t value;}pub control leak() exits ready {box<u32> value} {exit ready {box<u32>{1}};}");
+    f.write("data.vn","struct box<t>{pub t value;}pub control leak() exits ready {box<u32> value} {exit ready {box<u32>{1}};}");
     f.reject("E_VISIBILITY");
 }
 
 #[test]
 fn generic_controls_keep_module_privacy_and_universal_definition_checks() {
     let f = Fixture::new();
-    f.write("library.tellur","pub struct box<t>{t value;}pub control wrap<t>(t value) exits ready {box<t> value} {exit ready {box<t>{value}};}pub control unpack<t>(box<t> value) exits ready {t value} {exit ready {value.value};}control secret<t>(t value) exits ready {t value} {exit ready {value};}");
-    f.write("main.tellur","import \"library.tellur\" as library;control main() exits auto {exit delta library.wrap<string>(\"Ada\") {ready {auto value}=>delta library.unpack<string>(value) {ready {auto text}=>done {text}}};}");
+    f.write("library.vn","pub struct box<t>{t value;}pub control wrap<t>(t value) exits ready {box<t> value} {exit ready {box<t>{value}};}pub control unpack<t>(box<t> value) exits ready {t value} {exit ready {value.value};}control secret<t>(t value) exits ready {t value} {exit ready {value};}");
+    f.write("main.vn","import \"library.vn\" as library;control main() exits auto {exit delta library.wrap<string>(\"Ada\") {ready {auto value}=>delta library.unpack<string>(value) {ready {auto text}=>done {text}}};}");
     let p = f.check().unwrap();
     same(&p);
     assert_eq!(
         p.run(&scenario()).unwrap().fields,
         vec![Value::String("Ada".into())]
     );
-    f.write("main.tellur","import \"library.tellur\" as library;control main() exits auto {forward library.secret<string>(\"x\");}");
+    f.write("main.vn","import \"library.vn\" as library;control main() exits auto {forward library.secret<string>(\"x\");}");
     f.reject("E_VISIBILITY");
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     f.write(
-        "library.tellur",
+        "library.vn",
         "pub control bad<t>(t value) exits done {exit done;}",
     );
     let e = f.reject("E_RESOURCE");
-    assert!(e.path.ends_with("library.tellur"));
-    f.write("library.tellur","struct hidden{}pub control bad<t>(t value) exits ready {t value,hidden secret} {exit ready {value,hidden{}};}");
+    assert!(e.path.ends_with("library.vn"));
+    f.write("library.vn","struct hidden{}pub control bad<t>(t value) exits ready {t value,hidden secret} {exit ready {value,hidden{}};}");
     f.reject("E_VISIBILITY");
 }
 
 #[test]
 fn generic_parameter_constructor_shadowing_is_independent_of_module_prefixes() {
     let f = Fixture::new();
-    f.write("library.tellur","struct item{}pub control bad<item>(item value) exits ready {item value} {auto wrong=item{};exit ready {value};}");
+    f.write("library.vn","struct item{}pub control bad<item>(item value) exits ready {item value} {auto wrong=item{};exit ready {value};}");
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     let e = f.reject("E_NAME");
     assert!(e.diagnostic.message.contains("generic definition check"));
@@ -471,8 +463,8 @@ fn generic_parameter_constructor_shadowing_is_independent_of_module_prefixes() {
 #[test]
 fn qualified_generic_and_non_generic_single_completion_statements_work() {
     let f = Fixture::new();
-    f.write("library.tellur","pub control show() exits done {emit(\"plain\");exit done;}pub control observe<t>(&t value) exits done {emit(\"generic\");exit done;}");
-    f.write("main.tellur","import \"library.tellur\" as library;control main() exits done {string value=\"Ada\";library.show();library.observe<string>(&value);exit done;}");
+    f.write("library.vn","pub control show() exits done {emit(\"plain\");exit done;}pub control observe<t>(&t value) exits done {emit(\"generic\");exit done;}");
+    f.write("main.vn","import \"library.vn\" as library;control main() exits done {string value=\"Ada\";library.show();library.observe<string>(&value);exit done;}");
     let p = f.check().unwrap();
     same(&p);
 }
@@ -481,11 +473,11 @@ fn qualified_generic_and_non_generic_single_completion_statements_work() {
 fn public_generic_can_be_used_with_private_arguments_without_exporting_them() {
     let f = Fixture::new();
     let source = "struct hidden{u32 value;}pub control identity<t>(t value) exits ready {t value} {exit ready {value};}control main() exits auto {exit delta identity<hidden>(hidden{7}) {ready {auto value}=>done {value.value}};}";
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     let p = f.check().unwrap();
     same(&p);
     f.write(
-        "main.tellur",
+        "main.vn",
         &source
             .replace(
                 "control main() exits auto",
@@ -499,30 +491,30 @@ fn public_generic_can_be_used_with_private_arguments_without_exporting_them() {
 #[test]
 fn imported_generic_bounds_check_definitions_and_private_concrete_arguments() {
     let f = Fixture::new();
-    f.write("library.tellur","pub control duplicate<t: clone>(&t value) exits ready {t value} {exit ready {clone(value)};}");
-    f.write("main.tellur","import \"library.tellur\" as lib; struct private_box{string value;} control main() exits auto {private_box value=private_box{value:\"Ada\"};exit delta lib.duplicate<private_box>(&value) {ready {auto copy}=>done {copy.value}};}");
+    f.write("library.vn","pub control duplicate<t: clone>(&t value) exits ready {t value} {exit ready {clone(value)};}");
+    f.write("main.vn","import \"library.vn\" as lib; struct private_box{string value;} control main() exits auto {private_box value=private_box{value:\"Ada\"};exit delta lib.duplicate<private_box>(&value) {ready {auto copy}=>done {copy.value}};}");
     assert_eq!(
         f.check().unwrap().run(&scenario()).unwrap().fields,
         vec![Value::String("Ada".into())]
     );
-    f.write("library.tellur","pub control duplicate<t: copy>(&t value) exits ready {t value} {exit ready {clone(value)};}");
+    f.write("library.vn","pub control duplicate<t: copy>(&t value) exits ready {t value} {exit ready {clone(value)};}");
     let e = f.reject("E_BOUND");
-    assert!(e.to_string().contains("main.tellur"));
-    f.write("library.tellur","pub control duplicate<t: drop>(&t value) exits ready {t value} {exit ready {clone(value)};}");
+    assert!(e.to_string().contains("main.vn"));
+    f.write("library.vn","pub control duplicate<t: drop>(&t value) exits ready {t value} {exit ready {clone(value)};}");
     let e = f.reject("E_CLONE");
-    assert!(e.to_string().contains("library.tellur"));
+    assert!(e.to_string().contains("library.vn"));
 }
 
 #[test]
 fn trait_calls_and_associated_types_resolve_through_imports_and_keep_defining_privacy() {
     let f = Fixture::new();
     f.write(
-        "reader.tellur",
+        "reader.vn",
         "pub trait reader {type item;control read(&self input) exits ready {item value};}",
     );
-    f.write("people.tellur","import \"reader.tellur\" as io; pub struct person {string name;} pub control make() exits ready {person value} {exit ready {person {name:\"Ada\"}};} impl io.reader for person {type item=string;control read(&self input) exits ready {item value} {exit ready {clone(&(*input).name)};}}");
-    let source = "import \"reader.tellur\" as io; import \"people.tellur\" as people; control main() exits auto {delta people.make() {ready {auto value}=>ready} [ready]:io.reader<people.person>.item expected=\"Ada\";exit delta io.reader<people.person>.read(&value) {ready {auto name}=>done {name==expected}};}";
-    f.write("main.tellur", source);
+    f.write("people.vn","import \"reader.vn\" as io; pub struct person {string name;} pub control make() exits ready {person value} {exit ready {person {name:\"Ada\"}};} impl io.reader for person {type item=string;control read(&self input) exits ready {item value} {exit ready {clone(&(*input).name)};}}");
+    let source = "import \"reader.vn\" as io; import \"people.vn\" as people; control main() exits auto {delta people.make() {ready {auto value}=>ready} [ready]:io.reader<people.person>.item expected=\"Ada\";exit delta io.reader<people.person>.read(&value) {ready {auto name}=>done {name==expected}};}";
+    f.write("main.vn", source);
     let p = f.check().unwrap();
     assert_eq!(p.run(&scenario()).unwrap().fields, vec![Value::Bool(true)]);
     assert_eq!(
@@ -530,7 +522,7 @@ fn trait_calls_and_associated_types_resolve_through_imports_and_keep_defining_pr
         p.expanded("main").unwrap().run(&scenario()).unwrap()
     );
     f.write(
-        "reader.tellur",
+        "reader.vn",
         "trait reader {type item;control read(&self input) exits ready {item value};}",
     );
     f.reject("E_VISIBILITY");
@@ -539,62 +531,62 @@ fn trait_calls_and_associated_types_resolve_through_imports_and_keep_defining_pr
 fn trait_or_type_ownership_controls_coherence_and_diamond_imports_share_implementations() {
     let f = Fixture::new();
     f.write(
-        "a.tellur",
+        "a.vn",
         "pub trait mark {} pub struct token {pub u32 value;} impl mark for token {}",
     );
-    f.write("b.tellur", "import \"a.tellur\" as a;");
+    f.write("b.vn", "import \"a.vn\" as a;");
     f.write(
-        "main.tellur",
-        "import \"a.tellur\" as a; import \"b.tellur\" as b; control main() exits done {exit done;}",
+        "main.vn",
+        "import \"a.vn\" as a; import \"b.vn\" as b; control main() exits done {exit done;}",
     );
     f.check().unwrap();
     f.write(
-        "main.tellur",
-        "import \"a.tellur\" as a; impl a.mark for a.token {} ",
+        "main.vn",
+        "import \"a.vn\" as a; impl a.mark for a.token {} ",
     );
     f.reject("E_COHERENCE");
     f.write(
-        "main.tellur",
-        "import \"a.tellur\" as a; struct local {u32 value;} impl a.mark for vector<local> {}",
+        "main.vn",
+        "import \"a.vn\" as a; struct local {u32 value;} impl a.mark for vector<local> {}",
     );
     f.reject("E_COHERENCE");
     f.write(
-        "main.tellur",
-        "import \"a.tellur\" as a; struct local {u32 value;} impl a.mark for local {}",
+        "main.vn",
+        "import \"a.vn\" as a; struct local {u32 value;} impl a.mark for local {}",
     );
     f.check().unwrap();
     f.write(
-        "main.tellur",
-        "import \"a.tellur\" as a; trait local {} impl local for a.token {}",
+        "main.vn",
+        "import \"a.vn\" as a; trait local {} impl local for a.token {}",
     );
     f.check().unwrap();
 }
 #[test]
 fn trait_methods_cannot_gain_foreign_private_field_access() {
     let f = Fixture::new();
-    f.write("a.tellur", "pub struct hidden {string text;}");
-    f.write("main.tellur",r#"import "a.tellur" as a; trait reader {control read(&self input) exits ready {string value};} impl reader for a.hidden {control read(&self input) exits ready {string value} {exit ready {clone(&(*input).text)};}}"#);
+    f.write("a.vn", "pub struct hidden {string text;}");
+    f.write("main.vn",r#"import "a.vn" as a; trait reader {control read(&self input) exits ready {string value};} impl reader for a.hidden {control read(&self input) exits ready {string value} {exit ready {clone(&(*input).text)};}}"#);
     f.reject("E_VISIBILITY");
-    f.write("main.tellur",r#"import "a.tellur" as a; trait reader {control read(ref self input) exits ready {string value};} implement reader for a.hidden {control read(ref self input) exits ready {string value} {exit ready {clone(borrow input.text)};}}"#);
+    f.write("main.vn",r#"import "a.vn" as a; trait reader {control read(ref self input) exits ready {string value};} implement reader for a.hidden {control read(ref self input) exits ready {string value} {exit ready {clone(borrow input.text)};}}"#);
     f.reject("E_VISIBILITY");
 }
 
 #[test]
 fn imported_trait_bounds_preserve_witness_identity_private_access_and_generic_interfaces() {
     let f = Fixture::new();
-    f.write("reader.tellur","pub trait reader {type item:clone;control read(&self input) exits ready {item value};} pub control read_one<r:reader>(&r input) exits ready {reader<r>.item value} {forward reader<r>.read(input);}");
-    f.write("source.tellur","import \"reader.tellur\" as io; pub struct source {string text;} pub control make() exits ready {source value} {exit ready {source {text:\"Ada\"}};} impl io.reader for source {type item=string;control read(&self input) exits ready {item value} {exit ready {clone(&(*input).text)};}}");
-    f.write("main.tellur","import \"reader.tellur\" as io;import \"source.tellur\" as data;control main() exits auto {delta data.make() {ready {auto value}=>ready} [ready]:forward io.read_one<data.source>(&value);}");
+    f.write("reader.vn","pub trait reader {type item:clone;control read(&self input) exits ready {item value};} pub control read_one<r:reader>(&r input) exits ready {reader<r>.item value} {forward reader<r>.read(input);}");
+    f.write("source.vn","import \"reader.vn\" as io; pub struct source {string text;} pub control make() exits ready {source value} {exit ready {source {text:\"Ada\"}};} impl io.reader for source {type item=string;control read(&self input) exits ready {item value} {exit ready {clone(&(*input).text)};}}");
+    f.write("main.vn","import \"reader.vn\" as io;import \"source.vn\" as data;control main() exits auto {delta data.make() {ready {auto value}=>ready} [ready]:forward io.read_one<data.source>(&value);}");
     let p = f.check().unwrap();
     assert_eq!(
         p.run(&scenario()).unwrap().fields,
         vec![Value::String("Ada".into())]
     );
     assert!(!p.regions().any(|r| r.name.contains("_path_poly_")));
-    f.write("reader.tellur","trait hidden {} pub control bad<t:hidden>(t value) exits ready {t value} {exit ready {value};}");
+    f.write("reader.vn","trait hidden {} pub control bad<t:hidden>(t value) exits ready {t value} {exit ready {value};}");
     f.write(
-        "main.tellur",
-        r#"import "reader.tellur" as io; control main() exits done {exit done;}"#,
+        "main.vn",
+        r#"import "reader.vn" as io; control main() exits done {exit done;}"#,
     );
     f.reject("E_VISIBILITY");
 }
@@ -602,10 +594,10 @@ fn imported_trait_bounds_preserve_witness_identity_private_access_and_generic_in
 #[test]
 fn borrowed_trait_contracts_hide_private_field_layouts_across_modules() {
     let f = Fixture::new();
-    f.write("reader.tellur","pub trait reader {type item:clone;control peek(&self input) exits ready {&item value from input};} pub control peek<r:reader>(&r input) exits ready {&reader<r>.item value from input} {forward reader<r>.peek(input);}");
-    f.write("source.tellur","import \"reader.tellur\" as io;pub struct source {string text;} pub control make() exits ready {source value} {exit ready {source {text:\"Ada\"}};} impl io.reader for source {type item=string;control peek(&self owner) exits ready {&item value from owner} {exit ready {&(*owner).text};}}");
-    let main = "import \"reader.tellur\" as io;import \"source.tellur\" as data;control main() exits auto {delta data.make() {ready {auto value}=>ready} [ready]:exit delta io.peek<data.source>(&value) {ready {auto text}=>done {clone(text)}};}";
-    f.write("main.tellur", main);
+    f.write("reader.vn","pub trait reader {type item:clone;control peek(&self input) exits ready {&item value from input};} pub control peek<r:reader>(&r input) exits ready {&reader<r>.item value from input} {forward reader<r>.peek(input);}");
+    f.write("source.vn","import \"reader.vn\" as io;pub struct source {string text;} pub control make() exits ready {source value} {exit ready {source {text:\"Ada\"}};} impl io.reader for source {type item=string;control peek(&self owner) exits ready {&item value from owner} {exit ready {&(*owner).text};}}");
+    let main = "import \"reader.vn\" as io;import \"source.vn\" as data;control main() exits auto {delta data.make() {ready {auto value}=>ready} [ready]:exit delta io.peek<data.source>(&value) {ready {auto text}=>done {clone(text)}};}";
+    f.write("main.vn", main);
     let p = f.check().unwrap();
     same(&p);
     assert_eq!(
@@ -613,34 +605,34 @@ fn borrowed_trait_contracts_hide_private_field_layouts_across_modules() {
         vec![Value::String("Ada".into())]
     );
     f.write(
-        "main.tellur",
+        "main.vn",
         &main.replace("clone(text)", "clone(&value.text)"),
     );
     f.reject("E_VISIBILITY");
-    f.write("main.tellur", main);
-    f.write("source.tellur","import \"reader.tellur\" as io;pub struct source {string text;} pub control make() exits ready {source value} {exit ready {source {text:\"Ada\"}};} impl io.reader for source {type item=string;control peek(&self owner) exits ready {&item value from owner} {string local=\"bad\";exit ready {&local};}}");
+    f.write("main.vn", main);
+    f.write("source.vn","import \"reader.vn\" as io;pub struct source {string text;} pub control make() exits ready {source value} {exit ready {source {text:\"Ada\"}};} impl io.reader for source {type item=string;control peek(&self owner) exits ready {&item value from owner} {string local=\"bad\";exit ready {&local};}}");
     let e = f.reject("E_LIFETIME");
-    assert!(e.path.ends_with("source.tellur"));
+    assert!(e.path.ends_with("source.vn"));
 }
 
 #[test]
 fn imported_grouped_results_preserve_precision_and_private_field_mappings() {
     let f = Fixture::new();
     let library = "pub struct pair['a,'b] {ref string secret <- 'a;pub ref string right <- 'b;} pub control make(ref string left,ref string right) exits ready {pair[left,right] value} {exit ready {pair {left,right}};}";
-    let source = r#"import "pairs.tellur" as pairs;
+    let source = r#"import "pairs.vn" as pairs;
     control main() exits done {mutable string a="a";string b="b";
     delta pairs.make(borrow a,borrow b) {ready {auto p}=>ready}
     [ready]: a="released";emit(p.right);exit done; }"#;
-    f.write("pairs.tellur", library);
-    f.write("main.tellur", source);
+    f.write("pairs.vn", library);
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "pairs.tellur",
+        "pairs.vn",
         &library.replace("secret", "renamed_private_field"),
     );
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source
             .replace("a=\"released\";", "")
             .replace("emit(p.right)", "emit(p.renamed_private_field)"),
@@ -651,26 +643,26 @@ fn imported_grouped_results_preserve_precision_and_private_field_mappings() {
 fn contained_selectors_use_public_groups_without_exposing_private_fields() {
     let f = Fixture::new();
     let library = "pub struct view['a] {ref string hidden <- 'a;} pub control make(ref string owner) exits ready {view[owner] value} {exit ready {view {owner}};} pub control peek(ref view input) exits found {ref string value from input['a]} {exit found {input.hidden};}";
-    f.write("library.tellur", library);
-    f.write("main.tellur", "import \"library.tellur\" as lib; control relay(lib.view input) exits found {ref string value from input['a]} {forward lib.peek(borrow input);} control main() exits done {string a=\"outside\";delta lib.make(borrow a) {ready {auto p}=>ready} [ready]:delta relay(p) {found {auto value}=>found} [ready & found]:emit(value);exit done;}");
+    f.write("library.vn", library);
+    f.write("main.vn", "import \"library.vn\" as lib; control relay(lib.view input) exits found {ref string value from input['a]} {forward lib.peek(borrow input);} control main() exits done {string a=\"outside\";delta lib.make(borrow a) {ready {auto p}=>ready} [ready]:delta relay(p) {found {auto value}=>found} [ready & found]:emit(value);exit done;}");
     same(&f.check().unwrap());
-    f.write("library.tellur", &library.replace("hidden", "renamed"));
+    f.write("library.vn", &library.replace("hidden", "renamed"));
     same(&f.check().unwrap());
-    f.write("main.tellur","import \"library.tellur\" as lib; control bad(lib.view input) exits found {ref string value from input['renamed]} {exit found {input.renamed};}");
+    f.write("main.vn","import \"library.vn\" as lib; control bad(lib.view input) exits found {ref string value from input['renamed]} {exit found {input.renamed};}");
     f.reject("E_LIFETIME");
 }
 #[test]
 fn private_exclusive_fields_preserve_guards_across_public_selectors() {
     let f = Fixture::new();
     let library = "pub struct editor['a] {ref mutable string hidden <- 'a;} pub control make(ref mutable string owner) exits ready {editor[owner] value} {exit ready {editor {owner}};} pub control peek(ref editor input) exits found {ref string value from input['a]} {exit found {borrow deref input.hidden};}";
-    f.write("library.tellur", library);
-    let main = "import \"library.tellur\" as lib;control main() exits done {mutable string a=\"a\";delta lib.make(borrow mutable a) {ready {auto p}=>ready} [ready]:delta lib.peek(borrow p) {found {auto child}=>found} [ready & found]:emit(child);drop(p);exit done;}";
-    f.write("main.tellur", main);
+    f.write("library.vn", library);
+    let main = "import \"library.vn\" as lib;control main() exits done {mutable string a=\"a\";delta lib.make(borrow mutable a) {ready {auto p}=>ready} [ready]:delta lib.peek(borrow p) {found {auto child}=>found} [ready & found]:emit(child);drop(p);exit done;}";
+    f.write("main.vn", main);
     same(&f.check().unwrap());
-    f.write("library.tellur", &library.replace("hidden", "renamed"));
+    f.write("library.vn", &library.replace("hidden", "renamed"));
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &main.replace("emit(child);drop(p)", "drop(p);emit(child)"),
     );
     f.reject("E_LOAN");
@@ -681,24 +673,24 @@ fn opaque_splits_hide_private_layout_and_preserve_exclusive_permissions() {
     let library = r#"pub struct owner {string hidden_left;string hidden_right;}
  pub control create() exits ready {owner value} {exit ready {owner {"left","right"}};}
  pub control split(ref mutable owner input) exits ready {ref mutable string a from input,ref mutable string b from input} {exit ready {borrow mutable input.hidden_left,borrow mutable input.hidden_right};}"#;
-    let source = r#"import "library.tellur" as lib;
+    let source = r#"import "library.vn" as lib;
  control main() exits done {delta lib.create() {ready {auto made}=>made}
  [made]:mutable lib.owner value=made;
  delta lib.split(borrow mutable value) {ready {auto a,auto b}=>split}
  [split]:deref a="A";deref b="B";emit(a);emit(b);drop(value);exit done;}"#;
-    f.write("library.tellur", library);
-    f.write("main.tellur", source);
+    f.write("library.vn", library);
+    f.write("main.vn", source);
     same(&f.check().unwrap());
-    f.write("library.tellur", &library.replace("hidden_left", "renamed"));
+    f.write("library.vn", &library.replace("hidden_left", "renamed"));
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace("emit(a);", "drop(value);emit(a);"),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     f.write(
-        "library.tellur",
+        "library.vn",
         &library.replace(
             "borrow mutable input.hidden_right",
             "borrow mutable input.hidden_left",
@@ -709,19 +701,19 @@ fn opaque_splits_hide_private_layout_and_preserve_exclusive_permissions() {
 #[test]
 fn borrowed_variant_payloads_use_imported_visibility_and_local_lifetimes() {
     let f = Fixture::new();
-    f.write("views.tellur","pub variant view {found {ref string text},empty} variant hidden {secret {ref string text}} pub control peek(ref string input) exits found {ref string text from input} {exit found {input};}");
-    let main = r#"import "views.tellur" as lib;control main() exits done {mutable string owner="hello";lib.view saved=lib.view.found {borrow owner};
+    f.write("views.vn","pub variant view {found {ref string text},empty} variant hidden {secret {ref string text}} pub control peek(ref string input) exits found {ref string text from input} {exit found {input};}");
+    let main = r#"import "views.vn" as lib;control main() exits done {mutable string owner="hello";lib.view saved=lib.view.found {borrow owner};
  delta saved {found {auto text}=>found,empty=>empty}[found]:emit(text);[empty]:emit("empty");
  [entry]:auto pending=capture lib.peek(borrow owner);exit delta pending {found {auto child}=>done {}};}"#;
-    f.write("main.tellur", main);
+    f.write("main.vn", main);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &main.replace("delta saved", "owner=\"bad\";delta saved"),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", main);
-    f.write("views.tellur","variant view {found {ref string text},empty} pub control peek(ref string input) exits found {ref string text from input} {exit found {input};}");
+    f.write("main.vn", main);
+    f.write("views.vn","variant view {found {ref string text},empty} pub control peek(ref string input) exits found {ref string text from input} {exit found {input};}");
     f.reject("E_VISIBILITY");
 }
 
@@ -729,49 +721,49 @@ fn borrowed_variant_payloads_use_imported_visibility_and_local_lifetimes() {
 fn nested_borrowed_storage_preserves_imported_layout_and_visibility() {
     let f = Fixture::new();
     let library = "pub variant view<t> {found {ref t text},empty} pub struct box<t> {pub option<view<t>> inner;}";
-    f.write("views.tellur", library);
-    let source = r#"import "views.tellur" as lib;control main() exits done {
+    f.write("views.vn", library);
+    let source = r#"import "views.vn" as lib;control main() exits done {
         mutable string owner="hello";
         lib.box<string> saved=lib.box<string> {some {lib.view<string>.found {borrow owner}}};
         delta saved.inner {some {auto inner}=>some,none=>none}
         [some]:delta inner {found {auto text}=>found,empty=>empty}
         [found]:emit(text);owner="free";exit done;[none | empty]:exit done;
     }"#;
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace("delta inner", "owner=\"bad\";delta inner"),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", source);
-    f.write("views.tellur", &library.replace("pub option", "option"));
+    f.write("main.vn", source);
+    f.write("views.vn", &library.replace("pub option", "option"));
     f.reject("E_VISIBILITY");
 }
 
 #[test]
 fn imported_grouped_variants_preserve_public_groups_and_owner_retention() {
     let f = Fixture::new();
-    f.write("views.tellur",r#"pub variant view<t>['source] {found {ref t value <- 'source},empty}
+    f.write("views.vn",r#"pub variant view<t>['source] {found {ref t value <- 'source},empty}
         pub control create(ref string input) exits ready {view<string>[input] value} {exit ready {view<string>.found {input}};}
         pub control unwrap(view<string> input) exits found {ref string value from input['source]},empty {exit delta input {found {auto text}=>found {text},empty=>empty {}};}"#);
-    let source = r#"import "views.tellur" as views;
+    let source = r#"import "views.vn" as views;
         control main() exits done {mutable string owner="hello";
         delta views.create(borrow owner) {ready {auto value}=>ready}
         [ready]:delta views.unwrap(value) {found {auto text}=>found,empty=>empty}
         [found]:emit(text);[entry]:owner="released";exit done;}"#;
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace("emit(text)", "owner=\"too early\";emit(text)"),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", source);
-    f.write("views.tellur",r#"struct hidden {string text;} pub variant view['source] {found {ref hidden value <- 'source},empty}"#);
+    f.write("main.vn", source);
+    f.write("views.vn",r#"struct hidden {string text;} pub variant view['source] {found {ref hidden value <- 'source},empty}"#);
     f.write(
-        "main.tellur",
-        r#"import "views.tellur" as views; control main() exits done {exit done;}"#,
+        "main.vn",
+        r#"import "views.vn" as views; control main() exits done {exit done;}"#,
     );
     f.reject("E_VISIBILITY");
 }
@@ -779,17 +771,17 @@ fn imported_grouped_variants_preserve_public_groups_and_owner_retention() {
 #[test]
 fn imported_named_origin_schemas_preserve_generic_bindings_and_public_selectors() {
     let f = Fixture::new();
-    f.write("library.tellur",r#"pub outcome reply<t>['a] {found {ref t text <- 'a},empty}
+    f.write("library.vn",r#"pub outcome reply<t>['a] {found {ref t text <- 'a},empty}
 pub control produce<t>(ref t input) exits reply<t>[input] {exit found {input};}
 pub control wrap<t>(reply<t> input) exits ready {option<reply<t>>[input['a]] value} {exit ready {some {input}};}"#);
-    let main = r#"import "library.tellur" as lib;
+    let main = r#"import "library.vn" as lib;
 control main() exits done {mutable string owner="hello";
 lib.reply<string> saved=capture lib.produce<string>(borrow owner);
 delta lib.wrap<string>(saved) {ready {auto pending}=>received}
 [received]:delta pending {some {auto result}=>some,none=>none}
 [some]:delta result {found {auto text}=>found,empty=>empty}
 [found]:emit(text);[entry]:owner="released";exit done;}"#;
-    f.write("main.tellur", main);
+    f.write("main.vn", main);
     same(&f.check().unwrap());
     let forwarded = format!(
         "{}\ncontrol forward_text(ref string input) exits lib.reply<string>[input] {{forward lib.produce<string>(input);}}",
@@ -798,10 +790,10 @@ delta lib.wrap<string>(saved) {ready {auto pending}=>received}
             "capture forward_text(borrow owner)"
         )
     );
-    f.write("main.tellur", &forwarded);
+    f.write("main.vn", &forwarded);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &main.replace(
             "[found]:emit(text)",
             "[found]:owner=\"too early\";emit(text)",
@@ -809,12 +801,12 @@ delta lib.wrap<string>(saved) {ready {auto pending}=>received}
     );
     f.reject("E_LOAN");
     f.write(
-        "library.tellur",
+        "library.vn",
         "struct secret {string text;} pub outcome reply['a] {found {ref secret value <- 'a},empty}",
     );
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as lib; control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as lib; control main() exits done {exit done;}",
     );
     f.reject("E_VISIBILITY");
 }
@@ -835,7 +827,7 @@ fn public_controls_cannot_expose_private_named_completion_contracts() {
 fn imported_sum_carriers_preserve_public_origins_and_private_payload_fields() {
     let f = Fixture::new();
     f.write(
-        "views.tellur",
+        "views.vn",
         r#"pub struct secret['a] {ref string text <- 'a;}
       pub variant wrapped['a] {found {secret['a] value},empty}
       pub control produce(ref string input) exits ready {wrapped[input] value} {
@@ -845,21 +837,21 @@ fn imported_sum_carriers_preserve_public_origins_and_private_payload_fields() {
         exit delta input {found {auto value}=>found {value.text},empty=>empty {}};
       }"#,
     );
-    let main = r#"import "views.tellur" as views;
+    let main = r#"import "views.vn" as views;
       control main() exits done {mutable string owner="hello";
         delta views.produce(borrow owner) {ready {auto saved}=>ready}
         [ready]:delta views.inspect(borrow saved) {found {auto text}=>found,empty=>empty}
         [found]:emit(text);[entry]:exit done;
       }"#;
-    f.write("main.tellur", main);
+    f.write("main.vn", main);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &main.replace("emit(text)", "owner=\"bad\";emit(text)"),
     );
     f.reject("E_LOAN");
     f.write(
-        "main.tellur",
+        "main.vn",
         &main
             .replace(
                 "delta views.inspect(borrow saved) {found {auto text}=>found,empty=>empty}",
@@ -873,16 +865,13 @@ fn imported_sum_carriers_preserve_public_origins_and_private_payload_fields() {
 #[test]
 fn forwarding_contributors_resolve_to_original_module_locations() {
     let f = Fixture::new();
-    f.write(
-        "library.tellur",
-        include_str!("fixtures/public_contracts.tellur"),
-    );
-    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {delta lib.read_setting(true) {ready {auto value}=>ready}[ready]:exit done;}");
+    f.write("library.vn", include_str!("fixtures/public_contracts.vn"));
+    f.write("main.vn", "import \"library.vn\" as lib;control main() exits done {delta lib.read_setting(true) {ready {auto value}=>ready}[ready]:exit done;}");
     let e = f.reject("E_UNCOVERED");
-    assert_eq!(e.path, f.root.join("main.tellur"));
+    assert_eq!(e.path, f.root.join("main.vn"));
     assert_eq!(e.diagnostic.notes.len(), 3, "{e}");
     for note in &e.diagnostic.notes {
-        assert_eq!(note.path.as_ref(), Some(&f.root.join("library.tellur")));
+        assert_eq!(note.path.as_ref(), Some(&f.root.join("library.vn")));
     }
     assert_eq!(
         e.diagnostic
@@ -899,21 +888,21 @@ fn forwarding_contributors_resolve_to_original_module_locations() {
 fn stored_adapter_contributors_resolve_across_module_boundaries() {
     let f = Fixture::new();
     f.write(
-        "leaf.tellur",
+        "leaf.vn",
         "pub control source() exits missing {exit missing;}",
     );
     f.write(
-        "adapter.tellur",
-        r#"import "leaf.tellur" as leaf;
+        "adapter.vn",
+        r#"import "leaf.vn" as leaf;
 control adapt() exits auto {
  auto saved=capture leaf.source();
  auto mapped=delta saved {missing=>unavailable {}};
  exit mapped;}
 pub control run() exits unavailable {forward adapt();}"#,
     );
-    f.write("main.tellur", r#"import "adapter.tellur" as adapter;control main() exits done {auto saved=capture adapter.run();delta saved {}}"#);
+    f.write("main.vn", r#"import "adapter.vn" as adapter;control main() exits done {auto saved=capture adapter.run();delta saved {}}"#);
     let e = f.reject("E_UNCOVERED");
-    for file in ["leaf.tellur", "adapter.tellur", "main.tellur"] {
+    for file in ["leaf.vn", "adapter.vn", "main.vn"] {
         assert!(
             e.diagnostic
                 .notes
@@ -929,26 +918,26 @@ pub control run() exits unavailable {forward adapt();}"#,
 fn constructors_respect_visibility_without_sealing_public_fields() {
     let f = Fixture::new();
     f.write(
-        "library.tellur",
+        "library.vn",
         "pub struct message {pub string text;pub constructor(string text){self.text=move text;}}",
     );
-    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {auto first=lib.message(\"constructed\");auto second=lib.message {text:\"raw\"};emit(move first.text);emit(move second.text);exit done;}");
+    f.write("main.vn", "import \"library.vn\" as lib;control main() exits done {auto first=lib.message(\"constructed\");auto second=lib.message {text:\"raw\"};emit(move first.text);emit(move second.text);exit done;}");
     same(&f.check().unwrap());
     f.write(
-        "library.tellur",
+        "library.vn",
         "pub struct message {pub string text;constructor(string text){self.text=move text;}}",
     );
     f.reject("E_PRIVATE");
-    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {auto value=lib.message {text:\"raw\"};emit(move value.text);exit done;}");
+    f.write("main.vn", "import \"library.vn\" as lib;control main() exits done {auto value=lib.message {text:\"raw\"};emit(move value.text);exit done;}");
     f.check().unwrap();
     f.write(
-        "library.tellur",
+        "library.vn",
         "pub struct message {string text;pub constructor(string text){self.text=move text;}}",
     );
     f.reject("E_VISIBILITY");
-    f.write("main.tellur", "import \"library.tellur\" as lib;control main() exits done {auto value=lib.message(\"constructed\");drop(value);exit done;}");
+    f.write("main.vn", "import \"library.vn\" as lib;control main() exits done {auto value=lib.message(\"constructed\");drop(value);exit done;}");
     f.check().unwrap();
-    f.write("library.tellur", "pub struct message {string text;pub constructor(string text){emit(borrow self.text);self.text=move text;}}");
+    f.write("library.vn", "pub struct message {string text;pub constructor(string text){emit(borrow self.text);self.text=move text;}}");
     let e = f.reject("E_UNAVAILABLE");
     assert!(e.diagnostic.message.contains("self.text"), "{e}");
 }
@@ -956,8 +945,8 @@ fn constructors_respect_visibility_without_sealing_public_fields() {
 #[test]
 fn imported_generic_constructor_forwards_owned_private_representation() {
     let f = Fixture::new();
-    f.write("library.tellur","pub struct box<t> {t value;pub constructor(t value){self.value=move value;}}pub control show(box<string> value) exits done {emit(move value.value);exit done;}");
-    f.write("main.tellur","import \"library.tellur\" as lib;control main() exits done {lib.show(lib.box<string>(\"generic\"));exit done;}");
+    f.write("library.vn","pub struct box<t> {t value;pub constructor(t value){self.value=move value;}}pub control show(box<string> value) exits done {emit(move value.value);exit done;}");
+    f.write("main.vn","import \"library.vn\" as lib;control main() exits done {lib.show(lib.box<string>(\"generic\"));exit done;}");
     same(&f.check().unwrap());
 }
 
@@ -965,22 +954,22 @@ fn imported_generic_constructor_forwards_owned_private_representation() {
 fn imported_generic_borrowed_constructors_preserve_public_origins_and_privacy() {
     let f = Fixture::new();
     let library = "pub struct view<t>['a] {ref t value <- 'a; pub constructor(ref t input)[input] {self.value=input;}} pub control read(ref view<string> input) exits found {ref string value from input['a]} {exit found {input.value};}";
-    f.write("library.tellur", library);
-    let source = "import \"library.tellur\" as lib; control main() exits done {mutable string owner=\"borrowed\"; auto view=lib.view<string>(borrow owner); delta lib.read(borrow view) {found {auto text}=>found} [found]:emit(text); drop(view); owner=\"released\"; exit done;}";
-    f.write("main.tellur", source);
+    f.write("library.vn", library);
+    let source = "import \"library.vn\" as lib; control main() exits done {mutable string owner=\"borrowed\"; auto view=lib.view<string>(borrow owner); delta lib.read(borrow view) {found {auto text}=>found} [found]:emit(text); drop(view); owner=\"released\"; exit done;}";
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace("emit(text);", "owner=\"bad\";emit(text);"),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     f.write(
-        "library.tellur",
+        "library.vn",
         &library.replace("pub constructor", "constructor"),
     );
     f.reject("E_PRIVATE");
-    f.write("library.tellur", &library.replace("[input]", "[missing]"));
+    f.write("library.vn", &library.replace("[input]", "[missing]"));
     f.reject("E_ORIGIN");
 }
 
@@ -988,26 +977,26 @@ fn imported_generic_borrowed_constructors_preserve_public_origins_and_privacy() 
 fn imported_private_borrowed_representation_composes_inside_public_raw_storage() {
     let f = Fixture::new();
     let library = "pub struct view<t>['a] {ref t value <- 'a;pub constructor(ref t input)[input] {self.value=input;}}pub struct packet['a] {pub view<string>['a] value;}pub control show(packet input) exits done {emit(input.value.value);exit done;}";
-    f.write("library.tellur", library);
-    let source = "import \"library.tellur\" as lib;control main() exits done {mutable string owner=\"nested\";auto packet=lib.packet {value:lib.view<string>(borrow owner)};lib.show(move packet);owner=\"released\";exit done;}";
-    f.write("main.tellur", source);
+    f.write("library.vn", library);
+    let source = "import \"library.vn\" as lib;control main() exits done {mutable string owner=\"nested\";auto packet=lib.packet {value:lib.view<string>(borrow owner)};lib.show(move packet);owner=\"released\";exit done;}";
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace(
             "lib.show(move packet);",
             "owner=\"too early\";lib.show(move packet);",
         ),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     f.write(
-        "library.tellur",
+        "library.vn",
         &library.replace("pub constructor", "constructor"),
     );
     f.reject("E_PRIVATE");
     f.write(
-        "library.tellur",
+        "library.vn",
         &library.replace("pub view<string>", "view<string>"),
     );
     f.reject("E_VISIBILITY");
@@ -1017,25 +1006,25 @@ fn imported_private_borrowed_representation_composes_inside_public_raw_storage()
 fn fresh_imported_constructor_projections_preserve_origins_and_field_privacy() {
     let f = Fixture::new();
     let library = "pub struct view<t>['a] {pub ref t value <- 'a;string hidden;pub constructor(ref t input)[input] {self.value=input;self.hidden=\"private\";}}";
-    f.write("library.tellur", library);
-    let source = "import \"library.tellur\" as lib;control main() exits done {mutable string owner=\"projected\";ref auto text=lib.view<string>(borrow owner).value;emit(text);owner=\"released\";exit done;}";
-    f.write("main.tellur", source);
+    f.write("library.vn", library);
+    let source = "import \"library.vn\" as lib;control main() exits done {mutable string owner=\"projected\";ref auto text=lib.view<string>(borrow owner).value;emit(text);owner=\"released\";exit done;}";
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace("emit(text);", "owner=\"early\";emit(text);"),
     );
     f.reject("E_LOAN");
     f.write(
-        "main.tellur",
+        "main.vn",
         &source
             .replace("ref auto text", "auto text")
             .replace(").value", ").hidden"),
     );
     f.reject("E_VISIBILITY");
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     f.write(
-        "library.tellur",
+        "library.vn",
         &library.replace("pub constructor", "constructor"),
     );
     f.reject("E_PRIVATE");
@@ -1045,18 +1034,18 @@ fn fresh_imported_constructor_projections_preserve_origins_and_field_privacy() {
 fn imported_generic_constructor_calls_release_only_nonescaping_inputs() {
     let f = Fixture::new();
     let library = "pub struct changed<t> {pub t value;pub constructor(ref mutable string input,t value){deref input=\"changed\";self.value=move value;}}pub struct log['a] {pub changed<string> first;pub changed<string> second;pub ref string latest <- 'a;}";
-    f.write("library.tellur", library);
-    let source = "import \"library.tellur\" as lib;control main() exits done {mutable string owner=\"before\";auto value=lib.log {lib.changed<string>(borrow mutable owner,\"first\"),lib.changed<string>(borrow mutable owner,\"second\"),borrow owner};emit(move value.first.value);emit(move value.second.value);emit(value.latest);owner=\"released\";exit done;}";
-    f.write("main.tellur", source);
+    f.write("library.vn", library);
+    let source = "import \"library.vn\" as lib;control main() exits done {mutable string owner=\"before\";auto value=lib.log {lib.changed<string>(borrow mutable owner,\"first\"),lib.changed<string>(borrow mutable owner,\"second\"),borrow owner};emit(move value.first.value);emit(move value.second.value);emit(value.latest);owner=\"released\";exit done;}";
+    f.write("main.vn", source);
     same(&f.check().unwrap());
     f.write(
-        "main.tellur",
+        "main.vn",
         &source.replace("emit(value.latest);", "owner=\"early\";emit(value.latest);"),
     );
     f.reject("E_LOAN");
-    f.write("main.tellur", source);
+    f.write("main.vn", source);
     f.write(
-        "library.tellur",
+        "library.vn",
         &library.replace("pub constructor", "constructor"),
     );
     f.reject("E_PRIVATE");
@@ -1065,12 +1054,9 @@ fn imported_generic_constructor_calls_release_only_nonescaping_inputs() {
 #[test]
 fn shared_vector_window_checks_range_and_keeps_the_element_origin() {
     let f = Fixture::new();
-    f.write(
-        "traversal.tellur",
-        include_str!("../library/traversal.tellur"),
-    );
+    f.write("traversal.vn", include_str!("../library/traversal.vn"));
     let caller = r#"
-import "traversal.tellur" as t;
+import "traversal.vn" as t;
 control main(u32 start, u32 end, u32 index) exits auto {
     mutable vector<string> words = ["one", "two"];
     delta t.range<string>(borrow words, start, end) {
@@ -1083,7 +1069,7 @@ control main(u32 start, u32 end, u32 index) exits auto {
         delta vector_push(borrow mutable words, "three") {pushed => appended}
     [appended]: exit read {vector_length(borrow words)};
 }"#;
-    f.write("main.tellur", caller);
+    f.write("main.vn", caller);
     let program = f.check().unwrap();
     let expanded = program.expanded("main").unwrap();
     for (start, end, index, outcome) in [
@@ -1120,7 +1106,7 @@ control main(u32 start, u32 end, u32 index) exits auto {
         }
     }
     f.write(
-        "main.tellur",
+        "main.vn",
         &caller
             .replace("[found]: emit(word);", "[found]:")
             .replace("[appended]: exit read", "[appended]: emit(word); exit read"),
@@ -1128,12 +1114,12 @@ control main(u32 start, u32 end, u32 index) exits auto {
     f.reject("E_LOAN");
 
     // A later use of the view itself must also prevent structural mutation.
-    f.write("main.tellur", &caller.replace("[ready]: delta t.get", "[ready]: delta vector_push(borrow mutable words, \"early\") { pushed => changed } [changed]: delta t.get"));
+    f.write("main.vn", &caller.replace("[ready]: delta t.get", "[ready]: delta vector_push(borrow mutable words, \"early\") { pushed => changed } [changed]: delta t.get"));
     f.reject("E_LOAN");
 
     // Two overlapping readers may survive independently of the other window.
     let overlapping = r#"
-import "traversal.tellur" as t;
+import "traversal.vn" as t;
 control main() exits auto {
     mutable vector<string> words = ["first", "second"];
     delta t.range<string>(borrow words, 0, 2) { ready {auto a} => first, invalid => exit bad }
@@ -1142,7 +1128,7 @@ control main() exits auto {
     [left]: delta t.get<string>(borrow b, 0) {found {ref string y} => right, finished => exit bad}
     [right]: emit(x); emit(y); exit done;
 }"#;
-    f.write("main.tellur", overlapping);
+    f.write("main.vn", overlapping);
     let program = f.check().unwrap();
     let scenario = Scenario {
         entry: "main".into(),
@@ -1164,7 +1150,7 @@ control main() exits auto {
         program.expanded("main").unwrap().run(&scenario).unwrap()
     );
 
-    f.write("main.tellur", &caller.replace("[\"one\", \"two\"]", "[]"));
+    f.write("main.vn", &caller.replace("[\"one\", \"two\"]", "[]"));
     let empty = f.check().unwrap();
     let zero = Scenario {
         entry: "main".into(),

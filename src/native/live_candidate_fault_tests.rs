@@ -177,7 +177,7 @@ fn live_socket_candidates_retire_before_routed_owning_contingency() {
     ));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_pending_fault.tellur"),
+        include_str!("../../tests/fixtures/native_pending_fault.vn"),
         live_fault_manifest(&root),
     )
     .unwrap()

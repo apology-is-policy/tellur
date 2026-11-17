@@ -6,8 +6,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'async-entry');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const source = await fs.readFile(path.join(__dirname, '../../../playground/async_entry.tellur'), 'utf8');
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const source = await fs.readFile(path.join(__dirname, '../../../playground/async_entry.vn'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
@@ -40,7 +40,7 @@ exports.run = async function (root) {
   assert.notEqual(broken, source);
   await replace(broken);
   await waitFor(() => diagnostics().length === 1 && code(diagnostics()[0]) === 'E_ASYNC', 'missing await');
-  assert.equal(document.getText(diagnostics()[0].range), 'greeting("Tellur")');
+  assert.equal(document.getText(diagnostics()[0].range), 'greeting("Villanelle")');
   assert.ok(!(await hover('startup()')).includes('async control'));
   await replace(source);
   await waitFor(async () => diagnostics().length === 0 && (await hover('startup()')).includes('async control'), 'repaired permission');
@@ -51,7 +51,7 @@ exports.run = async function (root) {
   assert.equal(result.code, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.outcome, 'done');
-  assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['Hello, Tellur']);
+  assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['Hello, Villanelle']);
   await fs.writeFile(path.join(fixture, 'passed.txt'), 'async hover, exact permission diagnostic, unsaved repair and native execution passed\n');
   console.log('TELLUR_ASYNC_ENTRY_EDITOR_TESTS_PASSED: async hover, diagnostic repair and native run');
 };

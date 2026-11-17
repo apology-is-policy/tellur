@@ -1,8 +1,8 @@
-# Formatting Tellur source
+# Formatting Villanelle source
 
 [Language reference](../language-reference.md) · [Path selection](../language-reference.md#labels-and-optional-grouping)
 
-Compiler 0.61 provides a parser-directed formatter for modern `.tellur` source and
+Compiler 0.61 provides a parser-directed formatter for modern `.vn` source and
 the supported `.path` compatibility syntax. Formatting changes whitespace only.
 It never inserts or removes braces, path labels, semicolons, commas or parentheses,
 and never rewrites a literal or migrates compatibility spellings.
@@ -12,10 +12,10 @@ and never rewrites a literal or migrates compatibility spellings.
 Run these commands from the compiler checkout:
 
 ```sh
-./bin/tellurc format playground/path_groups.tellur
-./bin/tellurc format playground/path_groups.tellur --check
-./bin/tellurc format playground/path_groups.tellur --write
-./bin/tellurc format applications/settings/server.tellur --width 100 --write
+./bin/vnc format playground/path_groups.vn
+./bin/vnc format playground/path_groups.vn --check
+./bin/vnc format playground/path_groups.vn --write
+./bin/vnc format applications/settings/server.vn --width 100 --write
 ```
 
 The default prints the formatted source to standard output. `--check` writes no
@@ -38,8 +38,8 @@ formatting otherwise valid syntax. Empty and comment-only documents are accepted
 ## VS Code
 
 Use **Format Document** from the Command Palette or the editor context menu. The
-Tellur language server formats the current unsaved buffer, including untitled
-Tellur documents. The edit uses the editor's spaces/tabs preference and indentation
+Villanelle language server formats the current unsaved buffer, including untitled
+Villanelle documents. The edit uses the editor's spaces/tabs preference and indentation
 width (1–16); the terminal uses four spaces. The extension must be running in a
 trusted workspace, but formatting itself needs no manifest or Rust toolchain.
 
@@ -51,7 +51,7 @@ optional integer `maxLineLength` in their formatting options.
 The formatter returns no edit for unchanged documents or broken syntax. Existing
 syntax diagnostics explain the latter. Formatting does not save the file. Normal
 editor undo works; format-on-save is an optional VS Code setting and is not enabled
-by the extension. If another extension also offers formatting, select **Tellur
+by the extension. If another extension also offers formatting, select **Villanelle
 Language (Experimental)** in **Format Document With…**.
 
 ## Layout and preservation
@@ -63,8 +63,8 @@ layout, with all its statements indented beneath it. Optional groups keep their
 braces; code after a group returns to the enclosing body's indentation. Inline
 adapter labels remain within their arms.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control describe(bool available) exits done {
     delta available {
         true => present,
@@ -97,7 +97,7 @@ Multiline exit contracts put subsequent alternatives on separate lines, indent
 their payloads beneath the contract, and put the control body's opening brace on
 its own line. Nested adapters that begin beneath their arm label keep their entire
 body at that continuation depth. The maintained
-[settings server](../../applications/settings/server.tellur) demonstrates this
+[settings server](../../applications/settings/server.vn) demonstrates this
 style. Paragraph breaks between decisions and final path dispositions are retained.
 
 Comments retain their spelling and order, including trailing spaces. A trailing

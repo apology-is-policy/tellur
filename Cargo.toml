@@ -1,11 +1,14 @@
 [package]
-name = "tellur"
-version = "0.284.0"
+name = "villanelle"
+version = "0.285.0"
 edition = "2024"
 license = "Apache-2.0"
-repository = "https://github.com/apology-is-policy/tellur"
-description = "Experimental Tellur language and reference interpreter"
-default-run = "tellur"
+repository = "https://github.com/apology-is-policy/villanelle"
+description = "Experimental Villanelle language and reference interpreter"
+default-run = "vnc"
+
+[lib]
+name = "tellur"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -25,6 +28,10 @@ llvm = ["dep:llvm-sys", "dep:cc"]
 linux-musl-packs = ["llvm"]
 windows-gnu-pack = ["llvm"]
 thylacine-pack = ["llvm"]
+
+[[bin]]
+name = "vnc"
+path = "src/bin/vnc.rs"
 
 [[bin]]
 name = "tellur"

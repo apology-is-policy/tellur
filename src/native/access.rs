@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn loop_restart_stages_swapped_arguments_without_retiring_outer_storage() {
         let program = crate::compile(
-            include_str!("../../tests/fixtures/native_resume_loops.tellur"),
+            include_str!("../../tests/fixtures/native_resume_loops.vn"),
             crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
                 .unwrap(),
         )

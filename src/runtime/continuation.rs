@@ -49,7 +49,7 @@ pub(crate) use source_scheduler::census_model;
 
 type RunResult = std::result::Result<RunCompletion, Box<Failure>>;
 
-/// Host control of execution, separate from Tellur outcomes and fault settlement.
+/// Host control of execution, separate from Villanelle outcomes and fault settlement.
 #[derive(Debug)]
 pub enum ExecutionProgress {
     /// The next checked instruction has not run. Stored frames and loans remain live.
@@ -62,7 +62,7 @@ pub enum ExecutionProgress {
 
 /// A reference execution with explicit continuations and one fixed total fuel limit.
 /// Dropping this host-side object abandons the scripted simulation; it is not a
-/// Tellur cancellation request, resource settlement, or permission to detach work.
+/// Villanelle cancellation request, resource settlement, or permission to detach work.
 pub struct ExecutionSession<'a> {
     machine: Option<Machine<'a>>,
     scenario: &'a Scenario,

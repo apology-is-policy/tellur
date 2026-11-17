@@ -67,8 +67,8 @@ fn expression_diagnostics_select_arguments_initializers_and_complete_calls() {
         let source = format!(
             "control accept(u32 value) exits done {{ exit done; }}\ncontrol main() exits done {{\n {body}\n}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{body}: {error}");
         let expected = if code == "E_MOVED" {
@@ -86,8 +86,8 @@ fn expression_diagnostics_select_arguments_initializers_and_complete_calls() {
 fn expression_ranges_preserve_unicode_crlf_and_multiline_literals() {
     let f = Fixture::new();
     let source = "control main() exits done {\r\n emit(\"😀\"); u32 n = \"line 😀\r\nsecond\";\r\n exit done;\r\n}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"][0]["range"],
         selected_range(source, "\"line 😀\r\nsecond\"")
@@ -98,17 +98,17 @@ fn expression_ranges_preserve_unicode_crlf_and_multiline_literals() {
 fn imported_generic_expression_ranges_use_original_source_coordinates() {
     let f = Fixture::new();
     let library = "// source coordinates survive generic checking\npub control bad<t: drop>(t value) exits done {\n drop(value);\n u32 n = \"wrong\";\n exit done;\n}";
-    f.write("library.tellur", library);
+    f.write("library.vn", library);
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as lib;\ncontrol main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as lib;\ncontrol main() exits done {exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let error = &report["diagnostics"][0];
     assert_eq!(error["code"], "E_TYPE", "{error}");
     assert_eq!(
         error["path"],
-        f.root.join("library.tellur").to_string_lossy().as_ref()
+        f.root.join("library.vn").to_string_lossy().as_ref()
     );
     assert_eq!(error["range"], selected_range(library, "\"wrong\""));
 }
@@ -123,8 +123,8 @@ fn parser_diagnostics_select_complete_tokens_and_zero_width_eof() {
         ),
         ("control main() exits done { exit done;", ""),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_PARSE");
         let expected = if selected.is_empty() {
@@ -285,8 +285,8 @@ fn named_completion_binding_budget_is_shared_by_cli_and_library() {
         (2..=33).collect::<Vec<_>>()
     );
     let f = Fixture::new();
-    f.write("main.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 32);
     assert_eq!(report["diagnostics_limited"], true);
     assert!(report["summary"].is_null());
@@ -296,22 +296,22 @@ fn named_completion_binding_budget_is_shared_by_cli_and_library() {
 fn imported_completion_binding_errors_keep_original_names_and_file_points() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"views🙂.tellur\" as views;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"views🙂.vn\" as views;control main() exits done {exit done;}",
     );
-    f.write("views🙂.tellur","pub outcome view['a] {found {ref string value <- 'a}}\npub control first(ref string input) exits view[input,input] {exit found {input};}\npub control second(ref string input) exits view[input,input] {exit found {input};}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("views🙂.vn","pub outcome view['a] {found {ref string value <- 'a}}\npub control first(ref string input) exits view[input,input] {exit found {input};}\npub control second(ref string input) exits view[input,input] {exit found {input};}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for (i, error) in errors.iter().enumerate() {
         assert_eq!(error["code"], "E_ORIGIN");
         assert_eq!(error["position"]["line"], i + 2);
-        assert!(error["path"].as_str().unwrap().ends_with("views🙂.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("views🙂.vn"));
         assert!(error["message"].as_str().unwrap().contains("view"));
     }
     assert!(!report.to_string().contains("_path_m_"));
     let first = tellur::compile_file(
-        f.root.join("main.tellur"),
+        f.root.join("main.vn"),
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap_err();
@@ -423,11 +423,11 @@ fn each_declaration_phase_respects_the_diagnostic_budget() {
 fn imported_declaration_batches_keep_source_names_locations_and_first_error_api() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"bad.tellur\" as bad;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"bad.vn\" as bad;control main() exits done {exit done;}",
     );
-    f.write("bad.tellur", "// 🙂\npub control first(ref string input) exits found {ref string value} {exit found {input};}\npub control second(u32 input,u32 input) exits done {exit done;}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("bad.vn", "// 🙂\npub control first(ref string input) exits found {ref string value} {exit found {input};}\npub control second(u32 input,u32 input) exits done {exit done;}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     assert_eq!(errors[0]["code"], "E_PUBLIC_CONTRACT");
@@ -437,12 +437,12 @@ fn imported_declaration_batches_keep_source_names_locations_and_first_error_api(
     assert!(
         errors
             .iter()
-            .all(|e| e["path"].as_str().unwrap().ends_with("bad.tellur"))
+            .all(|e| e["path"].as_str().unwrap().ends_with("bad.vn"))
     );
     assert!(!report.to_string().contains("_path_m_"));
     assert!(report["summary"].is_null());
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    let first = tellur::compile_file(f.root.join("main.vn"), manifest).unwrap_err();
     assert_eq!(first.diagnostic.code, "E_PUBLIC_CONTRACT");
     assert_eq!(first.diagnostic.span.line, 2);
 }
@@ -566,18 +566,15 @@ fn json_and_text_checks_report_imported_errors_and_preserve_ranges() {
     let f = Fixture::new();
     let left = "pub control left() exits done {u32 value=\"😀\";exit done;}";
     let right = "pub control right() exits done {string value=9;exit done;}";
-    f.write("left.tellur", left);
-    f.write("right.tellur", right);
-    f.write("main.tellur","import \"left.tellur\" as a;\nimport \"right.tellur\" as b;\ncontrol main() exits done {forward a.left();}\ncontrol other() exits done {forward b.right();}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("left.vn", left);
+    f.write("right.vn", right);
+    f.write("main.vn","import \"left.vn\" as a;\nimport \"right.vn\" as b;\ncontrol main() exits done {forward a.left();}\ncontrol other() exits done {forward b.right();}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics_limited"], false);
     assert!(report["summary"].is_null());
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2);
-    for (name, source, selected) in [
-        ("left.tellur", left, "\"😀\""),
-        ("right.tellur", right, "9"),
-    ] {
+    for (name, source, selected) in [("left.vn", left, "\"😀\""), ("right.vn", right, "9")] {
         let error = errors
             .iter()
             .find(|e| e["path"] == f.root.join(name).to_string_lossy().as_ref())
@@ -586,15 +583,15 @@ fn json_and_text_checks_report_imported_errors_and_preserve_ranges() {
     }
     let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
         .current_dir(&f.root)
-        .args(["check", "main.tellur"])
+        .args(["check", "main.vn"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     let text = String::from_utf8(output.stderr).unwrap();
     assert_eq!(text.matches("E_TYPE").count(), 2);
-    assert!(text.contains("left.tellur"));
-    assert!(text.contains("right.tellur"));
+    assert!(text.contains("left.vn"));
+    assert!(text.contains("right.vn"));
 }
 
 #[test]
@@ -603,8 +600,8 @@ fn diagnostic_collection_is_bounded_and_explicit_about_the_limit() {
     let source = (0..40)
         .map(|i| format!("control broken_{i}() exits done {{u32 value=true;exit done;}}\n"))
         .collect::<String>();
-    f.write("main.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics_limited"], true);
     assert_eq!(
         report["diagnostics"].as_array().unwrap().len(),
@@ -638,14 +635,14 @@ fn parser_and_shared_declaration_failures_remain_single_errors() {
 #[test]
 fn imported_statement_batches_keep_ranges_and_share_the_cli_budget() {
     let f = Fixture::new();
-    f.write("library.tellur", "pub control broken() exits done {\n    u32 first=true;\n    string second=7;\n    exit done;\n}");
-    f.write("main.tellur", "import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.broken();}\ncontrol independent() exits done {u32 wrong=false;exit done;}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("library.vn", "pub control broken() exits done {\n    u32 first=true;\n    string second=7;\n    exit done;\n}");
+    f.write("main.vn", "import \"library.vn\" as lib;\ncontrol main() exits done {forward lib.broken();}\ncontrol independent() exits done {u32 wrong=false;exit done;}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 3, "{report}");
     let imported = errors
         .iter()
-        .filter(|e| e["path"].as_str().unwrap().ends_with("library.tellur"))
+        .filter(|e| e["path"].as_str().unwrap().ends_with("library.vn"))
         .collect::<Vec<_>>();
     assert_eq!(imported.len(), 2);
     assert_eq!(imported[0]["range"]["start"], json!({"line":2,"column":15}));
@@ -655,10 +652,10 @@ fn imported_statement_batches_keep_ranges_and_share_the_cli_budget() {
         .map(|i| format!("u32 bad_{i}=true;\n"))
         .collect::<String>();
     f.write(
-        "library.tellur",
+        "library.vn",
         &format!("pub control broken() exits done {{\n{body}exit done;}}"),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 32);
     assert_eq!(report["diagnostics_limited"], true);
 }
@@ -666,18 +663,18 @@ fn imported_statement_batches_keep_ranges_and_share_the_cli_budget() {
 #[test]
 fn imported_nested_branches_keep_their_authored_source_ranges() {
     let f = Fixture::new();
-    f.write("library.tellur", "pub control broken(bool flag) exits done {\n delta flag {true=>yes,false=>no}\n [yes]: {u32 first=true;exit done;}\n [no] over &: {string second=7;exit done;}\n}");
+    f.write("library.vn", "pub control broken(bool flag) exits done {\n delta flag {true=>yes,false=>no}\n [yes]: {u32 first=true;exit done;}\n [no] over &: {string second=7;exit done;}\n}");
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as lib;\ncontrol main() exits done {forward lib.broken(true);}",
+        "main.vn",
+        "import \"library.vn\" as lib;\ncontrol main() exits done {forward lib.broken(true);}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     assert_eq!(errors[0]["range"]["start"], json!({"line":3,"column":20}));
     assert_eq!(errors[1]["range"]["start"], json!({"line":4,"column":30}));
     for error in errors {
-        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("library.vn"));
         assert_eq!(error["code"], "E_TYPE");
     }
     assert!(report["summary"].is_null());
@@ -716,8 +713,8 @@ fn typed_witnesses_preserve_structural_selected_paths_and_entry() {
 #[test]
 fn successful_json_checks_report_counts_and_no_diagnostics() {
     let f = Fixture::new();
-    f.write("main.tellur","control main() exits done {exit done;} control identity<t>(t input) exits ready {t value} {exit ready {input};}");
-    let report = f.report(&["check", "main.tellur", "--json"], true);
+    f.write("main.vn","control main() exits done {exit done;} control identity<t>(t input) exits ready {t value} {exit ready {input};}");
+    let report = f.report(&["check", "main.vn", "--json"], true);
     assert_eq!(
         report["summary"],
         json!({"controls":1,"generic_definitions":1})
@@ -725,11 +722,11 @@ fn successful_json_checks_report_counts_and_no_diagnostics() {
     assert_eq!(report["diagnostics"], json!([]));
     assert_eq!(
         report,
-        f.report(&["check", "--json", "main.tellur", "manifest.json"], true)
+        f.report(&["check", "--json", "main.vn", "manifest.json"], true)
     );
     let output = Command::new(env!("CARGO_BIN_EXE_pathc"))
         .current_dir(&f.root)
-        .args(["check", "main.tellur", "--json"])
+        .args(["check", "main.vn", "--json"])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -743,38 +740,38 @@ fn json_positions_use_unicode_scalars_and_preserve_crlf_lines() {
     let f = Fixture::new();
     let line = "emit(\"😀\"); #";
     f.write(
-        "main.tellur",
+        "main.vn",
         &format!("control main() exits done {{\r\n{line}\r\nexit done;}}"),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let e = &report["diagnostics"][0];
     assert_eq!(e["code"], "E_LEX");
     assert_eq!(
         e["position"],
         json!({"line":2,"column":line.chars().position(|c| c=='#').unwrap()+1})
     );
-    assert_eq!(e["path"], f.root.join("main.tellur").to_str().unwrap());
+    assert_eq!(e["path"], f.root.join("main.vn").to_str().unwrap());
     assert_eq!(e["witness"], Value::Null);
 }
 #[test]
 fn reports_keep_typed_witnesses_and_original_imported_control_names() {
     let f = Fixture::new();
-    f.write("library.tellur","pub control broken(bool flag) exits done {delta flag {true=>yes,false=>no}[yes]:exit done;}");
+    f.write("library.vn","pub control broken(bool flag) exits done {delta flag {true=>yes,false=>no}[yes]:exit done;}");
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as lib;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as lib;control main() exits done {exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let e = &report["diagnostics"][0];
     assert_eq!(e["code"], "E_UNCOVERED");
-    assert_eq!(e["path"], f.root.join("library.tellur").to_str().unwrap());
+    assert_eq!(e["path"], f.root.join("library.vn").to_str().unwrap());
     assert_eq!(e["witness"]["kind"], "structural_may_reach");
     assert_eq!(e["witness"]["selected_paths"], json!(["no"]));
     assert!(
         e["witness"]["control"]
             .as_str()
             .unwrap()
-            .ends_with("library.tellur::broken")
+            .ends_with("library.vn::broken")
     );
     assert!(!report.to_string().contains("_path_m_"));
 }
@@ -782,41 +779,43 @@ fn reports_keep_typed_witnesses_and_original_imported_control_names() {
 fn json_notes_preserve_stored_adapter_locations_across_files() {
     let f = Fixture::new();
     f.write(
-        "library.tellur",
+        "library.vn",
         "pub control source() exits missing {exit missing;}",
     );
-    f.write("main.tellur","import \"library.tellur\" as lib;\ncontrol main() exits done {\nauto saved=capture lib.source();\nauto adapted=delta saved {missing=>unavailable {}};\nexit delta adapted {};}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn","import \"library.vn\" as lib;\ncontrol main() exits done {\nauto saved=capture lib.source();\nauto adapted=delta saved {missing=>unavailable {}};\nexit delta adapted {};}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let e = &report["diagnostics"][0];
     assert_eq!(e["code"], "E_ARMS");
     let notes = e["notes"].as_array().unwrap();
+    assert!(
+        notes
+            .iter()
+            .any(|n| n["path"] == f.root.join("library.vn").to_str().unwrap()
+                && n["position"]["line"] == 1)
+    );
     assert!(notes.iter().any(
-        |n| n["path"] == f.root.join("library.tellur").to_str().unwrap()
-            && n["position"]["line"] == 1
-    ));
-    assert!(notes.iter().any(
-        |n| n["path"] == f.root.join("main.tellur").to_str().unwrap() && n["position"]["line"] == 4
+        |n| n["path"] == f.root.join("main.vn").to_str().unwrap() && n["position"]["line"] == 4
     ));
     assert_eq!(e["witness"], Value::Null);
 }
 #[test]
 fn manifest_io_and_usage_failures_also_produce_one_json_envelope() {
     let f = Fixture::new();
-    f.write("main.tellur", "control main() exits done {exit done;}");
+    f.write("main.vn", "control main() exits done {exit done;}");
     for args in [
         vec!["check", "--json"],
-        vec!["check", "main.tellur", "--json", "--json"],
-        vec!["check", "main.tellur", "--json", "--unknown"],
+        vec!["check", "main.vn", "--json", "--json"],
+        vec!["check", "main.vn", "--json", "--unknown"],
     ] {
         let e = f.report(&args, false);
         assert_eq!(e["diagnostics"][0]["code"], "E_USAGE");
         assert!(e["diagnostics"][0]["position"].is_null());
     }
-    let e = f.report(&["check", "main.tellur", "absent.json", "--json"], false);
+    let e = f.report(&["check", "main.vn", "absent.json", "--json"], false);
     assert_eq!(e["diagnostics"][0]["code"], "E_IO");
     assert!(e["diagnostics"][0]["position"].is_null());
     f.write("manifest.json", "{");
-    let e = f.report(&["check", "main.tellur", "--json"], false);
+    let e = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(e["diagnostics"][0]["code"], "E_MANIFEST");
     let reported = PathBuf::from(e["diagnostics"][0]["path"].as_str().unwrap());
     assert!(reported.is_absolute());
@@ -826,21 +825,15 @@ fn manifest_io_and_usage_failures_also_produce_one_json_envelope() {
     );
     fs::remove_file(f.root.join("manifest.json")).unwrap();
     assert_eq!(
-        f.report(&["check", "main.tellur", "--json"], false)["diagnostics"][0]["code"],
+        f.report(&["check", "main.vn", "--json"], false)["diagnostics"][0]["code"],
         "E_CONFIG"
     );
 }
 #[test]
 fn manifest_discovery_works_for_bare_relative_sources_in_nested_directories() {
     let f = Fixture::new();
-    f.write(
-        "nested/main.tellur",
-        "control main() exits done {exit done;}",
-    );
-    for args in [
-        vec!["check", "main.tellur"],
-        vec!["check", "main.tellur", "--json"],
-    ] {
+    f.write("nested/main.vn", "control main() exits done {exit done;}");
+    for args in [vec!["check", "main.vn"], vec!["check", "main.vn", "--json"]] {
         let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
             .current_dir(f.root.join("nested"))
             .args(args)
@@ -854,14 +847,13 @@ fn manifest_discovery_works_for_bare_relative_sources_in_nested_directories() {
 #[test]
 fn json_and_text_checks_discover_the_same_manifest_through_a_source_symlink() {
     let f = Fixture::new();
-    f.write("real/main.tellur", "control main() exits done {exit done;}");
+    f.write("real/main.vn", "control main() exits done {exit done;}");
     f.write("real/manifest.json", "{");
-    std::os::unix::fs::symlink(f.root.join("real/main.tellur"), f.root.join("alias.tellur"))
-        .unwrap();
-    f.report(&["check", "alias.tellur", "--json"], true);
+    std::os::unix::fs::symlink(f.root.join("real/main.vn"), f.root.join("alias.vn")).unwrap();
+    f.report(&["check", "alias.vn", "--json"], true);
     let output = Command::new(env!("CARGO_BIN_EXE_tellurc"))
         .current_dir(&f.root)
-        .args(["check", "alias.tellur"])
+        .args(["check", "alias.vn"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -870,10 +862,10 @@ fn json_and_text_checks_discover_the_same_manifest_through_a_source_symlink() {
 #[test]
 fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phases() {
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct box<t> {t value;constructor(t input) {self.value=move input;}}pub control create<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}");
-    let source = "// 🙂 constructor privacy\r\nimport \"types.tellur\" as types;\r\ncontrol first() exits done {auto one=types.box<string>(\"one\");auto two=types.box<string>(\"two\");drop(one);drop(two);exit done;}\r\ncontrol generic<t>(t input) exits ready {types.box<t> value} {exit ready {types.box<t>(move input)};}\r\nstruct wrapper {types.box<string> value;constructor() {self.value=types.box<string>(\"wrapped\");}}\r\ncontrol caller() exits done {first();exit done;}\r\ncontrol signature(u32 same,u32 same) exits done {exit done;}\r\ncontrol body() exits done {u32 invalid=true;exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub struct box<t> {t value;constructor(t input) {self.value=move input;}}pub control create<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}");
+    let source = "// 🙂 constructor privacy\r\nimport \"types.vn\" as types;\r\ncontrol first() exits done {auto one=types.box<string>(\"one\");auto two=types.box<string>(\"two\");drop(one);drop(two);exit done;}\r\ncontrol generic<t>(t input) exits ready {types.box<t> value} {exit ready {types.box<t>(move input)};}\r\nstruct wrapper {types.box<string> value;constructor() {self.value=types.box<string>(\"wrapped\");}}\r\ncontrol caller() exits done {first();exit done;}\r\ncontrol signature(u32 same,u32 same) exits done {exit done;}\r\ncontrol body() exits done {u32 invalid=true;exit done;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 3, "{report}");
     assert_eq!(report["diagnostics_limited"], false);
@@ -890,8 +882,10 @@ fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phase
         );
     }
     assert!(
-        errors.iter().all(|e| e["code"] == "E_PRIVATE"
-            && e["path"] == f.root.join("main.tellur").to_str().unwrap()),
+        errors
+            .iter()
+            .all(|e| e["code"] == "E_PRIVATE"
+                && e["path"] == f.root.join("main.vn").to_str().unwrap()),
         "{report}"
     );
     assert!(
@@ -899,7 +893,7 @@ fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phase
         "{report}"
     );
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    let first = tellur::compile_file(f.root.join("main.vn"), manifest).unwrap_err();
     assert_eq!(first.diagnostic.code, "E_PRIVATE");
     assert_eq!(first.diagnostic.span.line, 3);
     // Repairing an earlier private call exposes the next one in that body, not
@@ -908,8 +902,8 @@ fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phase
         "auto one=types.box<string>(\"one\");",
         "string one=\"one\";",
     );
-    f.write("main.tellur", &repaired);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &repaired);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 3);
     assert_eq!(
         report["diagnostics"][0]["position"],
@@ -919,8 +913,8 @@ fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phase
         )
     );
     // Once the privacy phase is valid, the next declaration phase becomes visible.
-    f.write("types.tellur", "pub struct box<t> {t value;pub constructor(t input) {self.value=move input;}}pub control create<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub struct box<t> {t value;pub constructor(t input) {self.value=move input;}}pub control create<t>(t input) exits ready {box<t> value} {exit ready {box<t>(move input)};}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"].as_array().unwrap().len(),
         1,
@@ -934,17 +928,20 @@ fn constructor_call_preparation_batches_independent_bodies_and_stops_later_phase
 fn constructor_call_preparation_keeps_transitive_module_locations() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub struct message {string value;constructor(string input) {self.value=move input;}}",
     );
-    for (file, alias) in [("one.tellur", "data"), ("two.tellur", "types")] {
-        f.write(file, &format!("// nested 🙂\nimport \"types.tellur\" as {alias};\npub control make() exits ready {{{alias}.message value}} {{exit ready {{{alias}.message(\"hello\")}};}}"));
+    for (file, alias) in [("one.vn", "data"), ("two.vn", "types")] {
+        f.write(file, &format!("// nested 🙂\nimport \"types.vn\" as {alias};\npub control make() exits ready {{{alias}.message value}} {{exit ready {{{alias}.message(\"hello\")}};}}"));
     }
-    f.write("main.tellur", "import \"one.tellur\" as one;import \"two.tellur\" as two;control main() exits done {exit done;}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write(
+        "main.vn",
+        "import \"one.vn\" as one;import \"two.vn\" as two;control main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
-    for file in ["one.tellur", "two.tellur"] {
+    for file in ["one.vn", "two.vn"] {
         assert!(
             errors
                 .iter()
@@ -961,10 +958,10 @@ fn constructor_call_preparation_keeps_transitive_module_locations() {
 fn constructor_call_preparation_preserves_earlier_phase_barriers() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub struct message {string value;constructor(string input) {self.value=move input;}}",
     );
-    let base = "import \"types.tellur\" as types;control first() exits done {auto a=types.message(\"a\");drop(a);exit done;}control second() exits done {auto b=types.message(\"b\");drop(b);exit done;}";
+    let base = "import \"types.vn\" as types;control first() exits done {auto a=types.message(\"a\");drop(a);exit done;}control second() exits done {auto b=types.message(\"b\");drop(b);exit done;}";
     for (extra, code) in [
         (
             "pub control invalid() exits auto {exit done;}",
@@ -979,8 +976,8 @@ fn constructor_call_preparation_preserves_earlier_phase_barriers() {
             "E_TRAIT",
         ),
     ] {
-        f.write("main.tellur", &format!("{base}{extra}"));
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &format!("{base}{extra}"));
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
             1,
@@ -994,12 +991,12 @@ fn constructor_call_preparation_preserves_earlier_phase_barriers() {
 fn constructor_call_preparation_uses_the_shared_diagnostic_budget() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub struct message {string value;constructor(string input) {self.value=move input;}}",
     );
-    let source = "import \"types.tellur\" as types;\n".to_owned() + &(0..40).map(|n| format!("control bad_{n}() exits done {{auto value=types.message(\"hello\");drop(value);exit done;}}\n")).collect::<String>();
-    f.write("main.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let source = "import \"types.vn\" as types;\n".to_owned() + &(0..40).map(|n| format!("control bad_{n}() exits done {{auto value=types.message(\"hello\");drop(value);exit done;}}\n")).collect::<String>();
+    f.write("main.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 32, "{report}");
     assert_eq!(report["diagnostics_limited"], true);
@@ -1014,12 +1011,12 @@ fn constructor_call_preparation_uses_the_shared_diagnostic_budget() {
 fn constructor_call_preparation_covers_methods_and_isolation_bodies() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub struct message {string value;constructor(string input) {self.value=move input;}}",
     );
-    let source = "import \"types.tellur\" as types;\ntrait builder {control make(self input) exits ready {types.message value};}\nimplement builder for string {control make(self input) exits ready {types.message value} {exit ready {types.message(move input)};}}\nboundary request() {auto a=types.message(\"work\");drop(a);terminate;} contingency(string reason) {auto b=types.message(reason);drop(b);terminate;}\ncontrol lexical() exits done {fault boundary {auto c=types.message(\"inner\");drop(c);} contingency [] {terminate process 1;}exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let source = "import \"types.vn\" as types;\ntrait builder {control make(self input) exits ready {types.message value};}\nimplement builder for string {control make(self input) exits ready {types.message value} {exit ready {types.message(move input)};}}\nboundary request() {auto a=types.message(\"work\");drop(a);terminate;} contingency(string reason) {auto b=types.message(reason);drop(b);terminate;}\ncontrol lexical() exits done {fault boundary {auto c=types.message(\"inner\");drop(c);} contingency [] {terminate process 1;}exit done;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 4, "{report}");
     for selected in [
@@ -1069,12 +1066,12 @@ fn generic_bound_preparation_batches_unknown_and_private_requirements() {
 fn generic_bound_preparation_detects_alias_duplicates_without_partial_witnesses() {
     let f = Fixture::new();
     f.write(
-        "traits.tellur",
+        "traits.vn",
         "pub trait marker {}implement marker for string {}",
     );
-    let source = "// 🙂 aliases resolve to one trait\r\nimport \"traits.tellur\" as first;import \"traits.tellur\" as second;\r\npub control one<t:first.marker+second.marker>(t input) exits ready {t value} {exit ready {input};}\r\npub control two<t:second.marker+first.marker>(t input) exits ready {t value} {exit ready {input};}\r\ncontrol main() exits done {delta one<string>(\"hello\") {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let source = "// 🙂 aliases resolve to one trait\r\nimport \"traits.vn\" as first;import \"traits.vn\" as second;\r\npub control one<t:first.marker+second.marker>(t input) exits ready {t value} {exit ready {input};}\r\npub control two<t:second.marker+first.marker>(t input) exits ready {t value} {exit ready {input};}\r\ncontrol main() exits done {delta one<string>(\"hello\") {ready {auto value}=>ready} [ready]:drop(value);exit done;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"].as_array().unwrap().len(),
         2,
@@ -1083,7 +1080,7 @@ fn generic_bound_preparation_detects_alias_duplicates_without_partial_witnesses(
     for (index, e) in report["diagnostics"].as_array().unwrap().iter().enumerate() {
         assert_eq!(e["code"], "E_BOUND");
         assert_eq!(e["position"]["line"], index + 3);
-        assert_eq!(e["path"], f.root.join("main.tellur").to_str().unwrap());
+        assert_eq!(e["path"], f.root.join("main.vn").to_str().unwrap());
         assert!(
             e["message"]
                 .as_str()
@@ -1094,28 +1091,31 @@ fn generic_bound_preparation_detects_alias_duplicates_without_partial_witnesses(
     assert!(report["summary"].is_null());
     assert!(!report.to_string().contains("_path_"));
     let partial = source.replace("t:first.marker+second.marker", "t:first.marker");
-    f.write("main.tellur", &partial);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &partial);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["position"]["line"], 4);
     f.write(
-        "main.tellur",
+        "main.vn",
         &partial.replace("t:second.marker+first.marker", "t:second.marker"),
     );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
 fn generic_bound_preparation_preserves_module_locations_and_first_error_api() {
     let f = Fixture::new();
-    for (name, tag) in [("one.tellur", "private_one"), ("two.tellur", "private_two")] {
+    for (name, tag) in [("one.vn", "private_one"), ("two.vn", "private_two")] {
         f.write(name, &format!("trait {tag} {{}}\npub control keep<t:{tag}>(t input) exits ready {{t value}} {{exit ready {{input}};}}"));
     }
-    f.write("main.tellur", "import \"one.tellur\" as one;import \"two.tellur\" as two;control main() exits done {exit done;}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write(
+        "main.vn",
+        "import \"one.vn\" as one;import \"two.vn\" as two;control main() exits done {exit done;}",
+    );
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
-    for file in ["one.tellur", "two.tellur"] {
+    for file in ["one.vn", "two.vn"] {
         assert!(
             errors
                 .iter()
@@ -1126,10 +1126,10 @@ fn generic_bound_preparation_preserves_module_locations_and_first_error_api() {
         );
     }
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    let first = tellur::compile_file(f.root.join("main.vn"), manifest).unwrap_err();
     assert_eq!(first.diagnostic.code, "E_VISIBILITY");
     assert_eq!(first.diagnostic.span.line, 2);
-    assert_eq!(first.path, f.root.join("one.tellur"));
+    assert_eq!(first.path, f.root.join("one.vn"));
 }
 
 #[test]
@@ -1157,10 +1157,10 @@ fn generic_bound_preparation_has_strict_phase_barriers_and_one_error_per_control
     // A module lookup failure is an earlier barrier, not a fabricated trait.
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        &format!("import \"absent.tellur\" as missing;{base}"),
+        "main.vn",
+        &format!("import \"absent.vn\" as missing;{base}"),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_IMPORT");
 }
@@ -1183,59 +1183,59 @@ fn generic_bound_preparation_uses_the_shared_budget() {
 fn inferred_stored_adapter_batches_keep_generic_import_ranges_and_first_error_api() {
     let f = Fixture::new();
     let library = "// 🙂 inferred arms\r\npub control choose<t>(t input,bool flag) exits left {t value,u32 count},right {t value,u32 count} {\r\nauto saved=delta flag {\r\ntrue=>left {input,absent_first},\r\nfalse=>right {input,absent_second}\r\n};exit saved;}";
-    f.write("jobs.tellur", library);
-    f.write("main.tellur","import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.choose<string>(\"owned\",true);}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("jobs.vn", library);
+    f.write("main.vn","import \"jobs.vn\" as jobs;control main() exits auto {forward jobs.choose<string>(\"owned\",true);}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for (e, selected) in errors.iter().zip(["absent_first", "absent_second"]) {
         assert_eq!(e["code"], "E_NAME");
         assert_eq!(e["range"], selected_range(library, selected));
-        assert_eq!(e["path"], f.root.join("jobs.tellur").to_str().unwrap());
+        assert_eq!(e["path"], f.root.join("jobs.vn").to_str().unwrap());
     }
     assert!(report["summary"].is_null());
     let m = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let first = tellur::compile_file(f.root.join("main.tellur"), m).unwrap_err();
+    let first = tellur::compile_file(f.root.join("main.vn"), m).unwrap_err();
     assert_eq!(first.diagnostic.code, "E_NAME");
     assert_eq!(first.diagnostic.span.line, 4);
     f.write(
-        "jobs.tellur",
+        "jobs.vn",
         &library
             .replace("absent_first", "1")
             .replace("absent_second", "2"),
     );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
 fn inferred_exit_adapter_batches_keep_original_ranges_and_first_error_compatibility() {
     let f = Fixture::new();
     let library = "// 🙂 inferred exits\r\ncontrol choose<t>(t input,bool flag) exits auto {\r\nexit delta flag {\r\ntrue=>ready {input,absent_first},\r\nfalse=>ready {input,absent_second}\r\n};}\r\npub control start() exits ready {string input,u32 value_1} {forward choose<string>(\"hello\",true);}";
-    f.write("jobs.tellur", library);
+    f.write("jobs.vn", library);
     f.write(
-        "main.tellur",
-        "import \"jobs.tellur\" as jobs;control main() exits auto {forward jobs.start();}",
+        "main.vn",
+        "import \"jobs.vn\" as jobs;control main() exits auto {forward jobs.start();}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for (error, name) in errors.iter().zip(["absent_first", "absent_second"]) {
         assert_eq!(error["code"], "E_NAME");
         assert_eq!(error["range"], selected_range(library, name));
-        assert_eq!(error["path"], f.root.join("jobs.tellur").to_str().unwrap());
+        assert_eq!(error["path"], f.root.join("jobs.vn").to_str().unwrap());
     }
     assert!(report["summary"].is_null());
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    let first = tellur::compile_file(f.root.join("main.vn"), manifest).unwrap_err();
     assert_eq!(first.diagnostic.code, "E_NAME");
     assert_eq!(first.diagnostic.span.line, 4);
     f.write(
-        "jobs.tellur",
+        "jobs.vn",
         &library
             .replace("absent_first", "1")
             .replace("absent_second", "2"),
     );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
@@ -1262,27 +1262,27 @@ fn trait_declaration_batches_report_one_error_per_unused_trait() {
 #[test]
 fn trait_declaration_batches_preserve_transitive_imports_and_visibility() {
     let f = Fixture::new();
-    for (file, name) in [("first.tellur", "one"), ("second.tellur", "two")] {
+    for (file, name) in [("first.vn", "one"), ("second.vn", "two")] {
         f.write(file,&format!("// 🙂 original\r\nstruct hidden {{string text;}}\r\npub trait {name} {{\r\ncontrol read(hidden input) exits done;\r\n}}\r\n"));
     }
-    f.write("middle.tellur","import \"first.tellur\" as first;import \"second.tellur\" as second;pub control run() exits done {exit done;}");
+    f.write("middle.vn","import \"first.vn\" as first;import \"second.vn\" as second;pub control run() exits done {exit done;}");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {forward middle.run();}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {forward middle.run();}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
-    for (error, file) in errors.iter().zip(["first.tellur", "second.tellur"]) {
+    for (error, file) in errors.iter().zip(["first.vn", "second.vn"]) {
         assert_eq!(error["code"], "E_VISIBILITY");
         assert_eq!(error["path"], f.root.join(file).to_str().unwrap());
         assert_eq!(error["position"]["line"], 4);
     }
     assert!(report["summary"].is_null());
     let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-    let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+    let first = tellur::compile_file(f.root.join("main.vn"), manifest).unwrap_err();
     assert_eq!(first.diagnostic.code, "E_VISIBILITY");
-    for file in ["first.tellur", "second.tellur"] {
+    for file in ["first.vn", "second.vn"] {
         let path = f.root.join(file);
         fs::write(
             &path,
@@ -1292,15 +1292,15 @@ fn trait_declaration_batches_preserve_transitive_imports_and_visibility() {
         )
         .unwrap();
     }
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
 fn trait_declaration_batches_check_named_shapes_and_origin_contracts() {
     let f = Fixture::new();
     let source = "outcome reply<t> {ready {t value}}struct record {u32 value;}\ntrait one {control read() exits reply<string,u32>;}\ntrait two {control read() exits record;}\ntrait three {control peek(ref string input) exits ready {ref string value};}\ncontrol main() exits done {exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(
         errors
@@ -1311,13 +1311,13 @@ fn trait_declaration_batches_check_named_shapes_and_origin_contracts() {
         "{report}"
     );
     f.write(
-        "main.tellur",
+        "main.vn",
         &source
             .replace("reply<string,u32>", "reply<string>")
             .replace("exits record;", "exits done;")
             .replace("ref string value}", "ref string value from input}"),
     );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
@@ -1356,8 +1356,8 @@ fn trait_declaration_batches_share_the_diagnostic_budget() {
         .map(|n| format!("trait broken_{n} {{control read() exits auto;}}\n"))
         .collect::<String>()
         + "control main() exits done {exit done;}";
-    f.write("main.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 32, "{report}");
     assert_eq!(report["diagnostics_limited"], true);
@@ -1396,15 +1396,15 @@ fn constructor_definition_batches_cover_origins_partial_self_and_unused_generics
 fn constructor_definition_batches_keep_one_error_per_constructor_and_stage_later_checks() {
     let f = Fixture::new();
     let source = "struct first {string text;constructor() {self.unknown=\"x\";exit done;}}\nstruct second {string text;constructor() {fault boundary {} contingency [] {terminate process 1;}}}\nstruct later {string text;constructor() {}}\ncontrol main() exits done {u32 bad=true;exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     assert!(errors.iter().all(|e| e["code"] == "E_CONSTRUCTOR"));
     assert!(report["summary"].is_null());
     let partial = source.replace("self.unknown=\"x\";", "self.text=\"x\";");
-    f.write("main.tellur", &partial);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &partial);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"].as_array().unwrap().len(),
         2,
@@ -1422,18 +1422,18 @@ fn constructor_definition_batches_keep_one_error_per_constructor_and_stage_later
 fn constructor_definition_batches_preserve_first_failing_file_and_transitive_locations() {
     let f = Fixture::new();
     let broken = "// 🙂 source\r\npub struct one {string value;pub constructor() {self.absent=\"x\";}}\r\npub struct two {string value;pub constructor() {self.absent=\"y\";}}\r\n";
-    f.write("first.tellur", broken);
-    f.write("second.tellur", broken);
+    f.write("first.vn", broken);
+    f.write("second.vn", broken);
     f.write(
-        "middle.tellur",
-        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+        "middle.vn",
+        "import \"first.vn\" as first;import \"second.vn\" as second;",
     );
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    for file in ["first.tellur", "second.tellur"] {
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+    for file in ["first.vn", "second.vn"] {
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 2, "{report}");
         for (error, line) in errors.iter().zip([2, 3]) {
@@ -1442,30 +1442,30 @@ fn constructor_definition_batches_preserve_first_failing_file_and_transitive_loc
             assert_eq!(error["path"], f.root.join(file).to_str().unwrap());
         }
         let manifest = Manifest::from_json(include_str!("../playground/manifest.json")).unwrap();
-        let first = tellur::compile_file(f.root.join("main.tellur"), manifest).unwrap_err();
+        let first = tellur::compile_file(f.root.join("main.vn"), manifest).unwrap_err();
         assert_eq!(first.path, f.root.join(file));
         assert_eq!(first.diagnostic.span.line, 2);
         f.write(file, &broken.replace("self.absent", "self.value"));
     }
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
 fn constructor_definition_batches_keep_parse_import_and_resolution_boundaries() {
     let f = Fixture::new();
     let broken = "struct one {string text;constructor() {exit done;}}struct two {string text;constructor() {exit done;}}";
-    f.write("main.tellur", &format!("{broken}control malformed("));
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &format!("{broken}control malformed("));
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_PARSE");
     // Preparation precedes symbol registration/import traversal for this file.
     f.write(
-        "main.tellur",
+        "main.vn",
         &format!(
-            "import \"absent.tellur\" as absent;{broken}pub control bad() exits auto {{exit done;}}"
+            "import \"absent.vn\" as absent;{broken}pub control bad() exits auto {{exit done;}}"
         ),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"].as_array().unwrap().len(),
         2,
@@ -1478,8 +1478,8 @@ fn constructor_definition_batches_keep_parse_import_and_resolution_boundaries() 
             .iter()
             .all(|e| e["code"] == "E_CONSTRUCTOR")
     );
-    f.write("main.tellur", "import \"absent.tellur\" as absent;");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", "import \"absent.vn\" as absent;");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_IMPORT");
 }
@@ -1490,8 +1490,8 @@ fn constructor_definition_batches_share_one_file_budget() {
     let source = (0..40)
         .map(|n| format!("struct broken_{n} {{string text;constructor() {{exit done;}}}}\n"))
         .collect::<String>();
-    f.write("main.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 32, "{report}");
     assert_eq!(report["diagnostics_limited"], true);
@@ -1561,8 +1561,8 @@ fn type_annotation_ranges_cover_declarations_signatures_traits_and_patterns() {
             "E_TYPE",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{source}: {report}");
         assert_eq!(
@@ -1591,8 +1591,8 @@ fn type_annotation_ranges_preserve_written_comments_multiline_and_legacy_types()
             "& // 🙂\n absent_type",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(
             report["diagnostics"][0]["range"],
             selected_range(source, selected),
@@ -1605,7 +1605,7 @@ fn type_annotation_ranges_preserve_written_comments_multiline_and_legacy_types()
 fn type_annotation_ranges_preserve_transitive_imported_aliases_and_visibility() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "struct hidden {string text;}pub struct visible {pub string text;}",
     );
     for (annotation, code) in [
@@ -1613,21 +1613,18 @@ fn type_annotation_ranges_preserve_transitive_imported_aliases_and_visibility() 
         ("vector<types.absent>", "E_NAME"),
     ] {
         let library = format!(
-            "import \"types.tellur\" as types;\r\n// 🙂\r\npub control probe(\r\n    {annotation} input\r\n) exits done {{drop(input);exit done;}}\r\n"
+            "import \"types.vn\" as types;\r\n// 🙂\r\npub control probe(\r\n    {annotation} input\r\n) exits done {{drop(input);exit done;}}\r\n"
         );
-        f.write("library.tellur", &library);
-        f.write("middle.tellur", "import \"library.tellur\" as lib;");
+        f.write("library.vn", &library);
+        f.write("middle.vn", "import \"library.vn\" as lib;");
         f.write(
-            "main.tellur",
-            "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+            "main.vn",
+            "import \"middle.vn\" as middle;control main() exits done {exit done;}",
         );
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
-        assert_eq!(
-            error["path"],
-            f.root.join("library.tellur").to_str().unwrap()
-        );
+        assert_eq!(error["path"], f.root.join("library.vn").to_str().unwrap());
         assert_eq!(error["range"], selected_range(&library, annotation));
     }
 }
@@ -1637,24 +1634,24 @@ fn type_annotation_ranges_keep_original_generic_definition_and_named_payload_loc
     let f = Fixture::new();
     let library =
         "// original definition\r\npub struct bag<t> {\r\n    vector<t,u32> values;\r\n}\r\n";
-    f.write("library.tellur", library);
-    f.write("main.tellur", "import \"library.tellur\" as lib;control probe(lib.bag<string> input) exits done {drop(input);exit done;}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("library.vn", library);
+    f.write("main.vn", "import \"library.vn\" as lib;control probe(lib.bag<string> input) exits done {drop(input);exit done;}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"][0]["path"],
-        f.root.join("library.tellur").to_str().unwrap()
+        f.root.join("library.vn").to_str().unwrap()
     );
     assert_eq!(
         report["diagnostics"][0]["range"],
         selected_range(library, "vector<t,u32>")
     );
     let library = "struct hidden {string text;}\noutcome reply {ready {hidden value}}\npub trait reader {control probe() exits reply;}";
-    f.write("library.tellur", library);
+    f.write("library.vn", library);
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as lib;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as lib;control main() exits done {exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_VISIBILITY", "{report}");
     let start = library.find("hidden value").unwrap();
     assert_eq!(
@@ -1726,8 +1723,8 @@ fn loop_type_annotations_select_written_types_without_retargeting_initializers()
             "E_MANIFEST",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let e = &report["diagnostics"][0];
         assert_eq!(e["code"], code, "{report}");
         assert_eq!(e["range"], selected_range(source, selected), "{report}");
@@ -1739,14 +1736,17 @@ fn loop_type_annotations_select_written_types_without_retargeting_initializers()
 fn loop_type_annotation_ranges_survive_import_offsets_lookup_and_generic_preparation() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "struct hidden {u32 value;} pub struct visible {u32 value;}",
     );
-    f.write("main.tellur","import \"library.tellur\" as library; control main() exits done {library.probe();exit done;}");
+    f.write(
+        "main.vn",
+        "import \"library.vn\" as library; control main() exits done {library.probe();exit done;}",
+    );
     for (header, annotation, code) in [
         ("", "vector<string,u32>", "E_MANIFEST"),
         (
-            "import \"types.tellur\" as types;\r\n",
+            "import \"types.vn\" as types;\r\n",
             "types.hidden",
             "E_VISIBILITY",
         ),
@@ -1760,19 +1760,19 @@ fn loop_type_annotation_ranges_survive_import_offsets_lookup_and_generic_prepara
         let source = format!(
             "{header}// 😀\r\npub control probe() exits done {{\r\n loop work(\r\n {annotation} value=true\r\n ) {{exit done;}}\r\n}}"
         );
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let e = &report["diagnostics"][0];
         assert_eq!(e["code"], code, "{source}: {report}");
         assert!(
-            e["path"].as_str().unwrap().ends_with("library.tellur"),
+            e["path"].as_str().unwrap().ends_with("library.vn"),
             "{report}"
         );
         assert_eq!(e["range"], selected_range(&source, annotation), "{report}");
     }
     let generic = "control probe<t>(t input) exits done {loop work(vector<t,u32> value=[]) {drop(input);exit done;}} control main() exits done {probe<string>(\"x\");exit done;}";
-    f.write("main.tellur", generic);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", generic);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"][0]["range"],
         selected_range(generic, "vector<t,u32>"),
@@ -1829,8 +1829,8 @@ fn loop_type_ranges_cover_generic_producer_arguments_and_preserve_again_expressi
             "E_TYPE",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(report["diagnostics"][0]["code"], code, "{report}");
         assert_eq!(
             report["diagnostics"][0]["range"],
@@ -1882,8 +1882,8 @@ fn local_type_annotations_select_types_and_preserve_initializer_errors() {
         let source = format!(
             "control produce() exits done {{exit done;}} control main() exits done {{{body}exit done;}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{source}: {report}");
         assert_eq!(
@@ -1899,13 +1899,16 @@ fn local_type_annotations_select_types_and_preserve_initializer_errors() {
 fn local_type_ranges_cover_capture_adapters_imports_and_generic_preparation() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "struct hidden {u32 n;} pub struct visible {u32 n;}",
     );
-    f.write("main.tellur", "import \"library.tellur\" as library;control main() exits done {library.probe();exit done;}");
+    f.write(
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {library.probe();exit done;}",
+    );
     for (header, annotation, code) in [
         (
-            "import \"types.tellur\" as types;\r\n",
+            "import \"types.vn\" as types;\r\n",
             "types.hidden",
             "E_VISIBILITY",
         ),
@@ -1928,12 +1931,12 @@ fn local_type_ranges_cover_capture_adapters_imports_and_generic_preparation() {
             let source = format!(
                 "{header}// 😀\r\ncontrol produce() exits done {{exit done;}}\r\npub control probe() exits done {{\r\n {annotation} result={initializer};exit done;\r\n}}"
             );
-            f.write("library.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("library.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let error = &report["diagnostics"][0];
             assert_eq!(error["code"], code, "{source}: {report}");
             assert!(
-                error["path"].as_str().unwrap().ends_with("library.tellur"),
+                error["path"].as_str().unwrap().ends_with("library.vn"),
                 "{report}"
             );
             assert_eq!(
@@ -1947,8 +1950,8 @@ fn local_type_ranges_cover_capture_adapters_imports_and_generic_preparation() {
         let source = format!(
             "control produce() exits done {{exit done;}} control probe<t>(t input) exits done {{vector<t,u32> result={initializer};drop(input);exit done;}} control main() exits done {{probe<string>(\"x\");exit done;}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(report["diagnostics"][0]["code"], "E_MANIFEST", "{report}");
         assert_eq!(
             report["diagnostics"][0]["range"],
@@ -2031,8 +2034,8 @@ fn public_type_ranges_select_authored_interfaces_after_body_checking() {
             "option<hidden>",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(
             report["diagnostics"][0]["code"], "E_VISIBILITY",
             "{source}: {report}"
@@ -2048,10 +2051,10 @@ fn public_type_ranges_select_authored_interfaces_after_body_checking() {
 #[test]
 fn public_type_ranges_preserve_imported_multiline_spelling_and_aliases() {
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct visible {pub u32 n;}");
+    f.write("types.vn", "pub struct visible {pub u32 n;}");
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library; control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library; control main() exits done {exit done;}",
     );
     for (body, selected) in [
         (
@@ -2072,14 +2075,14 @@ fn public_type_ranges_preserve_imported_multiline_spelling_and_aliases() {
         ),
     ] {
         let source = format!(
-            "import \"types.tellur\" as types;\r\nstruct hidden {{u32 n;}}\r\npub struct pair<a,b> {{pub a left;pub b right;}}\r\n// 😀\r\n{body}"
+            "import \"types.vn\" as types;\r\nstruct hidden {{u32 n;}}\r\npub struct pair<a,b> {{pub a left;pub b right;}}\r\n// 😀\r\n{body}"
         );
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_VISIBILITY", "{report}");
         assert!(
-            error["path"].as_str().unwrap().ends_with("library.tellur"),
+            error["path"].as_str().unwrap().ends_with("library.vn"),
             "{report}"
         );
         assert_eq!(
@@ -2095,8 +2098,8 @@ fn public_type_ranges_keep_visibility_phase_order_and_named_contract_locations()
     let f = Fixture::new();
     // A later public data field is still checked before control signatures.
     let source = "struct hidden {u32 n;}pub control probe(ref hidden value) exits done {drop(value);exit done;}pub struct box {pub vector<hidden> values;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -2112,8 +2115,8 @@ fn public_type_ranges_keep_visibility_phase_order_and_named_contract_locations()
     assert_eq!(first, errors.errors[0]);
     // A body error still stops checking before this late visibility phase.
     let source = "struct hidden {u32 n;}pub control probe(ref hidden value) exits done {u32 count=true;drop(value);exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_TYPE");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -2122,8 +2125,8 @@ fn public_type_ranges_keep_visibility_phase_order_and_named_contract_locations()
     // Source data validation still precedes generated producer outcome types.
     let source =
         "control produce() exits done {exit done;}pub struct box {pub outcome<produce> value;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_MANIFEST");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -2131,8 +2134,8 @@ fn public_type_ranges_keep_visibility_phase_order_and_named_contract_locations()
     );
     // Whole named-contract references retain their own authored type annotation.
     let source = "outcome hidden {done}pub control probe() exits hidden {exit done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_VISIBILITY");
     let at = source.rfind("hidden").unwrap();
     assert_eq!(
@@ -2176,8 +2179,8 @@ fn named_completion_type_ranges_cover_generic_and_trait_validation() {
             "E_TRAIT_SIGNATURE",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{source}: {report}");
         // A generic name can occur in both declaration and use; select the use.
@@ -2194,12 +2197,12 @@ fn named_completion_type_ranges_cover_generic_and_trait_validation() {
 fn named_completion_type_ranges_preserve_imports_and_exclude_origins() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub outcome reply<t> {done} outcome hidden {done}",
     );
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library; control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library; control main() exits done {exit done;}",
     );
     for (body, selected, code) in [
         (
@@ -2228,13 +2231,13 @@ fn named_completion_type_ranges_preserve_imports_and_exclude_origins() {
             "E_VISIBILITY",
         ),
     ] {
-        let source = format!("import \"types.tellur\" as types;\r\n// 😀\r\n{body}");
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let source = format!("import \"types.vn\" as types;\r\n// 😀\r\n{body}");
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert!(
-            error["path"].as_str().unwrap().ends_with("library.tellur"),
+            error["path"].as_str().unwrap().ends_with("library.vn"),
             "{report}"
         );
         assert_eq!(
@@ -2325,8 +2328,8 @@ fn named_completion_origin_ranges_cover_binding_inputs_and_authority() {
             "E_LIFETIME",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(error["range"], selected_range(source, mapping), "{report}");
@@ -2338,8 +2341,8 @@ fn named_completion_origin_ranges_cover_binding_inputs_and_authority() {
 fn named_completion_origin_ranges_survive_imports_generics_and_traits() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     let schema = "pub outcome reply<t>['a] {ready {ref t value <- 'a}}\r\n";
     for body in [
@@ -2348,11 +2351,11 @@ fn named_completion_origin_ranges_survive_imports_generics_and_traits() {
         "pub trait reader {control read(ref self input) exits reply<self>[missing];}",
     ] {
         let source = format!("{schema}// 😀\r\n{body}");
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_LIFETIME", "{report}");
-        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("library.vn"));
         assert_eq!(
             error["range"],
             selected_range(&source, "[missing]"),
@@ -2443,8 +2446,8 @@ fn return_origin_ranges_select_from_clauses_and_contained_selectors() {
             "from missing",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_LIFETIME", "{report}");
         assert_eq!(error["range"], selected_range(source, selected), "{report}");
@@ -2455,8 +2458,8 @@ fn return_origin_ranges_select_from_clauses_and_contained_selectors() {
 fn return_origin_ranges_preserve_imported_generic_and_trait_signatures() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     for body in [
         "pub control probe<t>(ref t input) exits ready {ref t value from missing} {exit ready {input};}",
@@ -2465,11 +2468,11 @@ fn return_origin_ranges_preserve_imported_generic_and_trait_signatures() {
         "trait reader {control read(ref self input) exits ready {ref self value from input};} struct value {u32 n;} implement reader for value {control read(ref self input) exits ready {ref self value from missing} {exit ready {input};}}",
     ] {
         let source = format!("// 😀\r\n{body}");
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_LIFETIME", "{report}");
-        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("library.vn"));
         assert_eq!(
             error["range"],
             selected_range(&source, "from missing"),
@@ -2557,8 +2560,8 @@ fn payload_origin_ranges_select_brackets_separately_from_types_and_bindings() {
             "[missing]",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_ORIGIN", "{report}");
         assert_eq!(error["range"], selected_range(source, selected), "{report}");
@@ -2569,8 +2572,8 @@ fn payload_origin_ranges_select_brackets_separately_from_types_and_bindings() {
 fn payload_origin_ranges_survive_imports_generics_and_trait_signatures() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     let schema = "pub struct view<t>['a] {pub ref t value <- 'a;}\r\n";
     for body in [
@@ -2580,11 +2583,11 @@ fn payload_origin_ranges_survive_imports_generics_and_trait_signatures() {
         "trait reader {control read(ref self input) exits ready {view<self>[input] value};} struct value {u32 n;} implement reader for value {control read(ref self input) exits ready {view<self>[missing] value} {exit ready {view<self> {value:input}};}}",
     ] {
         let source = format!("{schema}// 😀\r\n{body}");
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_ORIGIN", "{report}");
-        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("library.vn"));
         assert_eq!(
             error["range"],
             selected_range(&source, "[missing]"),
@@ -2623,8 +2626,8 @@ fn payload_origin_ranges_preserve_storage_clauses_named_contracts_and_error_orde
             "E_MANIFEST",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(error["range"], selected_range(source, selected), "{report}");
@@ -2703,8 +2706,8 @@ fn schema_origin_ranges_select_storage_arrows_and_referent_brackets() {
         ),
     ] {
         let source = format!("{view}\n{declaration}\ncontrol main() exits done {{exit done;}}");
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_ORIGIN", "{source}: {report}");
         assert_eq!(
@@ -2722,8 +2725,8 @@ fn schema_origin_ranges_select_storage_arrows_and_referent_brackets() {
 fn schema_origin_ranges_survive_imported_generic_data_and_named_outcomes() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     for (body, selected) in [
         (
@@ -2741,11 +2744,11 @@ fn schema_origin_ranges_survive_imported_generic_data_and_named_outcomes() {
     ] {
         let source =
             format!("pub struct view<t>['a] {{pub ref t value <- 'a;}}\r\n// imported\r\n{body}");
-        f.write("library.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("library.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_ORIGIN", "{report}");
-        assert!(error["path"].as_str().unwrap().ends_with("library.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("library.vn"));
         assert_eq!(
             error["range"],
             selected_range(&source, selected),
@@ -2832,8 +2835,8 @@ fn schema_group_ranges_select_duplicate_occurrences_and_unused_declarations() {
         ),
     ] {
         let source = format!("{declaration}\ncontrol main() exits done {{exit done;}}");
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_ORIGIN", "{source}: {report}");
         assert!(
@@ -2854,12 +2857,12 @@ fn schema_group_ranges_select_duplicate_occurrences_and_unused_declarations() {
 fn schema_group_ranges_survive_transitive_imports_and_unused_generic_definitions() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"library.tellur\" as library;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"library.vn\" as library;control main() exits done {exit done;}",
     );
     f.write(
-        "library.tellur",
-        "import \"types.tellur\" as types;pub control work() exits done {exit done;}",
+        "library.vn",
+        "import \"types.vn\" as types;pub control work() exits done {exit done;}",
     );
     for (declaration, selected) in [
         ("pub struct view<t>['a,'a] {pub ref t value <- 'a;}", "'a"),
@@ -2885,11 +2888,11 @@ fn schema_group_ranges_survive_transitive_imports_and_unused_generic_definitions
         ),
     ] {
         let source = format!("// original 😀\r\n{declaration}");
-        f.write("types.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("types.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_ORIGIN", "{report}");
-        assert!(error["path"].as_str().unwrap().ends_with("types.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("types.vn"));
         let at = source[..source.find('{').unwrap()].rfind(selected).unwrap();
         assert_eq!(
             error["range"],
@@ -2931,8 +2934,8 @@ fn schema_group_ranges_preserve_field_priority_and_global_schema_limits() {
         )
         .unwrap_err();
         assert_eq!(first, errors.errors[0]);
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let at = source.find(selected).unwrap();
         let len = selected.trim_end_matches(']').len();
         assert_eq!(
@@ -3091,17 +3094,17 @@ fn schema_recovery_uses_the_shared_budget_and_preserves_first_error() {
 #[test]
 fn schema_recovery_cli_maps_independent_imports_to_original_ranges() {
     let f = Fixture::new();
-    f.write("main.tellur", "import \"first.tellur\" as first;import \"second.tellur\" as second;control main() exits done {u32 wrong=true;exit done;}");
+    f.write("main.vn", "import \"first.vn\" as first;import \"second.vn\" as second;control main() exits done {u32 wrong=true;exit done;}");
     let first = "// 😀\r\npub struct first<t>['a,' // 😀\r\n a] {pub ref t value <- 'a;}";
     let second = "pub outcome second<t>['b,'unused] {ready {ref t value <- 'b}}";
-    f.write("first.tellur", first);
-    f.write("second.tellur", second);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("first.vn", first);
+    f.write("second.vn", second);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for (error, (path, source, selected)) in errors.iter().zip([
-        ("first.tellur", first, "' // 😀\r\n a"),
-        ("second.tellur", second, "'unused"),
+        ("first.vn", first, "' // 😀\r\n a"),
+        ("second.vn", second, "'unused"),
     ]) {
         assert_eq!(error["code"], "E_ORIGIN");
         assert!(error["path"].as_str().unwrap().ends_with(path));
@@ -3140,8 +3143,8 @@ fn schema_recovery_bounds_deep_dependencies_without_repeating_the_failed_chain()
 fn contributor_ranges_select_producing_and_forwarding_occurrences() {
     let f = Fixture::new();
     let source = "control leaf() exits auto {\r\n    exit // 😀\r\n        added; // outside\r\n}\r\ncontrol middle() exits auto {\r\n    forward // 😀\r\n        leaf(); // outside\r\n}\r\ncontrol main() exits done {delta middle() {}}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
     assert_eq!(notes.len(), 2, "{report}");
     for (note, selected) in notes.iter().zip([
@@ -3166,19 +3169,19 @@ fn contributor_ranges_select_producing_and_forwarding_occurrences() {
 fn contributor_ranges_follow_transitive_imports_and_generic_definition_spelling() {
     let f = Fixture::new();
     let leaf = "pub control leaf<t>(t input) exits added {t value} {\r\n    exit // 😀\r\n        added {input};\r\n}";
-    let middle = "import \"leaf.tellur\" as leaf;\ncontrol middle() exits auto {\n    forward leaf.leaf<string>(\"x\");\n}\npub control work() exits done {delta middle() {}}";
-    f.write("leaf.tellur", leaf);
-    f.write("middle.tellur", middle);
+    let middle = "import \"leaf.vn\" as leaf;\ncontrol middle() exits auto {\n    forward leaf.leaf<string>(\"x\");\n}\npub control work() exits done {delta middle() {}}";
+    f.write("leaf.vn", leaf);
+    f.write("middle.vn", middle);
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle; control main() exits done {middle.work();exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle; control main() exits done {middle.work();exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
     assert_eq!(notes.len(), 2, "{report}");
     for (note, (file, source, selected)) in notes.iter().zip([
-        ("leaf.tellur", leaf, "exit // 😀\r\n        added {input};"),
-        ("middle.tellur", middle, "forward leaf.leaf<string>(\"x\");"),
+        ("leaf.vn", leaf, "exit // 😀\r\n        added {input};"),
+        ("middle.vn", middle, "forward leaf.leaf<string>(\"x\");"),
     ]) {
         assert!(note["path"].as_str().unwrap().ends_with(file));
         assert_eq!(note["range"], selected_range(source, selected), "{report}");
@@ -3217,8 +3220,8 @@ fn contributor_ranges_preserve_declared_contract_and_omission_bounds() {
 fn contributor_ranges_select_nested_outcome_expressions_without_surrounding_statements() {
     let f = Fixture::new();
     let source = "control leaf() exits auto {exit first;} control main() exits done {auto saved=capture leaf();auto mapped=delta saved {first=>second // 😀\r\n {}};exit delta mapped {}; }";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
     let note = notes
         .iter()
@@ -3272,8 +3275,8 @@ fn public_shape_ranges_select_written_inference_clauses_in_authored_order() {
             "zebra...",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         assert_eq!(errors[0]["code"], "E_PUBLIC_CONTRACT");
@@ -3299,19 +3302,19 @@ fn public_shape_ranges_preserve_transitive_imports_and_independent_repairs() {
     let f = Fixture::new();
     let first =
         "// 😀\r\npub control first<t>(t input) exits // clause\r\n auto {exit ready {input};}";
-    let second = "import \"first.tellur\" as first;\npub control second<t>(t input) exits empty, ready // 😀\r\n ... {exit ready {input};}";
-    f.write("first.tellur", first);
-    f.write("second.tellur", second);
+    let second = "import \"first.vn\" as first;\npub control second<t>(t input) exits empty, ready // 😀\r\n ... {exit ready {input};}";
+    f.write("first.vn", first);
+    f.write("second.vn", second);
     f.write(
-        "main.tellur",
-        "import \"second.tellur\" as second; control main() exits done {u32 wrong=true;exit done;}",
+        "main.vn",
+        "import \"second.vn\" as second; control main() exits done {u32 wrong=true;exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for (path, source, selected) in [
-        ("first.tellur", first, "exits // clause\r\n auto"),
-        ("second.tellur", second, "ready // 😀\r\n ..."),
+        ("first.vn", first, "exits // clause\r\n auto"),
+        ("second.vn", second, "ready // 😀\r\n ..."),
     ] {
         let error = errors
             .iter()
@@ -3322,22 +3325,22 @@ fn public_shape_ranges_preserve_transitive_imports_and_independent_repairs() {
         assert_eq!(error["range"], selected_range(source, selected), "{report}");
     }
     f.write(
-        "first.tellur",
+        "first.vn",
         &first.replace("exits // clause\r\n auto", "exits ready {t value}"),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert!(
         report["diagnostics"][0]["path"]
             .as_str()
             .unwrap()
-            .ends_with("second.tellur")
+            .ends_with("second.vn")
     );
     f.write(
-        "second.tellur",
+        "second.vn",
         &second.replace("ready // 😀\r\n ...", "ready {t value}"),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_TYPE");
 }
@@ -3419,8 +3422,8 @@ fn missing_public_origin_ranges_select_result_types_and_named_completion_uses() 
             "aggregate result",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         assert_eq!(errors[0]["code"], "E_PUBLIC_CONTRACT", "{report}");
@@ -3456,16 +3459,16 @@ fn missing_public_origin_ranges_select_result_types_and_named_completion_uses() 
 fn missing_public_origin_ranges_keep_transitive_schema_and_use_files_distinct() {
     let f = Fixture::new();
     f.write(
-        "schema.tellur",
+        "schema.vn",
         "pub outcome reply<t>['a] {ready {ref t value <- 'a}}",
     );
-    let worker = "import \"schema.tellur\" as schema;\r\npub control one(ref string input) exits schema.reply // 😀\r\n <string> {exit ready {input};}\r\npub control two(ref string input) exits ready {ref // result\r\n string value} {exit ready {input};}";
-    f.write("worker.tellur", worker);
+    let worker = "import \"schema.vn\" as schema;\r\npub control one(ref string input) exits schema.reply // 😀\r\n <string> {exit ready {input};}\r\npub control two(ref string input) exits ready {ref // result\r\n string value} {exit ready {input};}";
+    f.write("worker.vn", worker);
     f.write(
-        "main.tellur",
-        "import \"worker.tellur\" as worker; control main() exits done {u32 wrong=true;exit done;}",
+        "main.vn",
+        "import \"worker.vn\" as worker; control main() exits done {u32 wrong=true;exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for (error, selected) in errors.iter().zip([
@@ -3473,22 +3476,22 @@ fn missing_public_origin_ranges_keep_transitive_schema_and_use_files_distinct() 
         "ref // result\r\n string",
     ]) {
         assert_eq!(error["code"], "E_PUBLIC_CONTRACT");
-        assert!(error["path"].as_str().unwrap().ends_with("worker.tellur"));
+        assert!(error["path"].as_str().unwrap().ends_with("worker.vn"));
         assert_eq!(error["range"], selected_range(worker, selected));
     }
     let partial = worker.replace("<string> {exit", "<string>[input] {exit");
-    f.write("worker.tellur", &partial);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("worker.vn", &partial);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(
         report["diagnostics"][0]["range"],
         selected_range(&partial, "ref // result\r\n string")
     );
     f.write(
-        "worker.tellur",
+        "worker.vn",
         &partial.replace("string value}", "string value from input}"),
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_TYPE");
 }
@@ -3536,8 +3539,8 @@ fn missing_public_origin_ranges_preserve_first_result_and_preparation_barriers()
             "[input,input]",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_ne!(report["diagnostics"][0]["code"], "E_PUBLIC_CONTRACT");
         assert_eq!(
             report["diagnostics"][0]["range"],
@@ -3578,8 +3581,8 @@ fn declared_contributor_ranges_select_complete_written_contracts() {
         ),
     ] {
         let source = format!("{definition} control main() exits done {{delta {call} {{}}}}");
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(report["diagnostics"][0]["code"], "E_UNCOVERED", "{report}");
         let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
         let declared = notes
@@ -3603,14 +3606,11 @@ fn declared_contributor_ranges_select_complete_written_contracts() {
 #[test]
 fn declared_contributor_ranges_keep_named_schema_and_transitive_generic_use_sites_distinct() {
     let f = Fixture::new();
-    f.write(
-        "schema.tellur",
-        "pub outcome reply<t> {first {t value},second}",
-    );
-    let worker = "import \"schema.tellur\" as schema;\r\npub control leaf<t>(t input) exits // 😀\r\n schema.reply<t> {exit first {input};}";
-    f.write("worker.tellur", worker);
-    f.write("main.tellur", "import \"worker.tellur\" as worker;control main() exits done {delta worker.leaf<u32>(1) {first {u32 value}=>exit done}}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("schema.vn", "pub outcome reply<t> {first {t value},second}");
+    let worker = "import \"schema.vn\" as schema;\r\npub control leaf<t>(t input) exits // 😀\r\n schema.reply<t> {exit first {input};}";
+    f.write("worker.vn", worker);
+    f.write("main.vn", "import \"worker.vn\" as worker;control main() exits done {delta worker.leaf<u32>(1) {first {u32 value}=>exit done}}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_UNCOVERED", "{report}");
     let note = report["diagnostics"][0]["notes"]
         .as_array()
@@ -3618,7 +3618,7 @@ fn declared_contributor_ranges_keep_named_schema_and_transitive_generic_use_site
         .iter()
         .find(|n| n["message"].as_str().unwrap().contains("declared"))
         .unwrap();
-    assert!(note["path"].as_str().unwrap().ends_with("worker.tellur"));
+    assert!(note["path"].as_str().unwrap().ends_with("worker.vn"));
     assert_eq!(
         note["range"],
         selected_range(worker, "exits // 😀\r\n schema.reply<t>")
@@ -3636,8 +3636,8 @@ fn declared_contributor_ranges_keep_shared_header_notes_distinct_and_bounded() {
         "control leaf() {clause} {{exit label_00;}} control main() exits done {{delta leaf() {{}}}}"
     );
     let f = Fixture::new();
-    f.write("main.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let notes = report["diagnostics"][0]["notes"].as_array().unwrap();
     assert_eq!(notes.len(), 33, "{report}");
     assert!(notes[32]["message"].as_str().unwrap().contains("omitted"));
@@ -3823,31 +3823,31 @@ fn implementation_preparation_batches_preserve_phase_barriers_and_budgets() {
 fn implementation_preparation_batches_preserve_imported_origins_and_coherence_barriers() {
     let f = Fixture::new();
     f.write(
-        "contract.tellur",
+        "contract.vn",
         "pub trait reader {control read(self input) exits done;}",
     );
-    for file in ["first.tellur", "second.tellur"] {
-        f.write(file,"import \"contract.tellur\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {}\r\n");
+    for file in ["first.vn", "second.vn"] {
+        f.write(file,"import \"contract.vn\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {}\r\n");
     }
-    f.write("main.tellur", "import \"first.tellur\" as first; import \"second.tellur\" as second;control main() exits done {exit done;}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", "import \"first.vn\" as first; import \"second.vn\" as second;control main() exits done {exit done;}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
-    for (error, file) in errors.iter().zip(["first.tellur", "second.tellur"]) {
+    for (error, file) in errors.iter().zip(["first.vn", "second.vn"]) {
         assert_eq!(error["code"], "E_TRAIT");
         assert!(error["path"].as_str().unwrap().ends_with(file));
         assert_eq!(error["position"], json!({"line":3,"column":1}));
     }
     // A foreign target disables recovery without preempting the earlier local error.
     f.write(
-        "second.tellur",
-        "import \"contract.tellur\" as contract;implement contract.reader for u32 {}",
+        "second.vn",
+        "import \"contract.vn\" as contract;implement contract.reader for u32 {}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_TRAIT");
-    f.write("first.tellur", "import \"contract.tellur\" as contract;struct local {u32 value;}implement contract.reader for local {control read(self input) exits done {exit done;}}");
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("first.vn", "import \"contract.vn\" as contract;struct local {u32 value;}implement contract.reader for local {control read(self input) exits done {exit done;}}");
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"].as_array().unwrap().len(), 1);
     assert_eq!(report["diagnostics"][0]["code"], "E_COHERENCE");
 }
@@ -4046,18 +4046,18 @@ fn associated_normalization_batches_keep_preparation_and_conformance_barriers() 
 #[test]
 fn associated_normalization_batches_keep_transitive_imported_points_and_first_error() {
     let f = Fixture::new();
-    for file in ["first.tellur", "second.tellur"] {
+    for file in ["first.vn", "second.vn"] {
         f.write(file,"trait source {type item;}\r\n// 😀\r\nimplement source for u32 {type item=ref string;}\r\n");
     }
     f.write(
-        "middle.tellur",
-        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+        "middle.vn",
+        "import \"first.vn\" as first;import \"second.vn\" as second;",
     );
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for error in errors {
@@ -4076,13 +4076,13 @@ fn associated_normalization_batches_keep_transitive_imported_points_and_first_er
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(
         paths,
-        ["first.tellur".to_owned(), "second.tellur".to_owned()]
+        ["first.vn".to_owned(), "second.vn".to_owned()]
             .into_iter()
             .collect()
     );
     assert!(report["summary"].is_null());
     let first = tellur::compile_file(
-        f.root.join("main.tellur"),
+        f.root.join("main.vn"),
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap_err();
@@ -4258,21 +4258,21 @@ fn implementation_permission_batches_preserve_equality_subsets_and_generic_propa
 fn implementation_permission_batches_preserve_transitive_imported_points() {
     let f = Fixture::new();
     f.write(
-        "contract.tellur",
+        "contract.vn",
         "pub trait reader {control read(self input) exits done;}",
     );
-    for file in ["first.tellur", "second.tellur"] {
-        f.write(file,"import \"contract.tellur\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {\r\n    async control read(self input) exits done {exit done;}\r\n}");
+    for file in ["first.vn", "second.vn"] {
+        f.write(file,"import \"contract.vn\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {\r\n    async control read(self input) exits done {exit done;}\r\n}");
     }
     f.write(
-        "middle.tellur",
-        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+        "middle.vn",
+        "import \"first.vn\" as first;import \"second.vn\" as second;",
     );
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for error in errors {
@@ -4291,13 +4291,13 @@ fn implementation_permission_batches_preserve_transitive_imported_points() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(
         paths,
-        ["first.tellur".to_owned(), "second.tellur".to_owned()]
+        ["first.vn".to_owned(), "second.vn".to_owned()]
             .into_iter()
             .collect()
     );
     assert!(report["summary"].is_null());
     let first = tellur::compile_file(
-        f.root.join("main.tellur"),
+        f.root.join("main.vn"),
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap_err();
@@ -4479,19 +4479,19 @@ fn implementation_conformance_batches_keep_earlier_barriers_and_budget() {
 #[test]
 fn implementation_conformance_batches_preserve_transitive_imported_points() {
     let f = Fixture::new();
-    f.write("contract.tellur", "pub trait reader {type item:copy;}");
-    for file in ["first.tellur", "second.tellur"] {
-        f.write(file,"import \"contract.tellur\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {\r\n    type item=string;\r\n}");
+    f.write("contract.vn", "pub trait reader {type item:copy;}");
+    for file in ["first.vn", "second.vn"] {
+        f.write(file,"import \"contract.vn\" as contract;\r\nstruct local {u32 value;}\r\nimplement contract.reader for local {\r\n    type item=string;\r\n}");
     }
     f.write(
-        "middle.tellur",
-        "import \"first.tellur\" as first;import \"second.tellur\" as second;",
+        "middle.vn",
+        "import \"first.vn\" as first;import \"second.vn\" as second;",
     );
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let errors = report["diagnostics"].as_array().unwrap();
     assert_eq!(errors.len(), 2, "{report}");
     for error in errors {
@@ -4510,13 +4510,13 @@ fn implementation_conformance_batches_preserve_transitive_imported_points() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(
         paths,
-        ["first.tellur".to_owned(), "second.tellur".to_owned()]
+        ["first.vn".to_owned(), "second.vn".to_owned()]
             .into_iter()
             .collect()
     );
     assert!(report["summary"].is_null());
     let first = tellur::compile_file(
-        f.root.join("main.tellur"),
+        f.root.join("main.vn"),
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap_err();
@@ -4551,8 +4551,8 @@ fn implementation_completion_ranges_select_written_inline_contracts() {
         let source = format!(
             "trait reader {{control read() exits {expected} faults;}}\r\nimplement reader for u32 {{control read() exits {actual} // outside\r\n faults {{fault \"body\";}}}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         assert_eq!(errors[0]["code"], "E_TRAIT_SIGNATURE", "{report}");
@@ -4580,8 +4580,8 @@ fn implementation_completion_ranges_select_direct_and_contained_origin_contracts
             "E_ORIGIN",
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
             1,
@@ -4608,10 +4608,10 @@ fn implementation_completion_ranges_select_direct_and_contained_origin_contracts
 #[test]
 fn implementation_completion_ranges_preserve_imported_generic_named_use_sites() {
     let f = Fixture::new();
-    f.write("contracts.tellur", "pub outcome reply<t> {ready {t value}} pub outcome borrowed<t>['a] {ready {ref t value <- 'a}}");
+    f.write("contracts.vn", "pub outcome reply<t> {ready {t value}} pub outcome borrowed<t>['a] {ready {ref t value <- 'a}}");
     f.write(
-        "main.tellur",
-        "import \"worker.tellur\" as worker;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"worker.vn\" as worker;control main() exits done {exit done;}",
     );
     for (body, selected, code) in [
         (
@@ -4625,9 +4625,9 @@ fn implementation_completion_ranges_preserve_imported_generic_named_use_sites() 
             "E_LIFETIME",
         ),
     ] {
-        let source = format!("import \"contracts.tellur\" as c;\r\n{body}");
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        let source = format!("import \"contracts.vn\" as c;\r\n{body}");
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -4637,7 +4637,7 @@ fn implementation_completion_ranges_preserve_imported_generic_named_use_sites() 
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(
             error["range"],
@@ -4646,11 +4646,11 @@ fn implementation_completion_ranges_preserve_imported_generic_named_use_sites() 
         );
         assert!(!report.to_string().contains("_path_poly_"));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(first.diagnostic.code, code);
         assert_eq!(
             first.diagnostic.span.line,
@@ -4678,8 +4678,8 @@ fn implementation_completion_ranges_keep_parameter_priority_child_ranges_and_fau
             None,
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
         if let Some(annotation) = annotation {
@@ -4697,8 +4697,8 @@ fn implementation_completion_ranges_keep_parameter_priority_child_ranges_and_fau
         }
     }
     let source = "trait reader {control read(ref string input) exits ready {ref string value from input};} implement reader for u32 {control read(ref string owner) exits ready {ref string value from missing} {exit ready {owner};}}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_LIFETIME", "{report}");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -4772,8 +4772,8 @@ fn implementation_parameter_ranges_select_first_differing_written_type() {
         let source = format!(
             "trait reader {{control read({expected}) exits done;}}\r\nimplement reader for u32 {{control read({actual}) exits done {{exit done;}}}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
             1,
@@ -4794,13 +4794,13 @@ fn implementation_parameter_ranges_select_first_differing_written_type() {
 fn implementation_parameter_ranges_keep_imported_aliases_and_generic_callers() {
     let f = Fixture::new();
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     let source = "// 😀\r\ntrait reader {type item;control read(vector<item> input) exits done;}\r\nimplement reader for u32 {type item=u32;control read(ref vector< // 😀\r\n item> owner) exits done {exit done;}}\r\ncontrol call<t:reader>(vector<reader<t>.item> input) exits done {reader<t>.read(input);exit done;}";
-    f.write("worker.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("worker.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(
         report["diagnostics"].as_array().unwrap().len(),
         1,
@@ -4810,7 +4810,7 @@ fn implementation_parameter_ranges_keep_imported_aliases_and_generic_callers() {
     assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
     assert_eq!(
         error["path"],
-        f.root.join("worker.tellur").to_string_lossy().as_ref()
+        f.root.join("worker.vn").to_string_lossy().as_ref()
     );
     assert_eq!(
         error["range"],
@@ -4818,11 +4818,11 @@ fn implementation_parameter_ranges_keep_imported_aliases_and_generic_callers() {
     );
     assert!(!report.to_string().contains("_path_poly_"));
     let first = tellur::compile_file(
-        f.root.join("main.tellur"),
+        f.root.join("main.vn"),
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(first.path, f.root.join("worker.tellur"));
+    assert_eq!(first.path, f.root.join("worker.vn"));
     assert_eq!(
         first.diagnostic.span.line,
         error["position"]["line"].as_u64().unwrap() as usize
@@ -4836,8 +4836,8 @@ fn implementation_parameter_ranges_keep_imported_aliases_and_generic_callers() {
         "owner) exits done {exit done;}",
         "owner) exits done {drop(owner);exit done;}",
     );
-    f.write("worker.tellur", &fixed);
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.write("worker.vn", &fixed);
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
@@ -4851,8 +4851,8 @@ fn implementation_parameter_ranges_preserve_arity_fallback_and_origin_priority()
         let source = format!(
             "trait reader {{control read({expected}) exits done;}} implement reader for u32 {{control read({actual}) exits done {{exit done;}}}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_TRAIT_SIGNATURE", "{report}");
         assert!(error["range"].is_null(), "{report}");
@@ -4868,8 +4868,8 @@ fn implementation_parameter_ranges_preserve_arity_fallback_and_origin_priority()
         let source = format!(
             "trait reader {{control read(ref string left,ref string right,u32 n) exits ready {{ref string value from left}};}} implement reader for u32 {{control read(ref string a,ref string b,bool n) exits ready {{ref string value from {origin}}} {{exit ready {{b}};}}}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(report["diagnostics"][0]["code"], "E_LIFETIME", "{report}");
         assert_eq!(
             report["diagnostics"][0]["range"],
@@ -4917,8 +4917,8 @@ fn associated_assignment_ranges_select_complete_written_types() {
         let source = format!(
             "trait reader {{type item{bounds};}}\r\nimplement reader for u32 {{type item = {value} // outside\r\n ;}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
             1,
@@ -4955,8 +4955,8 @@ fn associated_assignment_ranges_preserve_normalization_roots_and_suppress_depend
             vec!["E_TRAIT", "E_LIFETIME", "E_LIFETIME"],
         ),
     ] {
-        f.write("main.tellur", source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), selected.len(), "{report}");
         for ((error, selected), code) in errors.iter().zip(selected).zip(codes) {
@@ -4979,11 +4979,11 @@ fn associated_assignment_ranges_preserve_normalization_roots_and_suppress_depend
 #[test]
 fn associated_assignment_ranges_preserve_imported_use_sites_and_module_resolution() {
     let f = Fixture::new();
-    f.write("types.tellur", "pub trait source {type item;} implement source for string {type item=string;} struct hidden {u32 value;}");
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("types.vn", "pub trait source {type item;} implement source for string {type item=string;} struct hidden {u32 value;}");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     for (bounds, value, code) in [
         (":copy", "t.source<string>.item", "E_BOUND"),
@@ -4992,23 +4992,23 @@ fn associated_assignment_ranges_preserve_imported_use_sites_and_module_resolutio
         ("", "t.hidden", "E_VISIBILITY"),
     ] {
         let source = format!(
-            "import \"types.tellur\" as t;\r\ntrait reader {{type item{bounds};}}\r\nimplement reader for u32 {{type item={value};}}\r\ncontrol call<t:reader>(reader<t>.item input) exits ready {{reader<t>.item value}} {{exit ready {{input}};}}"
+            "import \"types.vn\" as t;\r\ntrait reader {{type item{bounds};}}\r\nimplement reader for u32 {{type item={value};}}\r\ncontrol call<t:reader>(reader<t>.item input) exits ready {{reader<t>.item value}} {{exit ready {{input}};}}"
         );
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(error["range"], selected_range(&source, value), "{report}");
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(first.diagnostic.code, code);
         assert_eq!(
             first.diagnostic.span.line,
@@ -5120,8 +5120,8 @@ fn associated_concrete_ranges_select_written_types_and_aliases() {
         let source = format!(
             "{prefix}\r\npub trait reader {{{declaration}}}\r\nimplement reader for u32 {{{assignments}}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(
             errors.len(),
@@ -5161,10 +5161,10 @@ fn associated_concrete_ranges_select_written_types_and_aliases() {
 #[test]
 fn associated_concrete_ranges_preserve_imports_and_generic_witnesses() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     for (value, code) in [
         ("vector< // 😀\r\n missing>", "E_MANIFEST"),
@@ -5173,22 +5173,22 @@ fn associated_concrete_ranges_preserve_imports_and_generic_witnesses() {
         let source = format!(
             "struct hidden {{u32 value;}}\r\npub trait reader {{type item;control read(self input) exits done;}}\r\nimplement reader for u32 {{type item={value};control read(self local) exits done {{exit done;}}}}\r\ncontrol call<t:reader>(t input) exits done {{reader<t>.read(input);exit done;}}"
         );
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(error["range"], selected_range(&source, value), "{report}");
         assert!(!report.to_string().contains("_path_poly_"));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(first.diagnostic.code, code);
         assert_eq!(
             first.diagnostic.span.line,
@@ -5198,8 +5198,8 @@ fn associated_concrete_ranges_preserve_imports_and_generic_witnesses() {
             first.diagnostic.end.as_ref().unwrap().column,
             error["range"]["end"]["column"].as_u64().unwrap() as usize
         );
-        f.write("worker.tellur", &source.replace(value, "u32"));
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", &source.replace(value, "u32"));
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -5313,8 +5313,8 @@ fn associated_instantiation_ranges_select_written_types_and_aliases() {
         let source = format!(
             "struct box<t> {{t value;}} {prefix}\r\ntrait reader {{{members}}}\r\nimplement reader for u32 {{{assignment}}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         assert_eq!(errors[0]["code"], "E_GENERIC", "{report}");
@@ -5349,32 +5349,32 @@ fn associated_instantiation_ranges_select_written_types_and_aliases() {
 #[test]
 fn associated_instantiation_ranges_preserve_imported_aliases_and_witnesses() {
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct box<t> {t value;}");
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("types.vn", "pub struct box<t> {t value;}");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let value = "types.box< // 😀\r\n u32,bool>";
     let source = format!(
-        "import \"types.tellur\" as types;\r\npub trait reader {{type item;control read(self input) exits done;}}\r\nimplement reader for u32 {{type item={value};control read(self local) exits done {{exit done;}}}}\r\ncontrol call<t:reader>(t input) exits done {{reader<t>.read(input);exit done;}}"
+        "import \"types.vn\" as types;\r\npub trait reader {{type item;control read(self input) exits done;}}\r\nimplement reader for u32 {{type item={value};control read(self local) exits done {{exit done;}}}}\r\ncontrol call<t:reader>(t input) exits done {{reader<t>.read(input);exit done;}}"
     );
-    f.write("worker.tellur", &source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("worker.vn", &source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let error = &report["diagnostics"][0];
     assert_eq!(error["code"], "E_GENERIC", "{report}");
     assert_eq!(
         error["path"],
-        f.root.join("worker.tellur").to_string_lossy().as_ref()
+        f.root.join("worker.vn").to_string_lossy().as_ref()
     );
     assert_eq!(error["range"], selected_range(&source, value), "{report}");
     assert!(!report.to_string().contains("_path_poly_"));
     let first = tellur::compile_file(
-        f.root.join("main.tellur"),
+        f.root.join("main.vn"),
         Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(first.path, f.root.join("worker.tellur"));
+    assert_eq!(first.path, f.root.join("worker.vn"));
     assert_eq!(first.diagnostic.code, "E_GENERIC");
     assert_eq!(
         first.diagnostic.span.line,
@@ -5384,8 +5384,8 @@ fn associated_instantiation_ranges_preserve_imported_aliases_and_witnesses() {
         first.diagnostic.end.as_ref().unwrap().column,
         error["range"]["end"]["column"].as_u64().unwrap() as usize
     );
-    f.write("worker.tellur", &source.replace(value, "types.box<u32>"));
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.write("worker.vn", &source.replace(value, "types.box<u32>"));
+    f.report(&["check", "main.vn", "--json"], true);
 }
 
 #[test]
@@ -5404,8 +5404,8 @@ fn associated_instantiation_ranges_preserve_declaration_signature_and_body_prior
         ),
     ] {
         let source = format!("{prefix}\r\n{base}");
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], "E_GENERIC", "{report}");
         let start = source.find(selected).unwrap();
@@ -5491,8 +5491,8 @@ fn implementation_target_ranges_select_complete_written_types() {
         let source = format!(
             "struct box<t> {{t value;}} trait source {{type item;}} trait reader {{}}\r\nimplement reader for {target} // outside\r\n{{}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         assert_eq!(errors[0]["code"], "E_TRAIT", "{report}");
@@ -5518,13 +5518,13 @@ fn implementation_target_ranges_select_complete_written_types() {
 fn implementation_target_ranges_preserve_imported_lookup_and_privacy() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub struct item {u32 value;} pub struct box<t> {t value;} struct hidden {u32 value;}",
     );
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     for (target, code) in [
         ("types.missing", "E_NAME"),
@@ -5533,23 +5533,23 @@ fn implementation_target_ranges_preserve_imported_lookup_and_privacy() {
         ("ref mutable types.item", "E_TRAIT"),
     ] {
         let source = format!(
-            "import \"types.tellur\" as types;\r\ntrait reader {{}}\r\nimplement reader for {target} {{}}"
+            "import \"types.vn\" as types;\r\ntrait reader {{}}\r\nimplement reader for {target} {{}}"
         );
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(error["range"], selected_range(&source, target), "{report}");
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(first.diagnostic.code, code);
         assert_eq!(
             first.diagnostic.span.line,
@@ -5559,8 +5559,8 @@ fn implementation_target_ranges_preserve_imported_lookup_and_privacy() {
             first.diagnostic.end.as_ref().unwrap().column,
             error["range"]["end"]["column"].as_u64().unwrap() as usize
         );
-        f.write("worker.tellur", &source.replace(target, "types.item"));
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", &source.replace(target, "types.item"));
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -5622,12 +5622,12 @@ fn implementation_target_ranges_keep_identity_coherence_and_member_priority() {
     }
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub trait reader {} pub struct item {u32 value;}",
     );
-    let source = "import \"types.tellur\" as types;\r\nimplement types.reader for types.item {}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let source = "import \"types.vn\" as types;\r\nimplement types.reader for types.item {}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     let error = &report["diagnostics"][0];
     assert_eq!(error["code"], "E_COHERENCE", "{report}");
     assert_eq!(error["position"], json!({"line":2,"column":1}));
@@ -5688,8 +5688,8 @@ fn implementation_trait_ranges_select_written_names_and_keep_core_first_errors()
         let source = format!(
             "trait reader {{}} control operation() exits done {{exit done;}}\r\nimplement {name} // outside\r\nfor u32 {{}}"
         );
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         assert_eq!(errors[0]["code"], code, "{report}");
@@ -5717,13 +5717,13 @@ fn implementation_trait_ranges_select_written_names_and_keep_core_first_errors()
 fn implementation_trait_ranges_preserve_imported_lookup_privacy_and_kinds() {
     let f = Fixture::new();
     f.write(
-        "types.tellur",
+        "types.vn",
         "pub trait reader {} trait hidden {} pub control operation() exits done {exit done;}",
     );
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     for (name, code) in [
         ("types.missing", "E_NAME"),
@@ -5734,15 +5734,15 @@ fn implementation_trait_ranges_preserve_imported_lookup_privacy_and_kinds() {
         ("absent", "E_TRAIT"),
     ] {
         let source = format!(
-            "import \"types.tellur\" as types;\r\nstruct local {{u32 value;}}\r\nimplement {name} for local {{}}"
+            "import \"types.vn\" as types;\r\nstruct local {{u32 value;}}\r\nimplement {name} for local {{}}"
         );
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(error["code"], code, "{report}");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         let at = source.find("implement ").unwrap() + "implement ".len();
         assert_eq!(
@@ -5751,11 +5751,11 @@ fn implementation_trait_ranges_preserve_imported_lookup_privacy_and_kinds() {
             "{report}"
         );
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(first.diagnostic.code, code);
         assert_eq!(
             first.diagnostic.span.line,
@@ -5766,10 +5766,10 @@ fn implementation_trait_ranges_preserve_imported_lookup_privacy_and_kinds() {
             error["range"]["end"]["column"].as_u64().unwrap() as usize
         );
         let fixed = format!(
-            "import \"types.tellur\" as types;struct local {{u32 value;}} implement types.reader for local {{}}"
+            "import \"types.vn\" as types;struct local {{u32 value;}} implement types.reader for local {{}}"
         );
-        f.write("worker.tellur", &fixed);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", &fixed);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -5795,20 +5795,17 @@ fn implementation_trait_ranges_keep_trait_target_member_and_coherence_priority()
     assert_eq!(error.code, "E_COHERENCE");
     assert!(error.end.is_none());
     let f = Fixture::new();
-    f.write("types.tellur", "pub trait reader {} trait hidden {}");
-    let source = "import \"types.tellur\" as types;implement types.hidden for types.missing {}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub trait reader {} trait hidden {}");
+    let source = "import \"types.vn\" as types;implement types.hidden for types.missing {}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_VISIBILITY");
     assert_eq!(
         report["diagnostics"][0]["range"],
         selected_range(source, "types.hidden")
     );
-    f.write(
-        "main.tellur",
-        &source.replace("types.hidden", "types.reader"),
-    );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("main.vn", &source.replace("types.hidden", "types.reader"));
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -5887,8 +5884,8 @@ fn trait_member_duplicate_ranges_select_identifiers_in_existing_check_order() {
             "trait reader {{type item;control read() exits done;}} implement reader for u32 {{control read() exits done {{exit done;}} control read() exits done {{exit done;}} type item=u32; type {marker}item=string;}}"
         ),
     ] {
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         let at = source.find(marker).unwrap() + marker.len();
@@ -5921,13 +5918,13 @@ fn trait_member_duplicate_ranges_select_identifiers_in_existing_check_order() {
 #[test]
 fn trait_member_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct wrapper {u32 value;}");
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("types.vn", "pub struct wrapper {u32 value;}");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    let valid = "import \"types.tellur\" as types;\r\npub trait reader {type item:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;control read(self local) exits done {string text=\"😀\";drop(text);exit done;}}\r\npub control work() exits done {reader<u32>.read(1);exit done;}";
+    let valid = "import \"types.vn\" as types;\r\npub trait reader {type item:copy;control read(self input) exits done;}\r\nimplement reader for u32 {type item=u32;control read(self local) exits done {string text=\"😀\";drop(text);exit done;}}\r\npub control work() exits done {reader<u32>.read(1);exit done;}";
     for (needle, replacement, selected) in [
         (
             "type item:copy;",
@@ -5951,8 +5948,8 @@ fn trait_member_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -5962,7 +5959,7 @@ fn trait_member_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
         assert_eq!(error["code"], "E_TRAIT", "{report}");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         let at = source.find(selected).unwrap();
         assert_eq!(
@@ -5970,11 +5967,11 @@ fn trait_member_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
             json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+4)})
         );
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(
             first.diagnostic.span.column,
             error["position"]["column"].as_u64().unwrap() as usize
@@ -5983,8 +5980,8 @@ fn trait_member_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
             first.diagnostic.end.unwrap().column,
             first.diagnostic.span.column + 4
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -6142,8 +6139,8 @@ fn trait_signature_duplicate_ranges_select_only_written_field_names() {
             } else {
                 format!("trait reader {{{signature};}}")
             };
-            f.write("main.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("main.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let errors = report["diagnostics"].as_array().unwrap();
             assert_eq!(errors.len(), 1, "{report}");
             let at = source.find(marker).unwrap() + marker.len();
@@ -6176,13 +6173,13 @@ fn trait_signature_duplicate_ranges_select_only_written_field_names() {
 #[test]
 fn trait_signature_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct wrapper {u32 value;}");
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("types.vn", "pub struct wrapper {u32 value;}");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    let valid = "import \"types.tellur\" as types;\r\npub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    let valid = "import \"types.vn\" as types;\r\npub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for (needle, replacement, selected) in [
         ("read(self input)", "read(self arg2,self arg2)", "arg2)"),
         (
@@ -6202,8 +6199,8 @@ fn trait_signature_duplicate_ranges_preserve_imported_coordinates_and_repairs() 
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -6213,7 +6210,7 @@ fn trait_signature_duplicate_ranges_preserve_imported_coordinates_and_repairs() 
         assert_eq!(error["code"], "E_TRAIT");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         let at = source.find(selected).unwrap();
         assert_eq!(
@@ -6221,11 +6218,11 @@ fn trait_signature_duplicate_ranges_preserve_imported_coordinates_and_repairs() 
             json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+4)})
         );
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(
             first.diagnostic.span.column,
             error["position"]["column"].as_u64().unwrap() as usize
@@ -6234,8 +6231,8 @@ fn trait_signature_duplicate_ranges_preserve_imported_coordinates_and_repairs() 
             first.diagnostic.end.as_ref().unwrap().column,
             first.diagnostic.span.column + 4
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -6281,10 +6278,10 @@ fn trait_signature_duplicate_ranges_keep_profile_phase_and_identity_priorities()
             .contains("unknown or unapplied")
     );
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct wrapper {u32 value;}");
-    let source = "import \"types.tellur\" as types;trait reader {control read(u32 item,types.missing item) exits done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub struct wrapper {u32 value;}");
+    let source = "import \"types.vn\" as types;trait reader {control read(u32 item,types.missing item) exits done;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -6396,8 +6393,8 @@ fn trait_exit_duplicate_ranges_select_complete_written_names() {
                 } else {
                     format!("trait reader {{{signature};}}")
                 };
-                f.write("main.tellur", &source);
-                let report = f.report(&["check", "main.tellur", "--json"], false);
+                f.write("main.vn", &source);
+                let report = f.report(&["check", "main.vn", "--json"], false);
                 let errors = report["diagnostics"].as_array().unwrap();
                 assert_eq!(errors.len(), 1, "{report}");
                 let at = source.find(marker).unwrap() + marker.len();
@@ -6427,10 +6424,10 @@ fn trait_exit_duplicate_ranges_select_complete_written_names() {
 #[test]
 fn trait_exit_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for (needle, replacement, selected) in [
@@ -6452,8 +6449,8 @@ fn trait_exit_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -6463,7 +6460,7 @@ fn trait_exit_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
         assert_eq!(error["code"], "E_TRAIT");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         let at = source.find("// selected\r\n ").unwrap() + "// selected\r\n ".len();
         assert!(source[at..].starts_with(selected));
@@ -6472,11 +6469,11 @@ fn trait_exit_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
             json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+selected.len())})
         );
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(
             json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
             error["position"]
@@ -6486,8 +6483,8 @@ fn trait_exit_duplicate_ranges_preserve_imported_coordinates_and_repairs() {
             json!({"line":end.line,"column":end.column}),
             error["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -6535,10 +6532,10 @@ fn trait_exit_duplicate_ranges_keep_profile_phase_and_identity_priorities() {
     assert_eq!(error.code, "E_COHERENCE");
     assert!(error.end.is_none());
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct wrapper {u32 value;}");
-    let source = "import \"types.tellur\" as types;trait reader {control read() exits done(types.missing item),done;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub struct wrapper {u32 value;}");
+    let source = "import \"types.vn\" as types;trait reader {control read() exits done(types.missing item),done;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -6654,8 +6651,8 @@ fn trait_inference_ranges_select_the_first_written_clause() {
             } else {
                 format!("trait reader {{control read() {contract} // trailing\r\n ;}}")
             };
-            f.write("main.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("main.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let errors = report["diagnostics"].as_array().unwrap();
             assert_eq!(errors.len(), 1, "{report}");
             assert_eq!(errors[0]["code"], "E_TRAIT_SIGNATURE");
@@ -6680,10 +6677,10 @@ fn trait_inference_ranges_select_the_first_written_clause() {
 #[test]
 fn trait_inference_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for (needle, replacement, selected) in [
@@ -6704,8 +6701,8 @@ fn trait_inference_ranges_preserve_imported_coordinates_and_repairs() {
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -6715,15 +6712,15 @@ fn trait_inference_ranges_preserve_imported_coordinates_and_repairs() {
         assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(error["range"], selected_range(&source, selected));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(
             json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
             error["position"]
@@ -6733,8 +6730,8 @@ fn trait_inference_ranges_preserve_imported_coordinates_and_repairs() {
             json!({"line":end.line,"column":end.column}),
             error["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -6790,10 +6787,11 @@ fn trait_inference_ranges_keep_structural_member_and_identity_priorities() {
     assert_eq!(error.code, "E_COHERENCE");
     assert!(error.end.is_none());
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct wrapper {u32 value;}");
-    let source = "import \"types.tellur\" as types;trait reader {control read(types.missing item) exits auto;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub struct wrapper {u32 value;}");
+    let source =
+        "import \"types.vn\" as types;trait reader {control read(types.missing item) exits auto;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -6859,8 +6857,8 @@ fn trait_inference_ranges_leave_public_private_and_parser_rules_separate() {
     let f = Fixture::new();
     for contract in ["exits auto", "exits ready..."] {
         let source = format!("pub control ordinary() {contract} {{exit ready(1);}}");
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         assert_eq!(report["diagnostics"][0]["code"], "E_PUBLIC_CONTRACT");
         assert_eq!(
             report["diagnostics"][0]["range"],
@@ -6874,8 +6872,8 @@ fn trait_inference_ranges_leave_public_private_and_parser_rules_separate() {
             )
         );
         let private = source.replace("pub ", "");
-        f.write("main.tellur", &private);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("main.vn", &private);
+        f.report(&["check", "main.vn", "--json"], true);
     }
     for source in [
         "trait reader {control read() exits ready...;}",
@@ -6908,8 +6906,8 @@ fn trait_generic_profile_ranges_select_complete_written_clauses() {
             } else {
                 format!("trait reader {{{signature};}}")
             };
-            f.write("main.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("main.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let errors = report["diagnostics"].as_array().unwrap();
             assert_eq!(errors.len(), 1, "{report}");
             assert_eq!(errors[0]["code"], "E_TRAIT_SIGNATURE");
@@ -6934,13 +6932,13 @@ fn trait_generic_profile_ranges_select_complete_written_clauses() {
 #[test]
 fn trait_generic_profile_ranges_preserve_imported_bounds_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("caps.tellur", "pub trait capable {}");
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("caps.vn", "pub trait capable {}");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
-    let valid = "import \"caps.tellur\" as caps;\r\npub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
+    let valid = "import \"caps.vn\" as caps;\r\npub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for (needle, replacement, selected) in [
         (
             "read(self input)",
@@ -6959,8 +6957,8 @@ fn trait_generic_profile_ranges_preserve_imported_bounds_coordinates_and_repairs
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -6970,15 +6968,15 @@ fn trait_generic_profile_ranges_preserve_imported_bounds_coordinates_and_repairs
         assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(error["range"], selected_range(&source, selected));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(
             json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
             error["position"]
@@ -6988,8 +6986,8 @@ fn trait_generic_profile_ranges_preserve_imported_bounds_coordinates_and_repairs
             json!({"line":end.line,"column":end.column}),
             error["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -7034,23 +7032,24 @@ fn trait_generic_profile_ranges_keep_inference_member_and_identity_priorities() 
     assert_eq!(error.code, "E_COHERENCE");
     assert!(error.end.is_none());
     let f = Fixture::new();
-    f.write("caps.tellur", "pub trait capable {}");
+    f.write("caps.vn", "pub trait capable {}");
     f.write(
-        "main.tellur",
-        "import \"caps.tellur\" as caps;trait reader {control read<t:caps.missing>() exits auto;}",
+        "main.vn",
+        "import \"caps.vn\" as caps;trait reader {control read<t:caps.missing>() exits auto;}",
     );
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_TRAIT_SIGNATURE");
     assert_eq!(
         report["diagnostics"][0]["range"],
         selected_range(
-            "import \"caps.tellur\" as caps;trait reader {control read<t:caps.missing>() exits auto;}",
+            "import \"caps.vn\" as caps;trait reader {control read<t:caps.missing>() exits auto;}",
             "<t:caps.missing>"
         )
     );
-    let source = "import \"caps.tellur\" as caps;trait reader {control read<t>(caps.missing item) exits auto;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    let source =
+        "import \"caps.vn\" as caps;trait reader {control read<t>(caps.missing item) exits auto;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -7107,8 +7106,8 @@ fn trait_generic_profile_ranges_keep_independent_batches_and_limits() {
 fn trait_generic_profile_ranges_leave_ordinary_generics_and_parser_barriers_separate() {
     let f = Fixture::new();
     let source = "control identity<t>(t value) exits ready(t result) {exit ready(move value);} control main() exits auto {forward identity<u32>(1);}";
-    f.write("main.tellur", source);
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.write("main.vn", source);
+    f.report(&["check", "main.vn", "--json"], true);
     for (source, code, message) in [
         (
             "trait reader {region read<t>() exits done;}",
@@ -7153,8 +7152,8 @@ fn trait_legacy_profile_ranges_select_only_the_authored_keyword() {
             } else {
                 format!("trait reader {{{signature};}}")
             };
-            f.write("main.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("main.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let errors = report["diagnostics"].as_array().unwrap();
             assert_eq!(errors.len(), 1, "{report}");
             assert_eq!(errors[0]["code"], "E_TRAIT_SIGNATURE");
@@ -7180,10 +7179,10 @@ fn trait_legacy_profile_ranges_select_only_the_authored_keyword() {
 #[test]
 fn trait_legacy_profile_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let valid = "pub trait reader {@contingent control read(self input) exits done;}\r\nimplement reader for u32 {@contingent control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {@contingent control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for name in ["input", "first", "second"] {
@@ -7191,8 +7190,8 @@ fn trait_legacy_profile_ranges_preserve_imported_coordinates_and_repairs() {
             &format!("control read(self {name})"),
             &format!("region // 😀\r\n read(self {name})"),
         );
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let error = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -7202,15 +7201,15 @@ fn trait_legacy_profile_ranges_preserve_imported_coordinates_and_repairs() {
         assert_eq!(error["code"], "E_TRAIT_SIGNATURE");
         assert_eq!(
             error["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(error["range"], selected_range(&source, "region"));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         assert_eq!(
             json!({"line":first.diagnostic.span.line,"column":first.diagnostic.span.column}),
             error["position"]
@@ -7220,8 +7219,8 @@ fn trait_legacy_profile_ranges_preserve_imported_coordinates_and_repairs() {
             json!({"line":end.line,"column":end.column}),
             error["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -7265,10 +7264,11 @@ fn trait_legacy_profile_ranges_keep_profile_member_and_identity_priorities() {
         "E_COHERENCE"
     );
     let f = Fixture::new();
-    f.write("types.tellur", "pub struct wrapper {u32 value;}");
-    let source = "import \"types.tellur\" as types;trait reader {region read(types.missing item) exits auto;}";
-    f.write("main.tellur", source);
-    let report = f.report(&["check", "main.tellur", "--json"], false);
+    f.write("types.vn", "pub struct wrapper {u32 value;}");
+    let source =
+        "import \"types.vn\" as types;trait reader {region read(types.missing item) exits auto;}";
+    f.write("main.vn", source);
+    let report = f.report(&["check", "main.vn", "--json"], false);
     assert_eq!(report["diagnostics"][0]["code"], "E_NAME");
     assert_eq!(
         report["diagnostics"][0]["range"],
@@ -7279,11 +7279,8 @@ fn trait_legacy_profile_ranges_keep_profile_member_and_identity_priorities() {
 #[test]
 fn trait_legacy_profile_ranges_keep_ordinary_legacy_and_parser_barriers_separate() {
     let f = Fixture::new();
-    f.write(
-        "main.tellur",
-        "region main() exits Done {[Entry]: exit Done;}",
-    );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.write("main.vn", "region main() exits Done {[Entry]: exit Done;}");
+    f.report(&["check", "main.vn", "--json"], true);
     for (source, code) in [
         ("trait reader {region read<t>() exits auto;}", "E_GENERIC"),
         ("trait reader {region read() exits ready...;}", "E_PARSE"),
@@ -7371,8 +7368,8 @@ fn implementation_async_ranges_select_extra_or_missing_modifier_locations() {
             let source = format!(
                 "trait reader {{@contingent {declaration} read() exits done;}} implement reader for u32 {{{prefix}{implementation} // trailing\r\n read() exits done {{exit done;}}}}"
             );
-            f.write("main.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("main.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let errors = report["diagnostics"].as_array().unwrap();
             assert_eq!(errors.len(), 1, "{report}");
             let e = &errors[0];
@@ -7403,10 +7400,10 @@ fn implementation_async_ranges_select_extra_or_missing_modifier_locations() {
 #[test]
 fn implementation_async_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let valid = "pub trait a_sync {@contingent control read(self input) exits done;} pub trait b_async {async control read(self input) exits done;}\r\nimplement a_sync for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement b_async for string {async control read(self second) exits done {exit done;}}\r\npub control work() exits done {a_sync<u32>.read(1);run b_async<string>.read(\"x\");exit done;}";
     for (needle, replacement, selected, width) in [
@@ -7424,8 +7421,8 @@ fn implementation_async_ranges_preserve_imported_coordinates_and_repairs() {
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let e = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -7435,7 +7432,7 @@ fn implementation_async_ranges_preserve_imported_coordinates_and_repairs() {
         assert_eq!(e["code"], "E_ASYNC");
         assert_eq!(
             e["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         let at = source.find(selected).unwrap();
         assert_eq!(
@@ -7443,18 +7440,18 @@ fn implementation_async_ranges_preserve_imported_coordinates_and_repairs() {
             json!({"start":scalar_position(&source,at),"end":scalar_position(&source,at+width)})
         );
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         let end = first.diagnostic.end.as_ref().unwrap();
         assert_eq!(
             json!({"line":end.line,"column":end.column}),
             e["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -7615,8 +7612,8 @@ fn implementation_fault_ranges_select_suffix_and_fault_only_keywords() {
             let source = format!(
                 "trait reader {{control read() exits done;}} implement reader for u32 {{{prefix}control read() {contract}}}"
             );
-            f.write("main.tellur", &source);
-            let report = f.report(&["check", "main.tellur", "--json"], false);
+            f.write("main.vn", &source);
+            let report = f.report(&["check", "main.vn", "--json"], false);
             let errors = report["diagnostics"].as_array().unwrap();
             assert_eq!(errors.len(), 1, "{report}");
             let e = &errors[0];
@@ -7642,10 +7639,10 @@ fn implementation_fault_ranges_select_suffix_and_fault_only_keywords() {
 #[test]
 fn implementation_fault_ranges_preserve_imported_forms_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let valid = "pub trait reader {@contingent control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for (needle, replacement) in [
@@ -7659,8 +7656,8 @@ fn implementation_fault_ranges_preserve_imported_forms_coordinates_and_repairs()
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let e = &report["diagnostics"][0];
         assert_eq!(
             report["diagnostics"].as_array().unwrap().len(),
@@ -7670,22 +7667,22 @@ fn implementation_fault_ranges_preserve_imported_forms_coordinates_and_repairs()
         assert_eq!(e["code"], "E_FAULT_CONTRACT");
         assert_eq!(
             e["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(e["range"], selected_range(&source, "faults"));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         let end = first.diagnostic.end.as_ref().unwrap();
         assert_eq!(
             json!({"line":end.line,"column":end.column}),
             e["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -7805,10 +7802,10 @@ fn implementation_fault_ranges_keep_inherited_permissions_and_ordinary_fault_err
     assert!(!e.message.contains("implementation cannot"));
     let f = Fixture::new();
     f.write(
-        "main.tellur",
+        "main.vn",
         "control work() faults {fault \"declared\";} control main() exits done {exit done;}",
     );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
     for source in [
         "trait reader {region read() faults;}",
         "trait reader {control read() exits done faults faults;}",
@@ -7854,8 +7851,8 @@ fn implementation_contingent_ranges_select_written_annotations() {
     ] {
         let source =
             format!("trait reader {{{declaration}}} implement reader for u32 {{{implementation}}}");
-        f.write("main.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("main.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         let e = &errors[0];
@@ -7880,10 +7877,10 @@ fn implementation_contingent_ranges_select_written_annotations() {
 #[test]
 fn implementation_contingent_ranges_preserve_imported_coordinates_and_repairs() {
     let f = Fixture::new();
-    f.write("middle.tellur", "import \"worker.tellur\" as worker;");
+    f.write("middle.vn", "import \"worker.vn\" as worker;");
     f.write(
-        "main.tellur",
-        "import \"middle.tellur\" as middle;control main() exits done {exit done;}",
+        "main.vn",
+        "import \"middle.vn\" as middle;control main() exits done {exit done;}",
     );
     let valid = "pub trait reader {control read(self input) exits done;}\r\nimplement reader for u32 {control read(self first) exits done {string note=\"😀\";drop(note);exit done;}} implement reader for string {control read(self second) exits done {exit done;}}\r\npub control work() exits done {reader<u32>.read(1);reader<string>.read(\"x\");exit done;}";
     for (needle, replacement, selected) in [
@@ -7909,8 +7906,8 @@ fn implementation_contingent_ranges_preserve_imported_coordinates_and_repairs() 
         ),
     ] {
         let source = valid.replace(needle, replacement);
-        f.write("worker.tellur", &source);
-        let report = f.report(&["check", "main.tellur", "--json"], false);
+        f.write("worker.vn", &source);
+        let report = f.report(&["check", "main.vn", "--json"], false);
         let errors = report["diagnostics"].as_array().unwrap();
         assert_eq!(errors.len(), 1, "{report}");
         let e = &errors[0];
@@ -7922,22 +7919,22 @@ fn implementation_contingent_ranges_preserve_imported_coordinates_and_repairs() 
         assert_eq!(e["code"], code);
         assert_eq!(
             e["path"],
-            f.root.join("worker.tellur").to_string_lossy().as_ref()
+            f.root.join("worker.vn").to_string_lossy().as_ref()
         );
         assert_eq!(e["range"], selected_range(&source, selected));
         let first = tellur::compile_file(
-            f.root.join("main.tellur"),
+            f.root.join("main.vn"),
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(first.path, f.root.join("worker.tellur"));
+        assert_eq!(first.path, f.root.join("worker.vn"));
         let end = first.diagnostic.end.as_ref().unwrap();
         assert_eq!(
             json!({"line":end.line,"column":end.column}),
             e["range"]["end"]
         );
-        f.write("worker.tellur", valid);
-        f.report(&["check", "main.tellur", "--json"], true);
+        f.write("worker.vn", valid);
+        f.report(&["check", "main.vn", "--json"], true);
     }
 }
 
@@ -8070,10 +8067,10 @@ fn implementation_contingent_ranges_keep_inherited_subsets_and_ordinary_continge
     assert!(!e.message.contains("trait contingency subset"));
     let f = Fixture::new();
     f.write(
-        "main.tellur",
+        "main.vn",
         "@contingent // kept\n control work() exits done {exit done;} control main() exits done {work();exit done;}",
     );
-    f.report(&["check", "main.tellur", "--json"], true);
+    f.report(&["check", "main.vn", "--json"], true);
     for source in [
         "trait reader {control read() exits done;} implement reader for u32 {@contingent @contingent control read() exits done {exit done;}}",
         "trait reader {control read() exits done;} implement reader for u32 {@ control read() exits done {exit done;}}",

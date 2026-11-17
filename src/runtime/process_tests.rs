@@ -4,7 +4,7 @@ use super::*;
 
 fn program(expanded: bool) -> CheckedProgram {
     let mut program = crate::compile(
-        include_str!("../../tests/fixtures/process_retained.tellur"),
+        include_str!("../../tests/fixtures/process_retained.vn"),
         Manifest::from_json(include_str!("../../playground/manifest.json")).unwrap(),
     )
     .unwrap();

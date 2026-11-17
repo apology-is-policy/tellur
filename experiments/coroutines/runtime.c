@@ -6,7 +6,7 @@
 // sticky cancellation inherited by later descendants; cancellation observed only
 // by cancellable operations, which then stop without an event; joins never
 // interrupt. The runtime owns scheduling, readiness and cancellation; frames
-// own only the control state of their Tellur control.
+// own only the control state of their Villanelle control.
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>

@@ -14,8 +14,8 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-const NORMAL: &str = include_str!("../playground/boundary_helpers.tellur");
-const FAULT: &str = include_str!("fixtures/source_boundary_helper_fault.tellur");
+const NORMAL: &str = include_str!("../playground/boundary_helpers.vn");
+const FAULT: &str = include_str!("fixtures/source_boundary_helper_fault.vn");
 
 fn observed(text: &str, messages: &[&str], status: Option<u8>) {
     let p = compile(text, manifest()).unwrap();
@@ -277,7 +277,7 @@ fn contingencies_keep_async_invocation_and_transitive_handoffs_unavailable() {
 #[test]
 fn awaited_local_recovery_finishes_contingency_before_an_unrelated_sibling() {
     observed(
-        include_str!("../playground/local_recovery_tasks.tellur"),
+        include_str!("../playground/local_recovery_tasks.vn"),
         &[
             "outside active",
             "inner active",
@@ -291,7 +291,7 @@ fn awaited_local_recovery_finishes_contingency_before_an_unrelated_sibling() {
     );
 }
 
-const HANDOFF: &str = include_str!("../playground/boundary_handoff_tasks.tellur");
+const HANDOFF: &str = include_str!("../playground/boundary_handoff_tasks.vn");
 #[test]
 fn boundary_handoffs_preserve_local_recovery_child_ownership_and_result_origins() {
     observed(

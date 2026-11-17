@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/outcome_chain_spawn.tellur");
-const GUARDS: &str = include_str!("fixtures/source_outcome_chain_guards.tellur");
+const SOURCE: &str = include_str!("../playground/outcome_chain_spawn.vn");
+const GUARDS: &str = include_str!("fixtures/source_outcome_chain_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -241,7 +241,7 @@ await l;drop(left);consume(first);a="free";await r;drop(right);consume(second);b
 }
 #[test]
 fn joined_and_unjoined_outcome_fault_results_settle_before_contingency() {
-    let s = include_str!("fixtures/source_outcome_chain_fault.tellur");
+    let s = include_str!("fixtures/source_outcome_chain_fault.vn");
     let joined = s
         .replace(
             "    yield;\n    yield;\n    delta await result",
@@ -283,7 +283,7 @@ fn owning_handling_survives_active_empty_and_shared_inspection() {
 }
 #[test]
 fn nested_outcome_chains_keep_each_owning_obligation() {
-    let s = include_str!("fixtures/source_outcome_chain_nested.tellur");
+    let s = include_str!("fixtures/source_outcome_chain_nested.vn");
     assert_eq!(run(s), ["nested"]);
     rejects(&s.replace("consume(saved);", ""), "E_OUTCOME");
     rejects(
@@ -314,7 +314,7 @@ fn nested_outcome_chains_keep_each_owning_obligation() {
 }
 #[test]
 fn owned_outcome_chain_roots_transfer_handling_through_repeated_joins() {
-    let s = include_str!("fixtures/source_outcome_chain_owned.tellur");
+    let s = include_str!("fixtures/source_outcome_chain_owned.vn");
     assert_eq!(run(s), ["owned"]);
     rejects(&s.replace("consume(saved);", ""), "E_OUTCOME");
     rejects(

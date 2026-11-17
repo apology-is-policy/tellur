@@ -69,7 +69,7 @@ failed diagnostic context cannot leave a partially installed invocation.
 Ordinary synchronous calls use both steps immediately. This provides a concrete
 handoff point for later deferred execution; it is not yet a source task. The handoff
 has no scheduler, public task type, captured-loan checker or cancellation contract.
-Host simulation disposal must not be treated as permission to drop a Tellur task.
+Host simulation disposal must not be treated as permission to drop a Villanelle task.
 The source entry form is `run`; E1c subsequently added checked cold captures and
 consuming await around this internal admission handoff.
 
@@ -93,7 +93,7 @@ executions still start from ID 1; completed calls do not accumulate a history.
 Existing sequential reference/native report IDs retain their order.
 
 The counter orders identity allocation only. Its atomic implementation does not
-make Tellur programs concurrent, publish their memory effects, prescribe scheduling,
+make Villanelle programs concurrent, publish their memory effects, prescribe scheduling,
 introduce a task ID, or define spawn/await ancestry. A frozen failed tracker cannot
 resume, even if another tracker in that identity family can still allocate IDs.
 The executor decides which execution contexts may run.
@@ -588,7 +588,7 @@ unretained resources settle before the compiled handler starts. The aborted call
 no normal delivery. A handler fault or escalation leaves its boundary and can enter an
 outer contingency, without reentering the same handler. Host failures bypass handlers.
 
-The [boundary fixture](../tests/fixtures/native_resume_boundaries.tellur) combines guarded
+The [boundary fixture](../tests/fixtures/native_resume_boundaries.vn) combines guarded
 boundary admission, normal fallthrough, loop transfers across boundaries, expanded
 nested completion, borrowed cold awaits and repeated recovery. Separate cases compare
 nested handler faults/escalation and process status. Original/expanded O0/O2 builds
@@ -625,7 +625,7 @@ and escalation finalize the same named record before reaching an outer named or 
 boundary. Ordinary host failures finalize the record without entering contingency. Named
 work and handlers remain unavailable as public entry controls.
 
-The [supervision fixture](../tests/fixtures/native_resume_supervision.tellur) combines
+The [supervision fixture](../tests/fixtures/native_resume_supervision.vn) combines
 guarded supervision, nested named and lexical boundaries, a repeated request loop,
 borrowed cold awaits, retained context and a contingent helper call. Differential cases
 also cover nested named handler faults/escalation and real retained Rust owners. Each
@@ -658,7 +658,7 @@ quota does not select or advance a context. Each root has an explicit resource s
 failure retires its frames and stranded temporary owners, while another root's owners
 remain live. Normal completion promotes outgoing owners out of the retired root scope.
 
-The [context fixture](../tests/fixtures/native_contexts.tellur) runs separate left/right
+The [context fixture](../tests/fixtures/native_contexts.vn) runs separate left/right
 roots with nested named/lexical boundaries, borrowed cold awaits, handler escalation
 and a shared scripted input stream. Original and explicitly expanded control/handler
 bodies run at O0/O2 in both harness orders and three quota partitions, at every shared
@@ -673,7 +673,7 @@ root can still borrow and consume its own resources. The final registry, frame a
 and parked-context table are empty. Existing single-chain call/constructor and resource
 comparisons cover the shared test harness extraction and generated-source embedding.
 
-This is explicit test harness interleaving of independent roots, not Tellur `spawn` or
+This is explicit test harness interleaving of independent roots, not Villanelle `spawn` or
 quota-based source scheduling. At a fuel cutoff the harness records remaining scripted
 inputs instead of applying the launcher's single-root unused-script check; production
 launch behavior is unchanged. It does not yet stop sibling contexts in one owning fault
@@ -761,7 +761,7 @@ body. The owning handler sees the original child report as its cause; a locally 
 child fault leaves the enclosing domain and other children intact. Handler execution
 does not reopen the stopped domain to new child admission.
 
-The [resource fixture](../tests/fixtures/native_siblings.tellur) exercises a retained
+The [resource fixture](../tests/fixtures/native_siblings.vn) exercises a retained
 named owner, a sibling paused inside nested named/lexical work, a descendant borrowing
 the inner owner, an admitted but unrun owned capture, and an unrelated root. Its explicit
 harness checks both normal joins and child-fault settlement over three repeated rounds,
@@ -1267,7 +1267,7 @@ Delivery validates the owner, open domain and one-use wait before taking the pay
 Missing storage, foreign owners, crossed waits and repeated delivery cannot consume
 another retained result. Completed work still prevents normal owner retirement.
 
-Two tests use [a checked fixture](../tests/fixtures/task_completion_model.tellur)
+Two tests use [a checked fixture](../tests/fixtures/task_completion_model.vn)
 before and after expansion. Twenty-four normal combinations vary join timing, join
 order and host quota, retaining moved strings and exclusive borrowed results after
 both child frames disappear. Owning-stop cases reject normal delivery, retire the
@@ -1370,7 +1370,7 @@ termination drains all retained results before remaining executable contexts and
 status delivery, closing late join and selection admission.
 
 The [compiled regression](../src/native/result_model_tests.rs) runs the
-[checked fixture](../tests/fixtures/native_results.tellur) before/after expansion at
+[checked fixture](../tests/fixtures/native_results.vn) before/after expansion at
 O0/O2 with three quota partitions. Both join orders, an owning fault before/after a
 join, and process termination check exact Rust creation/borrow/close/destruction logs.
 Returned borrows resolve against the still-live supplier after child frames retire.
@@ -1796,7 +1796,7 @@ and delivery reject. Administrative process termination also retires mixed trees
 
 Host tests compare exact direct/retained fault reports, long messages, events and fuel
 at every cutoff. Resource probes check destruction order across each await phase.
-The [compiled fixture](../tests/fixtures/native_mixed_await.tellur) uses generated
+The [compiled fixture](../tests/fixtures/native_mixed_await.vn) uses generated
 callbacks for nested borrowed cold awaits, lexical recovery and an escaping child
 fault. Original/expanded O0/O2 runs compare full observations across quota partitions.
 The explicit harness admits the independent child; this is not source `spawn` syntax.
@@ -1832,7 +1832,7 @@ signals and callbacks, and preserve one-use delivery without additional source f
 Host comparisons cover exact reports with sites/identities, nested synchronous calls,
 lexical work and active handlers, owned/borrowed result order, atomic admission failure,
 shared fuel exhaustion and process stop. The
-[compiled owner-await fixture](../tests/fixtures/native_owner_await.tellur) exercises
+[compiled owner-await fixture](../tests/fixtures/native_owner_await.vn) exercises
 lexical and named boundary work/handlers, completed results and pending callback
 delivery before a sibling fault. Original/expanded O0/O2 runs preserve the complete
 owning fault report across stop phases and all observations across quota partitions.
@@ -2053,7 +2053,7 @@ three admission routes, readiness, retained results and unknown-metadata executi
 Admission-rejection tests now compare capture descriptions, and the pending-delivery
 case verifies that join does not lose them. Three generated probes query all selected
 contexts across original/expanded O0/O2 runs and quota partitions, including the
-[runnable carrier example](../playground/carrier_tasks.tellur). Its detached result
+[runnable carrier example](../playground/carrier_tasks.vn). Its detached result
 still permits carrier retirement after await, with unchanged effects and outcomes.
 Existing fault/process and real-resource models cover emergency retirement.
 
@@ -2067,7 +2067,7 @@ suspending disposal, async adapters and LLVM coroutine lowering remain separate 
 
 The acceptance audit runs on compiler 0.145; guard transport into native dependency
 metadata remains in progress. The
-[guarded capture example](../playground/guarded_task_captures.tellur) detaches an
+[guarded capture example](../playground/guarded_task_captures.vn) detaches an
 exclusive field through an ordinary control, then reborrows it into a moved cold task.
 Its completion still protects both the external owner and the carrier. A shared
 reborrow of that exclusive field also retains the carrier guard. A copied shared
@@ -2481,7 +2481,7 @@ rejecting holder movement, pointee writes and writes to another field of the bro
 guarded holder, with live, waiting and completed children. No ordinary driver or
 retirement check is relaxed.
 
-The [runnable local example](../playground/local_guarded_tasks.tellur) exercises direct
+The [runnable local example](../playground/local_guarded_tasks.vn) exercises direct
 local detachment, a cold task, borrowed result delivery and later owner reuse. Generated
 original/expanded O0/O2 probes require complete guarded capture and pending delivery,
 nonvacuous disjoint batch admission and equal source observations across quota partitions.
@@ -2524,7 +2524,7 @@ incoming evidence at every reachable leaf. Returned permission-family descriptio
 still make result delivery partial. Such delivery stays blocked for disjoint host
 admission; it never inherits completeness merely from an earlier complete capture.
 
-The [runnable local carrier example](../playground/local_carrier_tasks.tellur) retains two
+The [runnable local carrier example](../playground/local_carrier_tasks.vn) retains two
 stored references through a cold task and reuses their owners after await. Original and
 expanded O0/O2 generated executions check complete nonempty captures, retained dependencies
 through completion delivery, disjoint batch progress and unchanged source observations
@@ -2568,7 +2568,7 @@ holder movement and another holder field while admitting disjoint work. The same
 hold for live, readiness-waiting and completed children, with rejection leaving state
 unchanged and normal retirement preserved.
 
-The [runnable alias example](../playground/aliased_carrier_tasks.tellur) moves a local
+The [runnable alias example](../playground/aliased_carrier_tasks.vn) moves a local
 exclusive carrier alias, takes a shared projected reborrow and passes it to a cold task.
 Original/expanded O0/O2 runs require complete nonempty capture and retained delivery,
 checked disjoint host batches and source-observation parity across quota partitions.
@@ -2641,7 +2641,7 @@ of caller annotations. A copied shared reference permits holder release, while b
 pointee writes stay blocked across live, waiting and completed children. Partial inputs
 keep admission inconclusive and unchanged.
 
-The [incoming leaf example](../playground/incoming_leaf_tasks.tellur) uses borrowed and
+The [incoming leaf example](../playground/incoming_leaf_tasks.vn) uses borrowed and
 owned input records, direct projections, moved shared aliases and borrowed task results.
 The owned holder is dropped before the child is awaited. Original/expanded O0/O2 models
 require complete captures and pending deliveries for this program, then inject partial
@@ -2719,7 +2719,7 @@ fresh borrower census, conservative overlap, exact invocation/domain authority a
 preflights still apply. Shared copied fields remain holder-free. Whole incoming carrier
 closure, grouped/returned/conditional/tagged/nested-reference and other unsupported ancestry
 remain conservative. Source spawn/yield, cancellation, async adapters/disposal and direct LLVM
-coroutine lowering are unchanged. Run `playground/guarded_input_tasks.tellur` for direct and
+coroutine lowering are unchanged. Run `playground/guarded_input_tasks.vn` for direct and
 aliased leaves whose owners become available again after task completion and holder release.
 
 ## Complete incoming carriers (E1d.2d.3s.15)
@@ -2749,7 +2749,7 @@ the selected carrier and broad caller ancestry. Partial operand, holder, origina
 stored sibling evidence stays partial. Missing, changed, foreign, stale or over-budget
 evidence becomes unavailable without source effects or admission authority.
 
-The source example `playground/incoming_carrier_tasks.tellur` forwards a whole received
+The source example `playground/incoming_carrier_tasks.vn` forwards a whole received
 carrier and projects it through direct and moved shared aliases. Owners become available
 again after completion and holder release. Original/expanded O0/O2 models inspect complete
 captures and pending delivery, inject partial field evidence and retain the same observations
@@ -2785,7 +2785,7 @@ remain separate operations. Returned payload delivery receives a fresh access/ce
 it neither reevaluates the await nor consumes source fuel. Normal parent frame, loop and
 boundary retirement still requires all retained children/results to retire.
 
-The runnable `playground/owner_await_progress.tellur` performs local work before a cold await.
+The runnable `playground/owner_await_progress.vn` performs local work before a cold await.
 A generated harness admits a borrowed sibling after cold creation, then runs the same parent
 callbacks through preparation with live, waiting or completed siblings. Original/expanded
 O0/O2 observations match reference execution across quota partitions. Existing lexical/named
@@ -2821,7 +2821,7 @@ completed borrowed results settle before owning contingency or process retiremen
 the existing resource dispositions. Borrowed argument/result storage stays live across
 nested direct and cold awaits. Expansion preserves the explicit async operation.
 
-`playground/direct_await.tellur` demonstrates direct awaits around cold awaits, cold awaits
+`playground/direct_await.vn` demonstrates direct awaits around cold awaits, cold awaits
 around direct awaits, and borrowing a whole record before receiving a reference to its
 stored owner. Generated original/expanded O0/O2 probes observe the actual handoffs, pending
 poll stability and one-use results. Native/reference comparisons cover fault reports and
@@ -3005,7 +3005,7 @@ that compatibility across releases is not guaranteed. E2 will pin a toolchain ra
 than treating the host Rust compiler's LLVM backend as direct coroutine lowering.
 [LLVM coroutine documentation](https://llvm.org/docs/Coroutines.html).
 
-Tellur's design responsibility is to establish when a frame is quiescent and its
+Villanelle's design responsibility is to establish when a frame is quiescent and its
 children, references and resource obligations are settled before native destruction.
 This is a language/runtime requirement, not a cleanup guarantee supplied by an
 intrinsic. Keep normal result delivery, cancellation and source-fault settlement as
@@ -3031,7 +3031,7 @@ suspended/completed siblings without running their nested handlers.
 This extends source call admission only. Borrowed spawn, fault-boundary crossing,
 parent cold/direct awaits with children and public task escape remain gated. Existing
 host APIs keep their stricter selection permissions. See the runnable
-[structured helpers example](../playground/structured_helpers.tellur).
+[structured helpers example](../playground/structured_helpers.vn).
 
 ## Spawned producer stop obligations (E1e.3)
 
@@ -3596,7 +3596,7 @@ and recovered work continue until an explicit `await` or `yield`. Neither fault
 settlement nor a host quota silently gives an unaffected sibling a turn. Direct
 host context APIs retain their existing polling behavior.
 
-The legal [local recovery example](../playground/local_recovery_tasks.tellur)
+The legal [local recovery example](../playground/local_recovery_tasks.vn)
 reproduced the defect on 0.187: native execution printed `outside finished` before
 `local recovery`, while the reference executor recovered first. The corrected
 native program agrees with the reference across original/expanded IR, O0/O2,
@@ -3634,7 +3634,7 @@ resource shapes retain original/expanded O0/O2, all-fuel and host-quota comparis
 Private reference census checks cover the same contexts and the public example.
 Native and reference runtime implementations are unchanged from 0.188.
 
-[The runnable example](../playground/boundary_handoff_tasks.tellur) combines a named
+[The runnable example](../playground/boundary_handoff_tasks.vn) combines a named
 helper fault/recovery, a lexical handoff, a live borrowed child and a borrowed parent
 result. Shared/exclusive results, owned child wrappers, concrete generic/trait calls
 and imported public contracts preserve existing loan and outcome obligations.
@@ -3724,7 +3724,7 @@ The broader E1 cancellation and cleanup acceptance specimen remains open.
 
 ## Generated pending operation delivery model (E1f.2b)
 
-[The generated fixture](../tests/fixtures/native_pending_operation.tellur) calls a
+[The generated fixture](../tests/fixtures/native_pending_operation.vn) calls a
 real Rust adapter through checked source. A private compiler-test hook changes only
 its `sample` decision into operation creation plus later declared-arm delivery.
 The ordinary emitter still handles its argument expressions, guards, program
@@ -3759,7 +3759,7 @@ and source/manifest admission remain separate from these private models.
 
 ## Generated pending operation fault settlement (E1f.2c)
 
-[The fault fixture](../tests/fixtures/native_pending_fault.tellur) has two borrowed
+[The fault fixture](../tests/fixtures/native_pending_fault.vn) has two borrowed
 operations inside nested scopes. One supplier lives inside a lexical boundary;
 the other lives inside a lexical boundary beneath named supervision, whose retained
 owner must also retire. A separate owning boundary holds its own resource and
@@ -3804,7 +3804,7 @@ checks. Cancellation and fallible or suspending cleanup remain separate design w
 
 The [private source-operation model](../src/runtime/source_operation_model.rs)
 connects retained operations to the reference source scheduler's existing FIFO,
-started joins, cold awaits and fault routing. Its [fixture](../tests/fixtures/source_pending_operation.tellur)
+started joins, cold awaits and fault routing. Its [fixture](../tests/fixtures/source_pending_operation.vn)
 awaits adapter shims from three spawned branches. Two belong to a supervised
 request; the third belongs to an outside invocation and must survive that request's
 fault. Each shim retains a mutable supplier through a lexical helper boundary.
@@ -3860,7 +3860,7 @@ hands its retained result to the original compiled delivery arm. Zero-quota paus
 cannot re-poll completed operations or replay their arguments. Late readiness and
 operation tickets fail after retirement.
 
-[The resource fixture](../tests/fixtures/native_source_pending_operation.tellur)
+[The resource fixture](../tests/fixtures/native_source_pending_operation.vn)
 creates three source branches. Each owns a named boundary's retained resource and
 a lexical boundary's supplier, borrowed by an awaited operation. Two branches
 belong to a supervised request; a third belongs to the outside invocation. A
@@ -4036,7 +4036,7 @@ public cancellation or fallible cleanup semantics are added.
 The [private receive state](../tests/fixtures/http_receive_operation.rs) owns its
 partial header bytes, parsed metadata and partial body. Each step performs bounded
 parsing or at most one read attempt through a fresh shared connection reference.
-Progress without waiting is an internal test-driver step, not a Tellur source
+Progress without waiting is an internal test-driver step, not a Villanelle source
 handoff. `WouldBlock` retains the state and requests readiness with its original
 deadline; `Interrupted` permits another step without resetting that deadline.
 Completion produces the actual generated `http_receive_outcome` and consumes the
@@ -4255,7 +4255,7 @@ state once, rejects further polls and duplicate completion, and delivers through
 the checked arm. A trap rejects replay through the synchronous receive wrapper.
 State and its loan witness retire before the actual connection resource.
 
-The [Tellur specimen](../tests/fixtures/native_pending_http.tellur) runs a receiving
+The [Villanelle specimen](../tests/fixtures/native_pending_http.vn) runs a receiving
 async control twice with an effect between calls. The second receive reports the
 existing duplicate-start failure without further input. Twelve deterministic cases
 cover all alternatives, delayed split UTF-8 and HEAD/body input, incomplete EOF,
@@ -4290,7 +4290,7 @@ A pending result registers one wait and yields to existing runnable work. Accept
 notifications append eligibility through the existing queue. Empty host quotas do
 not poll, move the call cursor, emit events or retire state.
 
-The [source specimen](../tests/fixtures/source_pending_http.tellur) overlaps three
+The [source specimen](../tests/fixtures/source_pending_http.vn) overlaps three
 connection owners, with nested named boundaries and an independent outer child.
 The left operation is either immediately ready or delayed. The right operation
 requires four readiness waits, keeping it pending when the faulting sibling wins;
@@ -4328,7 +4328,7 @@ at 0.189.
 
 The [native HTTP queue fixture](../src/native/http_source_queue_tests.rs) combines
 E1f.6e's unchanged owned parser and typed result delivery with the existing native
-source queue. The [checked source](../tests/fixtures/native_source_pending_http.tellur)
+source queue. The [checked source](../tests/fixtures/native_source_pending_http.vn)
 opens three actual Rust connection owners before entering the same nested-boundary
 and spawned-child structure used by E1f.6f. Reference plans map canonical resource
 tokens explicitly to the left, right and independent roles. Tokens are neither
@@ -4375,7 +4375,7 @@ remains pending; compiler/LSP/VSIX stays 0.189.
 
 ## Repeated HTTP source-context operations (E1f.6h)
 
-The [repeated-operation fixture](../tests/fixtures/native_source_repeated_http.tellur)
+The [repeated-operation fixture](../tests/fixtures/native_source_repeated_http.vn)
 calls one synchronous receive helper three times within the same async invocation:
 once on the left connection, once on the right, and again on the left. A native
 trace verifies that all three operations use the same retained context. This exposed
@@ -4466,7 +4466,7 @@ arbitration remain separate. Compiler/LSP/VSIX stays 0.189.
 
 ## HTTP candidate owning-fault settlement (E1f.6j)
 
-The [candidate fixture](../tests/fixtures/native_http_candidate_fault.tellur) combines
+The [candidate fixture](../tests/fixtures/native_http_candidate_fault.vn) combines
 real loopback reads and the unchanged owned HTTP parser with the controlled
 original-owner fault schedule. Two borrowed operations lie beneath lexical and named
 boundaries. Four explicit internal states distinguish a partial read with an
@@ -4630,7 +4630,7 @@ The roadmap row is E1g in the [revision plan](language-revision.md).
 ## Public direct await of async host operations (E1g.1, 0.217)
 
 The first stage of the accepted call model is public in the reference interpreter.
-A manifest primitive declares `"async": true`. The flag belongs to the Tellur-facing
+A manifest primitive declares `"async": true`. The flag belongs to the Villanelle-facing
 contract, not to a Rust binding: scripted-only manifests such as the playground can
 declare async operations, and Rust `execution` remains `immediate` or `blocking`
 for synchronous primitives. The first profile borrows only resources, receives Copy
@@ -4755,7 +4755,7 @@ enter async controls, so handlers keep the blocking `close` and `reply_failure`.
 
 ### Concurrent settings server (E1g stage c, part 3c, 0.226)
 
-`applications/settings/server.tellur` now enters an async `serve` loop with `run`.
+`applications/settings/server.vn` now enters an async `serve` loop with `run`.
 Its loop parameters are the remaining budget, an `admission` variant (`open`,
 `exhausted`, `quiet`, `broken { message }`) and `tasks<serve_connection>`. While
 admission is open and `count(borrow active) < 64`, it awaits `transport.accept`
@@ -4842,7 +4842,7 @@ parked by `run` of a pending host operation, matching the reference executor.
 ## LLVM coroutine experiment (E2.1, 0.232)
 
 The author chose a standalone experiment before any production lowering. Three
-Tellur programs were lowered by hand to switched-resume coroutines and linked with
+Villanelle programs were lowered by hand to switched-resume coroutines and linked with
 a small C runtime: the Milestone 5 specimen, a task set whose first completion
 cancels the rest, and a sibling fault. See
 [the experiment report](../experiments/coroutines/README.md).

@@ -181,7 +181,7 @@ fn ungrouped_sum_boundaries_and_exclusive_collection_elements_remain_gated() {
 }
 #[test]
 fn native_borrowed_outcomes_match_interpreter_and_expansion() {
-    let p = check(include_str!("fixtures/borrowed_outcomes.tellur"));
+    let p = check(include_str!("fixtures/borrowed_outcomes.vn"));
     let expected = p.run(&scenario()).unwrap();
     assert_eq!(expected.fields, vec![Value::U32(2)]);
     let root = std::env::temp_dir().join(format!("path-borrowed-sums-{}", std::process::id()));
@@ -213,9 +213,7 @@ fn native_borrowed_outcomes_match_interpreter_and_expansion() {
         }
     }
     std::fs::remove_dir_all(root).unwrap();
-    check(
-        &include_str!("fixtures/borrowed_outcomes.tellur").replace("[\"A borrowed word\"]", "[]"),
-    );
+    check(&include_str!("fixtures/borrowed_outcomes.vn").replace("[\"A borrowed word\"]", "[]"));
 }
 #[test]
 fn captured_carrier_reborrows_retain_authorizing_storage() {
@@ -272,7 +270,7 @@ fn loop_local_borrowed_outcomes_are_recreated_each_iteration() {
 
 #[test]
 fn nested_outcomes_and_records_preserve_independent_exclusive_loans() {
-    let s = include_str!("fixtures/nested_borrows.tellur");
+    let s = include_str!("fixtures/nested_borrows.vn");
     let p = check(s);
     assert_eq!(
         p.run(&scenario()).unwrap().fields,
@@ -511,7 +509,7 @@ fn nesting_does_not_enable_public_borrow_boundaries_or_mutable_storage_rebinding
 
 #[test]
 fn native_nested_borrows_match_interpreter_and_expansion() {
-    let source = include_str!("fixtures/nested_borrows.tellur");
+    let source = include_str!("fixtures/nested_borrows.vn");
     let programs = [source.to_string(),source.replace("found { editors {\n        title: borrow mutable title,\n        body: borrow mutable body\n    } }", "empty {}")];
     assert_ne!(programs[0], programs[1]);
     let root = std::env::temp_dir().join(format!("path-nested-borrows-{}", std::process::id()));

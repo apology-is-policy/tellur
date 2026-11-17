@@ -155,7 +155,7 @@ fn owned_rust_state_and_unadopted_completion_retire_after_registration_failure()
     let root = std::env::temp_dir().join(format!("tellur-owned-fault-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_pending_fault.tellur"),
+        include_str!("../../tests/fixtures/native_pending_fault.vn"),
         owned_fault_manifest(&root),
     )
     .unwrap()

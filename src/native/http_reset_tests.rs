@@ -43,7 +43,7 @@ fn live_http_resets_preserve_disconnected_mapping_and_retirement() {
         ),
     )
     .unwrap();
-    let p = crate::modules::compile_with_loader(example.join("main.tellur"), manifest, |path| {
+    let p = crate::modules::compile_with_loader(example.join("main.vn"), manifest, |path| {
         fs::read_to_string(path)
     })
     .unwrap();

@@ -35,9 +35,9 @@ and on the Thylacine development target. A compiler without a native pack select
 Use `--no-default-features` when building a Rust-only compiler. Both backends use the same checked program.
 
 ```sh
-./bin/tellurc build playground/llvm_scalars.tellur playground/manifest.json --backend llvm --out /tmp/tellur-scalars
+./bin/vnc build playground/llvm_scalars.vn playground/manifest.json --backend llvm --out /tmp/tellur-scalars
 /tmp/tellur-scalars true 9 Ada
-./bin/tellurc exec playground/llvm_scalars.tellur playground/manifest.json --backend llvm --release -- false 12 Ada
+./bin/vnc exec playground/llvm_scalars.vn playground/manifest.json --backend llvm --release -- false 12 Ada
 ```
 
 The first invocation exits with status 0; the second selects `declined` and exits
@@ -52,16 +52,16 @@ unwinder embedded in the compiler. Both triples use the same checked program
 and in-process LLVM optimizer and linker as native Apple Silicon builds.
 
 ```sh
-tellur build playground/hello.tellur --target x86_64-unknown-linux-musl --out build/hello-x86_64
-tellur build playground/hello.tellur --target aarch64-unknown-linux-musl --out build/hello-arm64
+vnc build playground/hello.vn --target x86_64-unknown-linux-musl --out build/hello-x86_64
+vnc build playground/hello.vn --target aarch64-unknown-linux-musl --out build/hello-arm64
 ```
 
 Copy the executable to a matching Linux machine and run it there. On Linux,
-`tellur exec playground/hello.tellur --backend llvm` selects the native musl
+`vnc exec playground/hello.vn --backend llvm` selects the native musl
 pack in an LLVM-enabled build. A Rust startup object initializes process
 arguments for the runtime and source adapters. Polled adapters use Mio on Linux.
 Manifests that declare Rust sources need Cargo and Rust's standard library for
-the selected target. Ordinary Tellur builds need only the distributed compiler.
+the selected target. Ordinary Villanelle builds need only the distributed compiler.
 
 To build the compiler with both Linux packs, install the two musl standard
 libraries for the build's Rust toolchain and enable the Cargo feature
@@ -111,11 +111,11 @@ report and stops subsequent caller effects. Calls themselves introduce no new
 scheduling handoff, suspension or cancellation behavior. Recursive controls remain
 rejected by the language checker.
 
-The [nested-call example](../../playground/llvm_calls.tellur) includes private
+The [nested-call example](../../playground/llvm_calls.vn) includes private
 helpers, scalar payloads and identity routing:
 
 ```sh
-./bin/tellurc build playground/llvm_calls.tellur playground/manifest.json --backend llvm --out /tmp/tellur-calls
+./bin/vnc build playground/llvm_calls.vn playground/manifest.json --backend llvm --out /tmp/tellur-calls
 /tmp/tellur-calls true 9 Ada
 /tmp/tellur-calls false 12 Ada
 ```
@@ -137,11 +137,11 @@ storage identity is validated before argument transfer and delivery. It grants n
 new borrowing permission. Constructors remain ordinary calls; retained child work
 is described below.
 
-The [constructor example](../../playground/llvm_constructors.tellur) constructs an
+The [constructor example](../../playground/llvm_constructors.vn) constructs an
 owning message and a borrowed view:
 
 ```sh
-./bin/tellurc build playground/llvm_constructors.tellur playground/manifest.json --backend llvm --out /tmp/tellur-constructors
+./bin/vnc build playground/llvm_constructors.vn playground/manifest.json --backend llvm --out /tmp/tellur-constructors
 /tmp/tellur-constructors false
 /tmp/tellur-constructors true
 ```
@@ -168,10 +168,10 @@ causes, path locations and fuel. Contingent helper calls, ordinary loops and adm
 constructors compose with named supervision. The source isolation/retention rules
 remain unchanged. Lexical isolation and supervised recovery are described below.
 
-The [supervision example](../../playground/llvm_supervision.tellur) runs two requests:
+The [supervision example](../../playground/llvm_supervision.vn) runs two requests:
 
 ```sh
-./bin/tellurc build playground/llvm_supervision.tellur playground/manifest.json --backend llvm --out /tmp/tellur-supervision
+./bin/vnc build playground/llvm_supervision.vn playground/manifest.json --backend llvm --out /tmp/tellur-supervision
 /tmp/tellur-supervision false
 /tmp/tellur-supervision true
 ```
@@ -201,11 +201,11 @@ no outcome tag or payload, including status zero. Source restrictions are unchan
 All temporary LLVM arrays remain allocated at function entry, including scope
 metadata used by repeated iterations.
 
-The [recovery example](../../playground/llvm_recovery.tellur) constructs owned
+The [recovery example](../../playground/llvm_recovery.vn) constructs owned
 request context before each iteration:
 
 ```sh
-./bin/tellurc build playground/llvm_recovery.tellur playground/manifest.json --backend llvm --out /tmp/tellur-recovery
+./bin/vnc build playground/llvm_recovery.vn playground/manifest.json --backend llvm --out /tmp/tellur-recovery
 /tmp/tellur-recovery false
 /tmp/tellur-recovery true
 ```
@@ -265,11 +265,11 @@ never promoted by a callee annotation. Metadata does not grant execution permiss
 This slice excludes async host operations and task operations. Backend
 admission does not relax lifetime, aliasing, origin or outcome checks.
 
-The [reference example](../../playground/llvm_references.tellur) mutates a record,
+The [reference example](../../playground/llvm_references.vn) mutates a record,
 returns a shared field borrow, then returns an exclusive reborrow of that field:
 
 ```sh
-./bin/tellurc build playground/llvm_references.tellur playground/manifest.json --backend llvm --out /tmp/tellur-references
+./bin/vnc build playground/llvm_references.vn playground/manifest.json --backend llvm --out /tmp/tellur-references
 /tmp/tellur-references false
 /tmp/tellur-references true
 ```
@@ -293,11 +293,11 @@ storage; malformed ABI descriptors fail before consuming their operand, while
 unavailable checked evidence remains metadata and cannot grant permission or
 promote partial incoming coverage. Callee retirement preserves caller identities.
 
-The [carrier example](../../playground/llvm_carriers.tellur) returns a nested
+The [carrier example](../../playground/llvm_carriers.vn) returns a nested
 exclusive carrier and then a leaf, restoring each parent after the child's last use:
 
 ```sh
-./bin/tellurc build playground/llvm_carriers.tellur playground/manifest.json --backend llvm --out /tmp/tellur-carriers
+./bin/vnc build playground/llvm_carriers.vn playground/manifest.json --backend llvm --out /tmp/tellur-carriers
 /tmp/tellur-carriers false
 /tmp/tellur-carriers true
 ```
@@ -320,12 +320,12 @@ are validated before consuming transferred owners. The profile checks temporary
 constructors as well as declared slots, so nesting an unsupported value in a
 record does not bypass admission.
 
-The [record example](../../playground/llvm_records.tellur) replaces a moved nested
+The [record example](../../playground/llvm_records.vn) replaces a moved nested
 field, copies a count before moving its enclosing record, calls two helpers and
 projects a temporary:
 
 ```sh
-./bin/tellurc build playground/llvm_records.tellur playground/manifest.json --backend llvm --out /tmp/tellur-records
+./bin/vnc build playground/llvm_records.vn playground/manifest.json --backend llvm --out /tmp/tellur-records
 /tmp/tellur-records false Ada
 /tmp/tellur-records true Ada
 ```
@@ -349,11 +349,11 @@ types reject the entire aggregate type, even if the source constructs only an em
 alternative. Boolean decisions use the same runtime routing and native path guards;
 this adds no instruction fuel ticks or scheduling handoffs.
 
-The [tagged-value example](../../playground/llvm_tagged.tellur) captures a named
+The [tagged-value example](../../playground/llvm_tagged.vn) captures a named
 outcome, passes a variant through an option and selects its nested record payload:
 
 ```sh
-./bin/tellurc build playground/llvm_tagged.tellur playground/manifest.json --backend llvm --out /tmp/tellur-tagged
+./bin/vnc build playground/llvm_tagged.vn playground/manifest.json --backend llvm --out /tmp/tellur-tagged
 /tmp/tellur-tagged 0 true false Ada
 /tmp/tellur-tagged 1 true false Ada
 /tmp/tellur-tagged 2 false false Ada
@@ -380,12 +380,12 @@ no control activation, fuel tick or scheduling handoff. Scripted waits require
 an async host operation, admitted by the separate retained profile since 0.258. A manifest-only
 operation with no live adapter still requires a scenario when run.
 
-The [primitive example](../../playground/llvm_primitives.tellur) calls `parse_u32`,
+The [primitive example](../../playground/llvm_primitives.vn) calls `parse_u32`,
 `checked_add` and `checked_mul` through a helper. Its additional `decode` entry
 uses `decode_utf8`:
 
 ```sh
-./bin/tellurc build playground/llvm_primitives.tellur playground/manifest.json --backend llvm --out /tmp/tellur-primitives
+./bin/vnc build playground/llvm_primitives.vn playground/manifest.json --backend llvm --out /tmp/tellur-primitives
 /tmp/tellur-primitives 12 3 2
 /tmp/tellur-primitives 4294967295 1 1
 /tmp/tellur-primitives --entry decode '{"kind":"bytes","value":[65,66]}'
@@ -414,11 +414,11 @@ ABI batches reject before host dispatch and value transfer. Host shutdown retain
 the existing cleanup behavior on execution failure; this does not declare a
 resource successfully closed by its protocol.
 
-The [resource example](../../playground/llvm_resources.tellur) wraps the file owner
+The [resource example](../../playground/llvm_resources.vn) wraps the file owner
 in a record, reads through a borrow, closes it, then returns bytes or faults:
 
 ```sh
-./bin/tellurc build playground/llvm_resources.tellur playground/manifest.json --backend llvm --out /tmp/tellur-resources
+./bin/vnc build playground/llvm_resources.vn playground/manifest.json --backend llvm --out /tmp/tellur-resources
 /tmp/tellur-resources playground/message.txt false
 /tmp/tellur-resources playground/message.txt true
 ```
@@ -447,11 +447,11 @@ transfers that obligation, and the remainder must be transferred or consumed thr
 its empty outcome. Consuming draining loops are supported. Literal shapes and handle batches validate before
 ownership transfer. Collection operations introduce no additional fuel ticks.
 
-The [collection example](../../playground/llvm_collections.tellur) edits a vector,
+The [collection example](../../playground/llvm_collections.vn) edits a vector,
 returns an element borrow through a helper, and removes the smallest map key:
 
 ```sh
-./bin/tellurc build playground/llvm_collections.tellur playground/manifest.json --backend llvm --out /tmp/tellur-collections
+./bin/vnc build playground/llvm_collections.vn playground/manifest.json --backend llvm --out /tmp/tellur-collections
 /tmp/tellur-collections 1 false
 /tmp/tellur-collections 99 false
 /tmp/tellur-collections 0 true
@@ -482,11 +482,11 @@ instruction, including a skipped guard, retains its existing fuel charge and
 source site. Fixed-size transfer buffers and scratch cells are allocated once at
 function entry, so long-running loops do not grow the native stack per iteration.
 
-The [loop example](../../playground/llvm_loops.tellur) swaps two string owners,
+The [loop example](../../playground/llvm_loops.vn) swaps two string owners,
 updates an outer counter and returns from a looping helper:
 
 ```sh
-./bin/tellurc build playground/llvm_loops.tellur playground/manifest.json --backend llvm --out /tmp/tellur-loops
+./bin/vnc build playground/llvm_loops.vn playground/manifest.json --backend llvm --out /tmp/tellur-loops
 /tmp/tellur-loops 0 false
 /tmp/tellur-loops 1 false
 /tmp/tellur-loops 4 true
@@ -499,7 +499,7 @@ Both exit with status 0. The third faults with `loop stopped` inside the helper.
 
 The compiler emits `OUTPUT.ll` and `OUTPUT.tellur-build/program.ll` directly,
 then compiles `program.o` and links `OUTPUT` with its embedded LLVM/LLD 22.1.8.
-Path guards are LLVM branches. Runtime faults retain Tellur source provenance;
+Path guards are LLVM branches. Runtime faults retain Villanelle source provenance;
 native debugger information is not yet emitted.
 
 The distributed 0.256 compiler includes the `llvm` feature. When building the
@@ -616,12 +616,12 @@ constant layout expressions. All frame types are declared before those expressio
 The runtime keeps invocation/domain, adoption and child-before-parent cleanup policy.
 
 ```sh
-./bin/tellurc build playground/llvm_async.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async
-/tmp/tellur-async --json true Tellur
-/tmp/tellur-async --json false Tellur
+./bin/vnc build playground/llvm_async.vn playground/manifest.json --backend llvm --out /tmp/tellur-async
+/tmp/tellur-async --json true Villanelle
+/tmp/tellur-async --json false Villanelle
 ```
 
-The first run emits and returns `Tellur!`; the second emits and returns `Tellur`.
+The first run emits and returns `Villanelle!`; the second emits and returns `Villanelle`.
 The example carries an exclusive caller borrow through a yielding child, then
 returns the owned string. Both select `done` with status0.
 
@@ -651,12 +651,12 @@ An abandoned cold capture is retired by the same runtime cleanup as a Rust-backe
 task; no producer body runs merely because the enclosing invocation faults.
 
 ```sh
-./bin/tellurc build playground/llvm_cold.tellur playground/manifest.json --backend llvm --out /tmp/tellur-cold
-/tmp/tellur-cold --json false Tellur
-/tmp/tellur-cold --json true Tellur
+./bin/vnc build playground/llvm_cold.vn playground/manifest.json --backend llvm --out /tmp/tellur-cold
+/tmp/tellur-cold --json false Villanelle
+/tmp/tellur-cold --json true Villanelle
 ```
 
-Both runs emit `captured` before `producer started`. The first returns `Tellur!`
+Both runs emit `captured` before `producer started`. The first returns `Villanelle!`
 with status 0; the second reports the producer's source fault. The example retains
 an exclusive caller borrow through cold capture, a local move and a child yield.
 
@@ -706,12 +706,12 @@ retire through existing task/domain cleanup and only their last pin permits reus
 The source driver, claim/join policy and resource settlement are unchanged.
 
 ```sh
-./bin/tellurc build playground/llvm_spawn.tellur playground/manifest.json --backend llvm --out /tmp/tellur-spawn
-/tmp/tellur-spawn --json false Tellur
-/tmp/tellur-spawn --json true Tellur
+./bin/vnc build playground/llvm_spawn.vn playground/manifest.json --backend llvm --out /tmp/tellur-spawn
+/tmp/tellur-spawn --json false Villanelle
+/tmp/tellur-spawn --json true Villanelle
 ```
 
-The first run emits `queued` before either child starts and returns `Tellur!`.
+The first run emits `queued` before either child starts and returns `Villanelle!`.
 The second reports the first child's fault and settles its sibling. The example
 keeps an exclusive caller borrow through the original consuming join.
 
@@ -751,13 +751,13 @@ alternative observes it; no implicit interruption at `yield` or join is introduc
 The [cancellation rules](async-execution.md#cancellation) remain the language contract.
 
 ```sh
-./bin/tellurc build playground/llvm_cancel.tellur playground/manifest.json --backend llvm --out /tmp/tellur-cancel
-/tmp/tellur-cancel --json false Tellur
-/tmp/tellur-cancel --json true Tellur
+./bin/vnc build playground/llvm_cancel.vn playground/manifest.json --backend llvm --out /tmp/tellur-cancel
+/tmp/tellur-cancel --json false Villanelle
+/tmp/tellur-cancel --json true Villanelle
 ```
 
 The example requests cancellation twice before the writer runs, then joins both
-children. The first run returns `Tellur!`; the second reports the writer's ordinary
+children. The first run returns `Villanelle!`; the second reports the writer's ordinary
 source fault. Its exclusive caller loan remains live until join or fault settlement.
 Cancellation of sets, retained loops/boundaries/constructors,
 adapters and launch signals remain outside this LLVM profile. Rust stays default.
@@ -787,7 +787,7 @@ its ordinary result. Without that arm the operation completes normally. Repeated
 requests, inherited requests and required joins keep the language's existing rules.
 
 ```sh
-./bin/tellurc build playground/llvm_host.tellur playground/llvm_host.manifest.json --backend llvm --out /tmp/tellur-host
+./bin/vnc build playground/llvm_host.vn playground/llvm_host.manifest.json --backend llvm --out /tmp/tellur-host
 /tmp/tellur-host --scenario playground/llvm_host.scenario.json
 ```
 
@@ -841,7 +841,7 @@ metadata use the same recursive instruction inventory. Source fault locations an
 fuel charges, including skipped guards, retain the existing execution semantics.
 
 ```sh
-./bin/tellurc build playground/llvm_async_loops.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-loops
+./bin/vnc build playground/llvm_async_loops.vn playground/manifest.json --backend llvm --out /tmp/tellur-async-loops
 /tmp/tellur-async-loops 0 false
 /tmp/tellur-async-loops 3 false
 /tmp/tellur-async-loops 3 true
@@ -879,7 +879,7 @@ complete before a handoff. Escaping member faults retain their original source
 cause and stop sibling work; they never become a normal `await next` result.
 
 ```sh
-./bin/tellurc build playground/llvm_task_sets.tellur playground/manifest.json --backend llvm --out /tmp/tellur-task-sets
+./bin/vnc build playground/llvm_task_sets.vn playground/manifest.json --backend llvm --out /tmp/tellur-task-sets
 /tmp/tellur-task-sets 0
 /tmp/tellur-task-sets 6
 ```
@@ -951,7 +951,7 @@ children, task sets and cancellation keep their existing ownership and settlemen
 rules, including owning-domain authority when an outside child faults.
 
 ```sh
-./bin/tellurc build playground/llvm_async_supervision.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-supervision
+./bin/vnc build playground/llvm_async_supervision.vn playground/manifest.json --backend llvm --out /tmp/tellur-async-supervision
 /tmp/tellur-async-supervision --json false
 /tmp/tellur-async-supervision --json true
 ```
@@ -1111,12 +1111,12 @@ source fuel. State ranges are checked for overflow. Direct child frames stay
 embedded by value, spawned frames stay arena-owned, and the original Machine owns
 scope selection, fault settlement and resource retirement.
 
-The [retained recovery example](../../playground/llvm_async_recovery.tellur) yields
+The [retained recovery example](../../playground/llvm_async_recovery.vn) yields
 inside each request. A failed first request retires and recovers into a healthy
 second iteration; a healthy first request completes directly.
 
 ```sh
-./bin/tellurc build playground/llvm_async_recovery.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-recovery
+./bin/vnc build playground/llvm_async_recovery.vn playground/manifest.json --backend llvm --out /tmp/tellur-async-recovery
 /tmp/tellur-async-recovery --json false
 /tmp/tellur-async-recovery --json true
 ```
@@ -1186,11 +1186,11 @@ consuming captures. Static registration identity is shared across repeated and
 concurrent launches. Generated callbacks request the private destination bridge
 from 0.268 and resume without an outcome payload after construction.
 
-The [retained constructor example](../../playground/llvm_async_constructors.tellur)
+The [retained constructor example](../../playground/llvm_async_constructors.vn)
 constructs an owned message and a borrowed view, each with a yielded child:
 
 ```sh
-./bin/tellurc build playground/llvm_async_constructors.tellur playground/manifest.json --backend llvm --out /tmp/tellur-async-constructors
+./bin/vnc build playground/llvm_async_constructors.vn playground/manifest.json --backend llvm --out /tmp/tellur-async-constructors
 /tmp/tellur-async-constructors false
 /tmp/tellur-async-constructors true
 ```
@@ -1228,11 +1228,11 @@ Opted-in Rust programs now select that same scheduler even without `yield` or
 spawned tasks, closing the old sequential driver's idle-signal limitation. This
 changes driver selection, not the original Machine or cancellation rules.
 
-The [launch signal example](../../playground/llvm_launch_signals.tellur) cancels a
+The [launch signal example](../../playground/llvm_launch_signals.vn) cancels a
 pending accept and a waiting task-set member, then drains the set:
 
 ```sh
-./bin/tellurc build playground/llvm_launch_signals.tellur playground/llvm_launch_signals.manifest.json --backend llvm --out /tmp/tellur-signals
+./bin/vnc build playground/llvm_launch_signals.vn playground/llvm_launch_signals.manifest.json --backend llvm --out /tmp/tellur-signals
 /tmp/tellur-signals --scenario playground/llvm_launch_signals.scenario.json
 ```
 
@@ -1330,7 +1330,7 @@ unused bindings.
 The compiler generates the same `rust_api` outcome enums and exact typed function
 checks used by source adapters. Explicit source and module paths resolve against
 the manifest. All declared operations must have matching Rust functions, even if
-Tellur never calls them. Compilation uses the saved `lock-native` lock and explicit
+Villanelle never calls them. Compilation uses the saved `lock-native` lock and explicit
 dependencies with `--locked`; it does not refresh dependencies automatically.
 
 One independent static archive contains user code, typed codecs and C callbacks.
@@ -1355,16 +1355,16 @@ default changes. Rust stays the default.
 
 ## Synchronous resource adapters (0.274)
 
-The existing `rust.resources` map can bind opaque must-complete Tellur types to
+The existing `rust.resources` map can bind opaque must-complete Villanelle types to
 public Rust types or aliases. The adapter receives `&T` for a shared parameter and
 `T` for a consuming parameter; resource outcome fields contain `T`. Rust types
 remain unrestricted by `Copy`, `Clone`, `Send` or `Sync`, and explicit modules may
 re-export them. Resources cross this boundary directly, never inside a collection
-or nominal aggregate; aggregate ownership inside Tellur retains its existing rules.
+or nominal aggregate; aggregate ownership inside Villanelle retains its existing rules.
 The [resource contract](../rust-adapters.md#retained-resources-049) applies unchanged.
 
 The private C bridge associates each allocation with its adapter registry and its
-Tellur type. It validates the entire argument batch before dispatch, including
+Villanelle type. It validates the entire argument batch before dispatch, including
 consuming aliases, stale tokens and cross-host identities. Repeated shared inputs
 point at the same allocation. Generated callbacks finish owned decoding before
 forming shared Rust references. Consumption removes the owner before calling the
@@ -1430,18 +1430,18 @@ Run the [settings server](../../applications/settings/README.md#running-the-sett
 ## Reusing a compiled Rust adapter
 
 On a machine with Cargo and the target's Rust standard library, package the
-application's locked adapter once. Use the same Tellur version for both commands.
+application's locked adapter once. Use the same Villanelle version for both commands.
 
 ```sh
-tellur pack-adapter applications/settings/main.tellur --out settings.adapter
-tellur build applications/settings/main.tellur --adapter-pack settings.adapter --out settings
+vnc pack-adapter applications/settings/main.vn --out settings.adapter
+vnc build applications/settings/main.vn --adapter-pack settings.adapter --out settings
 ./settings --entry set -- settings.json theme dark
 ./settings --entry get -- settings.json theme
 ```
 
 The second command works with the project, its adapter sources and lockfile,
 the pack, and the compiler. You can move these inputs to a different directory.
-Tellur checks the compiled archive's SHA-256 and matches the pack against the
+Villanelle checks the compiled archive's SHA-256 and matches the pack against the
 target triple, compiler version, generated Rust bindings, source contents,
 bound resource types and primitives, dependencies, and lockfile. Changing those
 inputs requires rebuilding the pack. Supply trusted packs, as you would other
@@ -1463,7 +1463,7 @@ the embedded LLVM and LLD drivers used for the Windows x64 target. On macOS
 it emits an x64 COFF object, builds a KERNEL32 import library from a module
 definition, and links a console executable with the external tool search path
 empty. A Windows x64 runner downloads that executable and checks that it exits
-with status 42. The workflow also emits `playground/hello.tellur` as a Windows
+with status 42. The workflow also emits `playground/hello.vn` as a Windows
 object. On Windows, it links Hello against each Rust runtime profile using the
 installed Visual C++ startup libraries, then checks the process status and JSON
 output. Separate native tests exercise socket readiness and signal cancellation.
@@ -1478,7 +1478,7 @@ With this pack, compile Hello on the build host and run the resulting file
 on Windows x64:
 
 ```sh
-tellur build playground/hello.tellur --backend llvm --target x86_64-pc-windows-gnu --out hello.exe
+vnc build playground/hello.vn --backend llvm --target x86_64-pc-windows-gnu --out hello.exe
 ```
 
 For the settings service, pass the same target to `pack-adapter` and `build`.
@@ -1500,10 +1500,10 @@ The development runtime builds for `aarch64-unknown-thylacine` with the
 Thylacine project's patched Rust standard library and pouch sysroot. In a
 Thylacine guest, the cross-linked playground Hello returned its authored
 `done` outcome and both emit events under `--json`. Its Rust entry point
-initializes process arguments before calling the compiled Tellur entry.
+initializes process arguments before calling the compiled Villanelle entry.
 
 The compiler frontend also runs in the guest. A cross-build with the patched
-Rust standard library checked and interpreted `playground/hello.tellur`.
+Rust standard library checked and interpreted `playground/hello.vn`.
 The same executable served an LSP initialize request over stdio, reported its
 capabilities and exited successfully after shutdown. This build exercises the
 frontend and interpreter.
@@ -1512,19 +1512,19 @@ An LLVM-enabled development compiler also ran in the guest. It compiled
 the authored Hello from source with `--backend llvm`, emitted the AArch64
 object and linked the executable in-process. Running that executable with
 `--json` returned both authored messages, the outcome `done` and status 0.
-On the guest, `tellur exec` launches the executable through pouch
+On the guest, `vnc exec` launches the executable through pouch
 `posix_spawn` and waits for its exit status. The optimized Hello exited 0.
 This scalar example selected the declined path, printed its message and exited 7.
 
 ```sh
-tellur exec playground/llvm_scalars.tellur playground/manifest.json --backend llvm -- --json false 12 Ada
+vnc exec playground/llvm_scalars.vn playground/manifest.json --backend llvm -- --json false 12 Ada
 ```
 
 Polled adapters register pouch descriptors with `poll(2)`. Socket and
 cancellation-pipe registrations share one wait. Only launches with signal
 cancellation enabled limit a kernel wait to 50 ms so a pending process note
 can reach its handler. An empty wait result leaves the adapter parked. The
-compiled `playground/llvm_launch_signals.tellur` example waited on two real
+compiled `playground/llvm_launch_signals.vn` example waited on two real
 pouch sockets in the guest. Both a parent-sent SIGTERM and a foreground
 Ctrl-C selected the authored cancellation paths, drained the member and
 exited with status zero.
@@ -1559,17 +1559,17 @@ python3 ci/prepare-thylacine-pack.py \
   --out "$PWD/pouch-pack"
 ```
 
-When building Tellur, set `TELLUR_THYLACINE_PACK` to that directory and
+When building Villanelle, set `TELLUR_THYLACINE_PACK` to that directory and
 `LLVM_SYS_221_PREFIX` to your LLVM/LLD 22.1.8 installation. A compiler
 built to run on Thylacine uses the fork's AArch64 LLVM libraries, LLD's ELF
 and common libraries, and the patched Rust libc and standard library. Its
 `llvm-config` must run on the build host and describe the target libraries.
 On an Apple Silicon host with the pinned LLVM toolchain, build the
 cross-compiler with `cargo build --release --locked --features thylacine-pack
---bin tellur`. That compiler can link the same pack for the guest.
+--bin vnc`. That compiler can link the same pack for the guest.
 
 ```sh
-tellur build playground/hello.tellur --target aarch64-unknown-thylacine --out hello
+vnc build playground/hello.vn --target aarch64-unknown-thylacine --out hello
 ```
 
 Transfer `hello` to the guest and run `./hello --json`. The target compiler
@@ -1583,10 +1583,10 @@ so the target identity matches the one recorded in the patched standard library.
 
 ```sh
 export TELLUR_THYLACINE_TARGET_SPEC="$THYLACINE/usr/ports/rust/aarch64-unknown-thylacine.json"
-RUSTFLAGS="--sysroot=$THYLACINE_RUST_SYSROOT" tellur pack-adapter \
-  applications/settings/main.tellur applications/settings/manifest.json \
+RUSTFLAGS="--sysroot=$THYLACINE_RUST_SYSROOT" vnc pack-adapter \
+  applications/settings/main.vn applications/settings/manifest.json \
   --target aarch64-unknown-thylacine --release --out settings.adapter
-tellur build applications/settings/main.tellur applications/settings/manifest.json \
+vnc build applications/settings/main.vn applications/settings/manifest.json \
   --target aarch64-unknown-thylacine --release --adapter-pack settings.adapter --out settings
 ```
 
@@ -1602,7 +1602,7 @@ their relative paths intact, alongside the host-prepared `settings.adapter`.
 Run these commands from the project root in the guest.
 
 ```sh
-tellur build applications/settings/main.tellur --backend llvm --adapter-pack settings.adapter --out settings
+vnc build applications/settings/main.vn --backend llvm --adapter-pack settings.adapter --out settings
 ./settings --entry set -- state.json color ochre
 ./settings --entry get -- state.json color
 ```

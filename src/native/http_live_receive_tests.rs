@@ -22,7 +22,7 @@ fn live_owned_receive_readiness_deadlines_and_descriptor_retirement() {
         },
     );
     rust.lockfile = repo.join("tests/fixtures/http_receive_mio.lock");
-    let p = crate::modules::compile_with_loader(example.join("main.tellur"), manifest, |path| {
+    let p = crate::modules::compile_with_loader(example.join("main.vn"), manifest, |path| {
         fs::read_to_string(path)
     })
     .unwrap();

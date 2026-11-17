@@ -192,14 +192,14 @@ fn imported_generic_exit_adapters_are_traversed_and_ranges_map_back() {
     let library = "pub control select<t>(t input,bool flag) exits ready {t value},missing {\n delta flag {true=>exit delta identity<t>(input) {ready {auto value}=>ready {value}},false=>exit missing}\n}\ncontrol identity<t>(t input) exits auto {exit ready {input};}";
     // Unknown generic t cannot be silently dropped on the false arm.
     std::fs::write(
-        root.join("library.tellur"),
+        root.join("library.vn"),
         library
             .replace("<t>", "<t: drop>")
             .replace("identity<t: drop>", "identity<t>"),
     )
     .unwrap();
-    std::fs::write(root.join("main.tellur"),"import \"library.tellur\" as lib; control main() exits auto {forward lib.select<string>(\"hello\",true);}").unwrap();
-    let p = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap();
+    std::fs::write(root.join("main.vn"),"import \"library.vn\" as lib; control main() exits auto {forward lib.select<string>(\"hello\",true);}").unwrap();
+    let p = tellur::compile_file(root.join("main.vn"), manifest()).unwrap();
     assert_eq!(
         p.run(&Scenario {
             entry: "main".into(),
@@ -214,12 +214,9 @@ fn imported_generic_exit_adapters_are_traversed_and_ranges_map_back() {
         .replace("<t>", "<t: drop>")
         .replace("identity<t: drop>", "identity<t>")
         .replace("ready {value}", "ready {false}");
-    std::fs::write(root.join("library.tellur"), bad).unwrap();
-    let error = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap_err();
-    assert_eq!(
-        error.path,
-        root.join("library.tellur").canonicalize().unwrap()
-    );
+    std::fs::write(root.join("library.vn"), bad).unwrap();
+    let error = tellur::compile_file(root.join("main.vn"), manifest()).unwrap_err();
+    assert_eq!(error.path, root.join("library.vn").canonicalize().unwrap());
     assert_eq!(error.diagnostic.span.line, 2);
     assert!(error.diagnostic.end.is_some());
     std::fs::remove_dir_all(root).unwrap();

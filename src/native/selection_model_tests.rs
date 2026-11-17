@@ -5,7 +5,7 @@ use serde_json::Value as Json;
 fn compiled_selection_rejects_before_callback_moves_effects_and_pending_delivery() {
     compare_selection(
         "loops",
-        include_str!("../../tests/fixtures/native_resume_loops.tellur"),
+        include_str!("../../tests/fixtures/native_resume_loops.vn"),
         &["false"],
         &[
             "Skip",
@@ -26,7 +26,7 @@ fn compiled_selection_rejects_before_callback_moves_effects_and_pending_delivery
 fn compiled_storage_resolution_covers_constructors_and_borrowed_result_delivery() {
     compare_selection(
         "constructors",
-        include_str!("../../tests/fixtures/native_resume.tellur"),
+        include_str!("../../tests/fixtures/native_resume.vn"),
         &["false"],
         &[
             "Skip",
@@ -47,7 +47,7 @@ fn compiled_storage_resolution_covers_constructors_and_borrowed_result_delivery(
 fn compiled_carrier_dependencies_survive_join_until_detached_result_delivery() {
     compare_selection(
         "carriers",
-        include_str!("../../playground/carrier_tasks.tellur"),
+        include_str!("../../playground/carrier_tasks.vn"),
         &[],
         &[
             "Local",
@@ -63,7 +63,7 @@ fn compiled_carrier_dependencies_survive_join_until_detached_result_delivery() {
 
 #[test]
 fn compiled_detached_captures_preserve_checked_guard_semantics() {
-    let input = include_str!("../../playground/guarded_task_captures.tellur");
+    let input = include_str!("../../playground/guarded_task_captures.vn");
     let observed = compare_selection(
         "detached-guards",
         input,
@@ -96,7 +96,7 @@ fn compiled_detached_captures_preserve_checked_guard_semantics() {
 
 #[test]
 fn compiled_aliased_carrier_capture_retains_complete_broad_ancestry() {
-    let input = include_str!("../../playground/aliased_carrier_tasks.tellur");
+    let input = include_str!("../../playground/aliased_carrier_tasks.vn");
     let observed = compare_selection(
         "aliased-carriers",
         input,
@@ -131,7 +131,7 @@ fn compiled_aliased_carrier_capture_retains_complete_broad_ancestry() {
 fn compiled_local_carrier_capture_retains_complete_stored_reference_closure() {
     compare_selection(
         "local-carriers",
-        include_str!("../../playground/local_carrier_tasks.tellur"),
+        include_str!("../../playground/local_carrier_tasks.vn"),
         &[],
         &[
             "Local",
@@ -147,7 +147,7 @@ fn compiled_local_carrier_capture_retains_complete_stored_reference_closure() {
 
 #[test]
 fn compiled_local_guarded_captures_remain_complete_through_result_delivery() {
-    let input = include_str!("../../playground/local_guarded_tasks.tellur");
+    let input = include_str!("../../playground/local_guarded_tasks.vn");
     let observed = compare_selection(
         "local-guards",
         input,
@@ -180,7 +180,7 @@ fn compiled_local_guarded_captures_remain_complete_through_result_delivery() {
 
 #[test]
 fn compiled_incoming_shared_leaves_preserve_complete_capture_and_delivery() {
-    let input = include_str!("../../playground/incoming_leaf_tasks.tellur");
+    let input = include_str!("../../playground/incoming_leaf_tasks.vn");
     let observed = compare_selection(
         "incoming-leaves",
         input,
@@ -231,7 +231,7 @@ fn compiled_incoming_shared_leaves_preserve_complete_capture_and_delivery() {
 
 #[test]
 fn compiled_guarded_input_captures_keep_complete_holders_and_partial_callers() {
-    let input = include_str!("../../playground/guarded_input_tasks.tellur");
+    let input = include_str!("../../playground/guarded_input_tasks.vn");
     let transitions = &[
         "Local",
         "Effect",
@@ -265,7 +265,7 @@ fn compiled_guarded_input_captures_keep_complete_holders_and_partial_callers() {
 
 #[test]
 fn compiled_incoming_carriers_keep_full_roots_and_partial_field_copies() {
-    let input = include_str!("../../playground/incoming_carrier_tasks.tellur");
+    let input = include_str!("../../playground/incoming_carrier_tasks.vn");
     let transitions = &[
         "Local",
         "Effect",

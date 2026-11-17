@@ -5,7 +5,7 @@ fn compiled_started_join_phases_preserve_owned_and_borrowed_results() {
     let root = std::env::temp_dir().join(format!("tellur-started-join-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let original = crate::compile(
-        include_str!("../../tests/fixtures/task_completion_model.tellur"),
+        include_str!("../../tests/fixtures/task_completion_model.vn"),
         crate::manifest::Manifest::from_json(include_str!("../../playground/manifest.json"))
             .unwrap(),
     )

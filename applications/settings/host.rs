@@ -1,4 +1,4 @@
-// Mechanisms only: application policy lives in Tellur.
+// Mechanisms only: application policy lives in Villanelle.
 pub use self::files::{file_read, file_replace};
 pub use self::http::{
     Connection, Listener, http_connection_close, http_listen, http_listener_release,

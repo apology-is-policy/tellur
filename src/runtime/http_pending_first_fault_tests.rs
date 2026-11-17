@@ -19,7 +19,7 @@ fn program() -> CheckedProgram {
     primitives.push(serde_json::json!({"name":"open_case","parameters":[{"name":"name","type":"string","mode":"consume"}],"outcomes":[{"name":"opened","fields":[{"name":"connection","type":"http_connection"}]}],"effects":["open"],"returns":true}));
     primitives.push(serde_json::json!({"name":"checkpoint","parameters":[],"outcomes":[{"name":"done","fields":[]}],"effects":["checkpoint"],"returns":true,"contingent":true}));
     crate::compile(
-        include_str!("../../tests/fixtures/native_source_repeated_http.tellur"),
+        include_str!("../../tests/fixtures/native_source_repeated_http.vn"),
         Manifest::from_json(&manifest.to_string()).unwrap(),
     )
     .unwrap()

@@ -39,7 +39,7 @@ control main() exits program_result {
     display(borrow note);
     display(borrow letter(greeting("Grace", true), "A temporary lives through this call."));
 
-    greeting custom = greeting { text: "Welcome, Tellur!" };
+    greeting custom = greeting { text: "Welcome, Villanelle!" };
     emit(move custom.text);
     exit done;
 }

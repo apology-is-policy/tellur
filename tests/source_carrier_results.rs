@@ -13,7 +13,7 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-const SOURCE: &str = include_str!("../playground/carrier_spawn_results.tellur");
+const SOURCE: &str = include_str!("../playground/carrier_spawn_results.vn");
 fn same(source: &str) -> tellur::CheckedProgram {
     let p = compile(source, manifest()).unwrap();
     assert_eq!(
@@ -89,7 +89,7 @@ fn carrier_results_hold_backing_in_queued_running_completed_and_adopted_phases()
 }
 #[test]
 fn carrier_results_keep_detached_guards_and_parent_authority() {
-    let source = include_str!("fixtures/source_carrier_result_guards.tellur");
+    let source = include_str!("fixtures/source_carrier_result_guards.vn");
     same(source);
     for marker in [
         "auto moved = move pending;",
@@ -116,7 +116,7 @@ fn carrier_results_keep_detached_guards_and_parent_authority() {
 }
 #[test]
 fn completed_and_joined_carrier_results_settle_before_owning_contingency() {
-    let source = include_str!("fixtures/source_carrier_result_fault.tellur");
+    let source = include_str!("fixtures/source_carrier_result_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

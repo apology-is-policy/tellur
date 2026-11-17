@@ -5,8 +5,8 @@ Each file is one module. Imports are relative to the importing file, not the she
 working directory. They introduce a namespace rather than injecting unqualified
 names into the caller.
 
-```tellur
-import "people.tellur" as people;
+```villanelle
+import "people.vn" as people;
 
 control main() exits done {
     delta people.create("Ada", 37) { ready { people.person value } => created }
@@ -17,9 +17,9 @@ control main() exits done {
 }
 ```
 
-`people.tellur` defines the public interface and private representation:
+`people.vn` defines the public interface and private representation:
 
-```tellur
+```villanelle
 pub struct person {
     string name;
     pub u32 age;
@@ -37,9 +37,9 @@ pub control name(ref person value) exits found { ref string text from value } {
 From the project root:
 
 ```sh
-./bin/tellurc check playground/modules/main.tellur
-./bin/tellurc exec playground/modules/main.tellur
-./bin/tellurc inspect playground/modules/main.tellur playground/manifest.json main --expanded
+./bin/vnc check playground/modules/main.vn
+./bin/vnc exec playground/modules/main.vn
+./bin/vnc inspect playground/modules/main.vn playground/manifest.json main --expanded
 ```
 
 The entry file discovers its manifest in the usual way. That manifest supplies
@@ -87,7 +87,7 @@ appear on the caller's import with a related location pointing to the actual fil
 and line. Outcome mismatches through direct forwarding and missing direct-call arms
 also include related producer/forwarder locations, mapped to their original files
 and open buffers. Closing an unsaved dependency restores the disk version for subsequent
-checks. Tellur and JSON file watchers invalidate diagnostics for disk changes inside
+checks. Villanelle and JSON file watchers invalidate diagnostics for disk changes inside
 the workspace. Dependencies outside watched workspace folders are read on the next
 check; automatic external-directory watching is not implemented.
 

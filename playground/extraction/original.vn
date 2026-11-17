@@ -9,17 +9,12 @@ control main() exits process_result {
 control greeting(bool available) exits greeting_result {
     emit("Preparing greeting");
     mutable string text = "Hello";
-    [entry]: forward finish_greeting(available, text);
-}
-
-// Process status policy for this runnable example.
-outcome process_result { @exit 0 done }
-
-control finish_greeting(bool available, string extracted_text) exits greeting_result {
-    mutable string text = extracted_text;
-    text = concat(text, ", Tellur!");
+    text = concat(text, ", Villanelle!");
     exit delta available {
         true => ready {text},
         false => empty {}
     };
 }
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done }

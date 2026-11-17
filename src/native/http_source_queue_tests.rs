@@ -375,7 +375,7 @@ fn native_http_queue_matches_reference_outcomes_waits_and_owning_faults() {
     let root = std::env::temp_dir().join(format!("tellur-http-queue-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_pending_http.tellur"),
+        include_str!("../../tests/fixtures/native_source_pending_http.vn"),
         queue_manifest(&root),
     )
     .unwrap()

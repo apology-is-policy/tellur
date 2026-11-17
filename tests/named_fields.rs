@@ -186,7 +186,7 @@ fn native_named_fields_match_reference_before_and_after_expansion_at_o0_o2() {
 
 #[test]
 fn runnable_example_and_tail_extraction_preserve_named_fields() {
-    let p = compile(include_str!("../playground/named_fields.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/named_fields.vn"), m()).unwrap();
     assert_eq!(
         p.run(&scenario()).unwrap(),
         p.expanded("main").unwrap().run(&scenario()).unwrap()

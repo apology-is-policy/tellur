@@ -10,7 +10,7 @@ fn owned_receive_state_matches_synchronous_outcomes_and_fixed_deadlines() {
         &example.join("manifest.json"),
     )
     .unwrap();
-    let p = crate::modules::compile_with_loader(example.join("main.tellur"), manifest, |path| {
+    let p = crate::modules::compile_with_loader(example.join("main.vn"), manifest, |path| {
         fs::read_to_string(path)
     })
     .unwrap();

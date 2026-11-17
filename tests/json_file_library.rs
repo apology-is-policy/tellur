@@ -41,12 +41,12 @@ fn manifest() -> Manifest {
 }
 fn library_program(f: &Fixture) -> CheckedProgram {
     fs::write(
-        f.0.join("json_file.tellur"),
-        include_str!("../library/json_file.tellur"),
+        f.0.join("json_file.vn"),
+        include_str!("../library/json_file.vn"),
     )
     .unwrap();
-    fs::write(f.0.join("main.tellur"), r#"
-        import "json_file.tellur" as file;
+    fs::write(f.0.join("main.vn"), r#"
+        import "json_file.vn" as file;
         control read(string path, u32 limit) exits file.load_result {
             forward file.load(borrow path, limit);
         }
@@ -54,7 +54,7 @@ fn library_program(f: &Fixture) -> CheckedProgram {
             forward file.replace(borrow path, borrow values, limit);
         }
     "#).unwrap();
-    compile_file(f.0.join("main.tellur"), manifest()).unwrap()
+    compile_file(f.0.join("main.vn"), manifest()).unwrap()
 }
 fn text(value: &str) -> Value {
     Value::String(value.into())

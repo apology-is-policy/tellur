@@ -1,7 +1,7 @@
 # Rust source adapters
 
 Since compiler 0.45, project-supplied Rust wrappers can be compiled with a generated native
-program. The Tellur primitive manifest is the source of argument types, closed
+program. The Villanelle primitive manifest is the source of argument types, closed
 outcomes, ownership modes and declared effects. The compiler generates concrete
 Rust result enums, conversions and exact wrapper-signature checks from it.
 
@@ -13,7 +13,7 @@ compiles into a separate static archive, and typed shims exchange data with the
 precompiled runtime through a private versioned C protocol. No Rust representation
 crosses that boundary. Resource allocations stay in their adapter library; the
 runtime retains opaque pointers and calls the adapter to destroy them. Polled
-operations still require the Rust backend. Tellur tasks, suspension and cancellation
+operations still require the Rust backend. Villanelle tasks, suspension and cancellation
 are not defined in terms of Rust futures or an executor.
 
 The [text summary example](../examples/text_summary/README.md) runs on both backends.
@@ -66,7 +66,7 @@ pub fn contains_zero(data: &[u8]) -> contains_zero_outcome {
 ```
 
 For an operation `read_text`, the generated result type is
-`rust_api::read_text_outcome`. Its variants have the exact Tellur outcome names.
+`rust_api::read_text_outcome`. Its variants have the exact Villanelle outcome names.
 A payload-bearing alternative is a tuple variant, with fields in manifest order:
 `read_text_outcome::read(String)`, for example. Binding names are documentation;
 the function and tuple types are checked by Rust during a native build. Rust code
@@ -76,12 +76,12 @@ Each synchronous binding must declare `execution` as `immediate` or `blocking`. 
 records a host execution contract; neither introduces suspension. An async host
 operation (`"async": true`, awaited from async controls) binds with
 `"execution": "poll"` instead; see [polled async operations](#polled-async-operations-0219).
-`immediate` is not a purity proof. Foreign wrappers cannot opt into Tellur pure-expression evaluation. Effects
+`immediate` is not a purity proof. Foreign wrappers cannot opt into Villanelle pure-expression evaluation. Effects
 and execution classification remain promises made by the adapter author.
 
 ## Data and ownership
 
-| Tellur manifest type | Owned Rust type | Borrowed Rust parameter |
+| Villanelle manifest type | Owned Rust type | Borrowed Rust parameter |
 | --- | --- | --- |
 | `bool` | `bool` | `&bool` |
 | `u32` | `u32` | `&u32` |
@@ -92,9 +92,9 @@ and execution classification remain promises made by the adapter author.
 | `map<k, v>` | `BTreeMap<K, V>` | `&BTreeMap<K, V>` |
 
 Vectors and map values may nest supported types. Map keys are `string`, `u32` or
-`bool`; ordering matches Tellur's map representation. The manifest `borrow` mode
+`bool`; ordering matches Villanelle's map representation. The manifest `borrow` mode
 means a call-duration shared borrow. `value` and `consume` deliver owned Rust
-arguments, under the existing Tellur Copy/move rules. Outcomes contain owned data.
+arguments, under the existing Villanelle Copy/move rules. Outcomes contain owned data.
 Returned references, exclusive foreign mutation, nominal
 records/sums, callbacks and asynchronous adapters are not supported by this profile.
 Compiler 0.49 additionally supports directly bound opaque retained resources below.
@@ -104,7 +104,7 @@ does not promise zero-copy FFI. The generated function types prevent ordinary sa
 wrappers from returning borrowed input as an owning result. Arbitrary Rust remains
 a trust boundary: types do not prove effect declarations, error classification,
 blocking behavior or domain laws. An adapter panic terminates the native execution;
-it is not converted into a recoverable Tellur alternative. No unwinding/abort or
+it is not converted into a recoverable Villanelle alternative. No unwinding/abort or
 cancellation cleanup guarantee is implied.
 
 ## Retained resources (0.49)
@@ -113,9 +113,9 @@ Since 0.274, the synchronous resource profile below also runs with `--backend ll
 on macOS arm64. The same source, manifest and Rust signatures work on both backends.
 Shared borrows retain the original allocation, consumed values move into the typed
 wrapper, and returned owners receive fresh handles. This includes calls made from
-supported retained Tellur controls; it does not admit polled Rust operations.
+supported retained Villanelle controls; it does not admit polled Rust operations.
 
-An opaque must-complete Tellur type can represent an owned Rust object that survives
+An opaque must-complete Villanelle type can represent an owned Rust object that survives
 between calls. Add a `resources` map to the top-level `rust` configuration:
 
 ```json
@@ -132,12 +132,12 @@ publicly re-export that type, for example `pub use std::fs::File as InputFile;`.
 The right-hand name is one Rust-compatible identifier, not arbitrary Rust syntax
 or a qualified path. A public alias/re-export can name a dependency type. The type
 must be `'static` (it cannot retain a call's borrowed arguments); it need not be
-`Copy`, `Clone`, `Send` or `Sync`. Two Tellur resource names remain distinct even if
+`Copy`, `Clone`, `Send` or `Sync`. Two Villanelle resource names remain distinct even if
 they map to the same Rust type. Duplicate resource bindings are rejected.
 
 | Boundary use of `input_file` | Rust representation | Ownership effect |
 | --- | --- | --- |
-| Outcome payload | `InputFile` | Store the returned object and issue a fresh Tellur handle |
+| Outcome payload | `InputFile` | Store the returned object and issue a fresh Villanelle handle |
 | Parameter, `mode: borrow` | `&InputFile` | Borrow the stored object for this call |
 | Parameter, `mode: consume` | `InputFile` | Remove the object and transfer it into the wrapper |
 | Parameter, `mode: value` | Rejected | Must-complete owners require borrow or consume |
@@ -153,7 +153,7 @@ pub fn file_release(file: InputFile) -> rust_api::file_release_outcome;
 
 Resources currently cross the Rust boundary directly, as parameters or individual
 outcome fields. A Rust-bound `vector<input_file>`, nominal record/sum, returned
-reference or exclusive borrow is not supported. Inside Tellur, the existing
+reference or exclusive borrow is not supported. Inside Villanelle, the existing
 resource-containing structs, sums, outcomes and collections still work; unpack an
 owner before passing it to Rust. A wrapper may own a richer internal Rust object
 behind a single opaque type.
@@ -169,7 +169,7 @@ accept connections. Such effects belong in the primitive's declared effects.
 ### Completion, failures and identity
 
 Consumption happens regardless of which declared outcome the wrapper returns.
-A failed close therefore cannot silently restore the old Tellur owner. If retry
+A failed close therefore cannot silently restore the old Villanelle owner. If retry
 requires retaining ownership, declare a resource payload on that outcome and
 return the object explicitly. The returned handle is fresh, even when the same
 Rust object is returned. There is no built-in interpretation of an operation's
@@ -186,7 +186,7 @@ runs; acquire owners inside the entry instead. Scenario runs use symbolic opaque
 values and bypass both the store and live wrappers.
 
 Normal host teardown and ordinary returned runtime errors drop any retained Rust
-objects. This fallback does not invoke Tellur completion controls or synthesize
+objects. This fallback does not invoke Villanelle completion controls or synthesize
 their outcomes. An executable entry that returns a resource transfers it to the
 host: its JSON payload records an identity that is released at teardown, not a
 resource transferable to another process. Complete any required fallible protocol
@@ -200,7 +200,7 @@ durability. Adapters requiring fallible completion must expose explicit outcomes
 
 Retained storage currently belongs to one synchronous invocation, with no global
 object registry, thread-safety requirement, Rust future or executor contract. Future
-Tellur tasks will need explicit resource/frame ownership and cancellation rules;
+Villanelle tasks will need explicit resource/frame ownership and cancellation rules;
 this facility does not settle them or constrain LLVM coroutine lowering.
 
 ## Polled async operations (0.219)
@@ -269,7 +269,7 @@ through the poll that returns the outcome. A borrowed resource can own the
 descriptor, or the operation state can release it in its destructor. The runtime registers the descriptor with an internal
 readiness backend (Mio) and deregisters it on completion or stop, before the
 state drops. Registration failures stop the host with `E_HOST`. A build with polled
-adapters adds that internal dependency, so rerun `tellurc lock-native` after
+adapters adds that internal dependency, so rerun `vnc lock-native` after
 upgrading. Idle waiting blocks on readiness up to the earliest delay instead of
 sleeping.
 
@@ -290,7 +290,7 @@ releases it.
 `source` and `lockfile` resolve relative to `manifest.json`, regardless of the shell
 working directory. The CLI and LSP use this rule. Embedders use
 `Manifest::from_json_at(text, manifest_path)`; plain `from_json` leaves relative paths
-unresolved and native generation rejects them. Checking Tellur source does not read,
+unresolved and native generation rejects them. Checking Villanelle source does not read,
 compile or execute Rust wrappers. Native generation reads and embeds the configured
 sources into the generated crate. Use explicit modules below to share local adapter
 code, or registry dependencies for Rust packages. Unlisted wrapper-local
@@ -299,8 +299,8 @@ code, or registry dependencies for Rust packages. Unlisted wrapper-local
 After adding or deliberately changing dependencies:
 
 ```sh
-./bin/tellurc lock-native project/main.tellur
-./bin/tellurc build project/main.tellur --release
+./bin/vnc lock-native project/main.vn
+./bin/vnc build project/main.vn --release
 ```
 
 Commit the resulting project lockfile. Normal builds use `cargo rustc --locked` and
@@ -364,7 +364,7 @@ Checking and editor diagnostics validate metadata without reading Rust files.
 Native generation reads every listed module on each build, including unused modules,
 and reports missing/unreadable sources with their module name and path. Sources are
 embedded in deterministic name order. This is explicit source composition, not
-recursive filesystem discovery, a package resolver or a new Tellur namespace.
+recursive filesystem discovery, a package resolver or a new Villanelle namespace.
 The manifest still declares a single dependency graph and lockfile, and primitives
 still have project-wide names. All adapter source is trusted Rust with the same
 effect, panic, resource and execution-classification limits described above.
@@ -372,7 +372,7 @@ effect, panic, resource and execution-classification limits described above.
 ## Maintained application
 
 The [settings application](../applications/settings/README.md) is the first sustained
-consumer. Tellur handles defaults, key validation, updates and outcome mapping;
+consumer. Villanelle handles defaults, key validation, updates and outcome mapping;
 Rust supplies bounded reads, strict JSON decoding, encoding and file replacement.
 Since 0.75, the application and an independent example reuse the
 [JSON file source library](../library/README.md) and explicit Rust modules.
@@ -383,7 +383,7 @@ and cancellation contracts remain later checkpoints.
 
 The source-library follow-up on 0.76 also shares `library/host/loopback_http.rs`
 between the settings service and an [independent greeting server](../examples/http_hello/README.md).
-Both re-export the same `Listener`/`Connection` types and typed functions. Its Tellur
+Both re-export the same `Listener`/`Connection` types and typed functions. Its Villanelle
 facade preserves explicit consuming completion and contingent-call admission;
 application routes and supervision are separate. See the
 [bounded transport contract](../library/README.md#bounded-loopback-http).

@@ -12,9 +12,9 @@ selected-history hover and outcome absorption snapshots.
 From the repository root:
 
 ```sh
-./bin/tellurc explain playground/path_explanations.tellur --at 23:5
-./bin/tellurc explain playground/path_explanations.tellur --control classify --outcome invalid
-./bin/tellurc explain applications/settings/settings.tellur --control validate_key --outcome invalid --json
+./bin/vnc explain playground/path_explanations.vn --at 23:5
+./bin/vnc explain playground/path_explanations.vn --control classify --outcome invalid
+./bin/vnc explain applications/settings/settings.vn --control validate_key --outcome invalid --json
 ```
 
 The command is `explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME
@@ -39,18 +39,18 @@ Generic definitions and trait operations cannot yet be outcome-query roots.
 Concrete generic and trait calls still appear as contributors to ordinary roots.
 Source-position queries do work inside generic and trait bodies.
 
-Try [the runnable example](../../playground/path_explanations.tellur). The `invalid`
+Try [the runnable example](../../playground/path_explanations.vn). The `invalid`
 completion of `classify` combines missing and invalid input paths. Its main control
 uses the `inspected` alias for an outcome union; the group continuation runs once,
 even though two alternatives are listed.
 
 ## VS Code
 
-With a Tellur file active:
+With a Villanelle file active:
 
-- **Tellur: Explain Path Selection at Cursor** opens the selected history at the
+- **Villanelle: Explain Path Selection at Cursor** opens the selected history at the
   cursor, with decision origins and links back to their source positions.
-- **Tellur: Explain Outcome Contributors** offers a picker of the file's ordinary
+- **Villanelle: Explain Outcome Contributors** offers a picker of the file's ordinary
   concrete controls and their outcomes, including private ones, then opens a report.
 
 The result is an editable Markdown document. Use Markdown preview for rendered

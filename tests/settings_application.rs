@@ -19,7 +19,7 @@ fn program() -> tellur::CheckedProgram {
         &root.join("manifest.json"),
     )
     .unwrap();
-    compile_file(root.join("main.tellur"), manifest).unwrap()
+    compile_file(root.join("main.vn"), manifest).unwrap()
 }
 fn text(s: &str) -> Value {
     Value::String(s.into())

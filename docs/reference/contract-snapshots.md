@@ -13,8 +13,8 @@ From the compiler checkout, compare the maintained settings library with its
 committed baseline:
 
 ```sh
-./bin/tellurc contract-snapshot applications/settings/settings.tellur > /tmp/settings.contract.json
-./bin/tellurc contract-diff applications/settings/settings.contract.json /tmp/settings.contract.json --check
+./bin/vnc contract-snapshot applications/settings/settings.vn > /tmp/settings.contract.json
+./bin/vnc contract-diff applications/settings/settings.contract.json /tmp/settings.contract.json --check
 ```
 
 `contract-snapshot SOURCE [MANIFEST]` performs ordinary checking of the complete
@@ -36,11 +36,11 @@ existing baseline replaces that file, even if the command subsequently fails.
 
 ## Editor workflow
 
-With a Tellur source file active, run **Tellur: Show Public Contract Snapshot**.
+With a Villanelle source file active, run **Villanelle: Show Public Contract Snapshot**.
 The language server checks the current unsaved source and unsaved imported buffers,
 then opens the result in a new JSON document. Use Save As to retain a baseline.
 The view is a snapshot at the time of the request; rerun the command to refresh it.
-It does not save or edit the Tellur source.
+It does not save or edit the Villanelle source.
 
 The source needs a file identity and a valid manifest. Save untitled source first.
 If checking fails, the command reports the error and opens no partial or cached
@@ -57,7 +57,7 @@ The snapshot has `format: "tellur.public-contracts"` and `version: 1`. Its `modu
 map groups declarations by source module:
 
 - `@entry` is the requested source file, independent of its filename or checkout path.
-- `file:relative/path.tellur` identifies an imported file relative to the entry's
+- `file:relative/path.vn` identifies an imported file relative to the entry's
   directory. Paths outside that directory retain `..` components.
 - Private-only imported modules are omitted. An empty `@entry` remains present.
 
@@ -79,8 +79,8 @@ entry can change its identity. Source paths must be UTF-8.
 Only manifest types referenced by these surfaces are included in `manifest_types`,
 with their recursively referenced schemas. Their references use `@manifest::name`.
 Control signatures distinguish the current `control` profile from `legacy_region`,
-whose value-transfer rules differ. Source type references use `@entry::name` or `file:path.tellur::name`. These are
-snapshot identities, not new Tellur syntax. Builtin type spellings are normalized.
+whose value-transfer rules differ. Source type references use `@entry::name` or `file:path.vn::name`. These are
+snapshot identities, not new Villanelle syntax. Builtin type spellings are normalized.
 
 Private declarations, function bodies, implementation-local parameter names, source
 positions, formatting and comments are excluded. A private struct field is not

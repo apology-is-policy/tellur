@@ -44,7 +44,7 @@ fn program() -> CheckedProgram {
         &root.join("manifest.json"),
     )
     .unwrap();
-    compile_file(root.join("main.tellur"), manifest).unwrap()
+    compile_file(root.join("main.vn"), manifest).unwrap()
 }
 fn text(value: &str) -> Value {
     Value::String(value.into())
@@ -1058,12 +1058,12 @@ fn native_http_source_fault_sends_500_then_serves_next_request() {
     )
     .unwrap();
     // Fault injection belongs to this test's source loader, never the shipped route.
-    let p=tellur::modules::compile_with_loader(root.join("main.tellur"),m,|path| {
+    let p=tellur::modules::compile_with_loader(root.join("main.vn"),m,|path| {
         let mut source=fs::read_to_string(path)?;
-        if path.ends_with("http.tellur") {
+        if path.ends_with("http.vn") {
             source=source.replace("exits response faults {", "exits response faults { delta (target == \"/injected-fault\") {true=>broken,false=>valid} [broken]: fault \"injected routing invariant\"; [valid]:");
         }
-        if path.ends_with("server.tellur") {
+        if path.ends_with("server.vn") {
             source = source.replace("delta run transport.send(", "delta run checked_send(");
             source.push_str(r#"
                 async control checked_send(ref http_connection connection, u32 status, string body,

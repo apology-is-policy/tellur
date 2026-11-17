@@ -138,7 +138,7 @@
   "Import": {
     "prefix": "import",
     "body": [
-      "import \"${1:module.tellur}\" as ${2:module};"
+      "import \"${1:module.vn}\" as ${2:module};"
     ],
     "description": "Import a file through an explicit namespace"
   },

@@ -21,7 +21,7 @@ fn exit(outcome: &str) -> Symbol {
 }
 #[test]
 fn failed_read_still_requires_a_close_before_any_public_exit() {
-    let p = compile(include_str!("../playground/read_file.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/read_file.vn"), m()).unwrap();
     let model = p.protocol("show_file", 20_000).unwrap();
     let prefix = vec![primitive("open", "opened"), primitive("read", "failed")];
     let residual = model.residual(&prefix);
@@ -64,7 +64,7 @@ fn structural_possibilities_do_not_claim_data_feasibility() {
 #[test]
 fn loops_reset_decision_facts_and_support_unbounded_prefixes() {
     let m = Manifest::from_json(include_str!("../examples/manifest.json")).unwrap();
-    let p = compile(include_str!("../examples/fetch_retry.tellur"), m).unwrap();
+    let p = compile(include_str!("../examples/fetch_retry.vn"), m).unwrap();
     let model = p.protocol("fetch_retry", 20_000).unwrap();
     let mut prefix = vec![];
     // Real code permits only three attempts; this abstraction forgets the count.
@@ -102,11 +102,7 @@ fn silent_cycles_are_distinct_from_completion_and_observable_cycles() {
         assert_eq!(r.can_complete, completable);
         assert_eq!(r.may_silently_diverge, silent);
     }
-    let p = compile(
-        include_str!("../playground/protocol/finite_retry.tellur"),
-        m(),
-    )
-    .unwrap();
+    let p = compile(include_str!("../playground/protocol/finite_retry.vn"), m()).unwrap();
     let r = p.protocol("main", 200).unwrap().residual(&[]);
     assert!(r.may_silently_diverge && r.can_complete);
     assert_eq!(
@@ -133,7 +129,7 @@ fn nested_callee_loop_completion_resumes_the_caller() {
 }
 #[test]
 fn stored_outcomes_do_not_replay_effects_and_repeated_invocations_remain_distinct() {
-    let p = compile(include_str!("../playground/algebra/original.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/algebra/original.vn"), m()).unwrap();
     let model = p.protocol("main", 1000).unwrap();
     for flag in [false, true] {
         let s = Scenario {
@@ -149,7 +145,7 @@ fn stored_outcomes_do_not_replay_effects_and_repeated_invocations_remain_distinc
                 .prefix_possible
         );
     }
-    let p = compile(include_str!("../playground/forwarding.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/forwarding.vn"), m()).unwrap();
     let model = p.protocol("main", 1000).unwrap();
     // Data abstraction permits each named message to be empty, but two emits
     // remain possible and a third cannot appear from one of the two invocations.
@@ -185,9 +181,9 @@ fn state_budget_exhaustion_is_an_error_not_a_partial_model() {
 #[test]
 fn collection_and_borrowed_adapters_have_finite_structural_models() {
     for source in [
-        include_str!("../playground/collections.tellur"),
-        include_str!("../playground/references.tellur"),
-        include_str!("../playground/stored_adapters.tellur"),
+        include_str!("../playground/collections.vn"),
+        include_str!("../playground/references.vn"),
+        include_str!("../playground/stored_adapters.vn"),
     ] {
         let p = compile(source, m()).unwrap();
         let model = p.protocol("main", 20_000).unwrap();
@@ -274,8 +270,8 @@ fn inclusion_handles_nondeterministic_epsilon_choices_and_cycles() {
 }
 #[test]
 fn protocol_equality_does_not_establish_behavioral_or_divergence_equivalence() {
-    let a = compile(include_str!("../playground/algebra/original.tellur"), m()).unwrap();
-    let b = compile(include_str!("../playground/algebra/reordered.tellur"), m()).unwrap();
+    let a = compile(include_str!("../playground/algebra/original.vn"), m()).unwrap();
+    let b = compile(include_str!("../playground/algebra/reordered.vn"), m()).unwrap();
     let pa = a.protocol("main", 1000).unwrap();
     let pb = b.protocol("main", 1000).unwrap();
     assert!(

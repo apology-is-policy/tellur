@@ -28,7 +28,7 @@ pub struct Configuration {
     pub modules: BTreeMap<String, PathBuf>,
     #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
-    /// Tellur opaque must-complete type -> public type in the adapter module.
+    /// Villanelle opaque must-complete type -> public type in the adapter module.
     #[serde(
         default,
         skip_serializing_if = "BTreeMap::is_empty",
@@ -261,7 +261,7 @@ fn adapter_api(
     all
 }
 /// Generate Rust enums and exact function-pointer checks from the same manifest
-/// that checks Tellur callers. No arbitrary dynamic wire-value API reaches wrappers.
+/// that checks Villanelle callers. No arbitrary dynamic wire-value API reaches wrappers.
 pub(crate) fn source(manifest: &Manifest) -> Result<String> {
     let Some(config) = &manifest.rust else {
         return Ok("fn rust_dispatch(_: &mut Resources, _: &str, _: Vec<V>) -> R<Outcome> { Err(\"E_HOST: no Rust adapter\".into()) }\nfn rust_start(_: &mut Resources, _: &str, _: Vec<V>) -> R<Box<dyn HostPoll>> { Err(\"E_HOST: no Rust adapter\".into()) }\n".to_string() + NO_READINESS);

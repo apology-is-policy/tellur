@@ -6,8 +6,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'contained-tasks');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const source = await fs.readFile(path.join(__dirname, '../../../playground/contained_tasks.tellur'), 'utf8');
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const source = await fs.readFile(path.join(__dirname, '../../../playground/contained_tasks.vn'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

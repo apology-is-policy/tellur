@@ -60,8 +60,8 @@ escapes are errors. Write Unicode characters directly; there is no `\u` escape o
 string interpolation. Literal newlines inside quoted strings are accepted; using
 `\n` often makes the intended source layout clearer.
 
-<!-- tellur:body -->
-```tellur
+<!-- villanelle:body -->
+```villanelle
 u32 limit = 4294967295u32;
 string greeting = "Hello, světe!\n";
 bytes signature = bytes"00Ff7a";
@@ -90,8 +90,8 @@ Thus `deref input.text` means `deref (input.text)`, and `borrow deref input` mea
 `borrow (deref input)`. `!ready || count < limit && enabled` groups as
 `(!ready) || ((count < limit) && enabled)`. Parentheses may make intent clearer.
 
-<!-- tellur:body -->
-```tellur
+<!-- villanelle:body -->
+```villanelle
 bool ready = false;
 bool enabled = true;
 u32 count = 2;

@@ -1,4 +1,4 @@
-// Types live in Tellur source. A wrapper gives an ID its own nominal identity.
+// Types live in Villanelle source. A wrapper gives an ID its own nominal identity.
 struct user_id {
     u32 value;
 }

@@ -270,7 +270,7 @@ impl Machine<'_> {
 }
 
 fn source_program() -> CheckedProgram {
-    let text = include_str!("../../tests/fixtures/source_pending_operation.tellur");
+    let text = include_str!("../../tests/fixtures/source_pending_operation.vn");
     // Reuse the exact checked adapter signature from the earlier operation model.
     let manifest = operation_manifest();
     crate::compile(text, manifest).unwrap()

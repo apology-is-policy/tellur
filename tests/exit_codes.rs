@@ -59,7 +59,7 @@ fn maintained_playgrounds_declare_complete_executable_contracts() {
                 {
                     pending.push(path);
                 }
-            } else if path.extension().is_some_and(|e| e == "tellur") {
+            } else if path.extension().is_some_and(|e| e == "vn") {
                 // Examples may declare their own host/launch contract. Resolve the
                 // same per-file/nearest-directory manifest as their documented run.
                 let sibling = path.with_extension("manifest.json");
@@ -81,7 +81,7 @@ fn maintained_playgrounds_declare_complete_executable_contracts() {
                         .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
                     checked += 1;
                 }
-                if path.file_name().unwrap() == "port.tellur" {
+                if path.file_name().unwrap() == "port.vn" {
                     assert_eq!(
                         p.entry_exit_codes("parse_port").unwrap(),
                         codes(&[("ready", 0), ("invalid", 2)])
@@ -213,27 +213,19 @@ fn manifest_policies_reject_duplicate_keys_bad_ranges_and_unknown_entries() {
 fn imported_contracts_use_module_identity_and_aliases_preserve_defaults() {
     let root = std::env::temp_dir().join(format!("tellur-status-modules-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("a.vn"), "pub outcome result {@exit 0 success}").unwrap();
+    fs::write(root.join("b.vn"), "pub outcome result {@exit 7 success}").unwrap();
     fs::write(
-        root.join("a.tellur"),
-        "pub outcome result {@exit 0 success}",
-    )
-    .unwrap();
-    fs::write(
-        root.join("b.tellur"),
-        "pub outcome result {@exit 7 success}",
-    )
-    .unwrap();
-    fs::write(
-        root.join("main.tellur"),
+        root.join("main.vn"),
         r#"
-        import "a.tellur" as a; import "a.tellur" as alias; import "b.tellur" as b;
+        import "a.vn" as a; import "a.vn" as alias; import "b.vn" as b;
         control main() exits a.result {exit success;}
         control second() exits b.result {exit success;}
         control third() exits alias.result {exit success;}
     "#,
     )
     .unwrap();
-    let p = compile_file(root.join("main.tellur"), manifest()).unwrap();
+    let p = compile_file(root.join("main.vn"), manifest()).unwrap();
     for (entry, code) in [("main", 0), ("second", 7), ("third", 0)] {
         assert_eq!(
             p.entry_exit_codes(entry).unwrap(),
@@ -312,14 +304,14 @@ fn native_statuses_preserve_payloads_adapters_and_expansion_at_o0_o2() {
     }
     // The compiler command must return the child's numeric status without turning
     // a declared completion into a compiler error, including --json execution.
-    fs::write(root.join("main.tellur"), source).unwrap();
+    fs::write(root.join("main.vn"), source).unwrap();
     fs::write(
         root.join("manifest.json"),
         serde_json::to_string(&manifest()).unwrap(),
     )
     .unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_tellurc"));
-    command.arg("exec").arg(root.join("main.tellur"));
+    command.arg("exec").arg(root.join("main.vn"));
     if std::env::var_os("TELLUR_TEST_BACKEND").is_some() {
         command.args(["--backend", support::test_backend()]);
     }

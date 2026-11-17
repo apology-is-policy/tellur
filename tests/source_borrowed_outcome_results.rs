@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/borrowed_outcome_spawn_results.tellur");
-const GUARDS: &str = include_str!("fixtures/source_borrowed_outcome_result_guards.tellur");
+const SOURCE: &str = include_str!("../playground/borrowed_outcome_spawn_results.vn");
+const GUARDS: &str = include_str!("fixtures/source_borrowed_outcome_result_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -277,7 +277,7 @@ control main() exits done {forward run startup();}
 }
 #[test]
 fn nested_whole_outcomes_keep_outer_handling_even_when_inner_absent() {
-    let nested = include_str!("fixtures/source_borrowed_outcome_result_nested.tellur");
+    let nested = include_str!("fixtures/source_borrowed_outcome_result_nested.vn");
     for replacement in [
         "holder.wrapped { some { reply.held { borrow owner } } }",
         "holder.wrapped { some {reply.empty {}} }",
@@ -298,7 +298,7 @@ fn nested_whole_outcomes_keep_outer_handling_even_when_inner_absent() {
 }
 #[test]
 fn whole_outcome_fault_results_settle_before_owning_contingency() {
-    let source = include_str!("fixtures/source_borrowed_outcome_result_fault.tellur");
+    let source = include_str!("fixtures/source_borrowed_outcome_result_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

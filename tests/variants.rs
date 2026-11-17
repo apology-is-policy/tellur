@@ -65,7 +65,7 @@ fn equivalent(p: &tellur::CheckedProgram, s: &Scenario) -> tellur::runtime::Exec
 
 #[test]
 fn optional_file_all_open_and_close_outcomes() {
-    let p = checked(include_str!("../examples/optional_handle.tellur"));
+    let p = checked(include_str!("../examples/optional_handle.vn"));
     for (open, close, expected) in [
         ("NotFound", None, "Done"),
         ("Denied", None, "Denied"),
@@ -108,7 +108,7 @@ fn optional_file_all_open_and_close_outcomes() {
 }
 #[test]
 fn owned_variant_all_open_and_close_outcomes() {
-    let p = checked(include_str!("../examples/owned_variant.tellur"));
+    let p = checked(include_str!("../examples/owned_variant.vn"));
     for (open, close) in [
         ("NotFound", None),
         ("Denied", None),

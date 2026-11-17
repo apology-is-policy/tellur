@@ -20,7 +20,7 @@ impl Fixture {
             ID.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(&root).unwrap();
-        let path = root.join("main.tellur");
+        let path = root.join("main.vn");
         fs::write(&path, source).unwrap();
         let manifest = root.join("manifest.json");
         fs::write(&manifest, include_str!("../playground/manifest.json")).unwrap();
@@ -61,7 +61,7 @@ impl Drop for Fixture {
 
 #[test]
 fn backend_selection_is_explicit_and_unknown_names_are_rejected() {
-    let f = Fixture::new(include_str!("../playground/hello.tellur"));
+    let f = Fixture::new(include_str!("../playground/hello.vn"));
     let bad = f.command("unknown", 0).output().unwrap();
     assert!(!bad.status.success());
     assert!(String::from_utf8_lossy(&bad.stderr).contains("unknown backend"));
@@ -128,7 +128,7 @@ mod enabled {
     use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
     #[test]
     fn toolchain_free_builds_share_and_repair_the_embedded_runtime() {
-        let f = Fixture::new(include_str!("../playground/hello.tellur"));
+        let f = Fixture::new(include_str!("../playground/hello.vn"));
         let cache = f.root.join("cache");
         let missing = f.root.join("absent-toolchain");
         let build = |name: &str| {
@@ -188,7 +188,7 @@ mod enabled {
                     if name != "build" && name != "target" && !name.ends_with(".tellur-build") {
                         visit(&path, count);
                     }
-                } else if path.extension().is_some_and(|ext| ext == "tellur") {
+                } else if path.extension().is_some_and(|ext| ext == "vn") {
                     let manifest = corpus::manifest_path(&path);
                     let program = compile_file(
                         &path,
@@ -430,7 +430,7 @@ outcome logic_result {@exit 0 done {bool value}}
     fn imported_private_calls_keep_activation_ids_locations_and_every_fuel_cut() {
         let f = Fixture::new(
             r#"
-            import "helpers.tellur" as helpers;
+            import "helpers.vn" as helpers;
             control main(bool fail) exits result faults {
                 helpers.run(false);
                 helpers.run(fail);
@@ -441,7 +441,7 @@ outcome logic_result {@exit 0 done {bool value}}
         "#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"
             pub control run(bool fail) exits done faults {
                 delta hidden(fail);
@@ -490,7 +490,7 @@ outcome logic_result {@exit 0 done {bool value}}
     }
     #[test]
     fn owned_records_preserve_partial_moves_named_order_and_every_fuel_cut() {
-        let f = Fixture::new(include_str!("../playground/llvm_records.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_records.vn"));
         let checked = compile_file(
             &f.source,
             Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
@@ -540,7 +540,7 @@ outcome logic_result {@exit 0 done {bool value}}
     fn imported_generic_records_and_record_entry_arguments_match_both_executors() {
         let f = Fixture::new(
             r#"
-            import "helpers.tellur" as helpers;
+            import "helpers.vn" as helpers;
             struct packet {bytes data;unit marker;bool flag;}
             control main(packet value) exits result {
                 delta helpers.carry(value.data) {ready {auto data}=>ready}
@@ -550,7 +550,7 @@ outcome logic_result {@exit 0 done {bool value}}
         "#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"
             struct box<t> {t value;}
             struct pair<t> {box<t> first;u32 second;}
@@ -612,7 +612,7 @@ outcome logic_result {@exit 0 done {bool value}}
 
     #[test]
     fn tagged_values_and_captured_outcomes_preserve_branches_faults_and_fuel() {
-        let f = Fixture::new(include_str!("../playground/llvm_tagged.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_tagged.vn"));
         let checked = compile_file(
             &f.source,
             Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
@@ -673,7 +673,7 @@ outcome logic_result {@exit 0 done {bool value}}
     fn imported_generic_tags_and_copy_decisions_match_reference() {
         let f = Fixture::new(
             r#"
-            import "helpers.tellur" as helpers;
+            import "helpers.vn" as helpers;
             variant bit {on,off}
             outcome result {@exit 0 done {option<bytes> data}}
             control main(bool pick, bytes data) exits result {
@@ -686,7 +686,7 @@ outcome logic_result {@exit 0 done {bool value}}
         "#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"
             struct wrapper<t> {option<t> value;}
             variant maybe<t> {yes {wrapper<t> value},no}
@@ -761,7 +761,7 @@ outcome logic_result {@exit 0 done {bool value}}
 
     #[test]
     fn direct_references_preserve_returned_loans_mutation_faults_and_fuel() {
-        let f = Fixture::new(include_str!("../playground/llvm_references.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_references.vn"));
         let checked = compile_file(
             &f.source,
             Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
@@ -925,12 +925,12 @@ outcome result {@exit 0 done {option<string> value}}
             |fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}),
         );
         carrier_matrix(
-            include_str!("../playground/llvm_carriers.tellur"),
+            include_str!("../playground/llvm_carriers.vn"),
             &scenarios,
             &(0..=85).map(Some).chain([None]).collect::<Vec<_>>(),
         );
         carrier_matrix(
-            include_str!("fixtures/carrier_reborrows.tellur"),
+            include_str!("fixtures/carrier_reborrows.vn"),
             &[json!({"entry":"main","arguments":[],"calls":[]})],
             &[None],
         );
@@ -977,9 +977,9 @@ outcome result {@exit 0 done {option<string> value}}
     #[test]
     fn whole_record_and_outcome_results_preserve_selected_origins_and_empty_alternatives() {
         for source in [
-            include_str!("../playground/borrowed_record_spawn_results.tellur"),
-            include_str!("../playground/borrowed_outcome_spawn_results.tellur"),
-            include_str!("fixtures/source_borrowed_outcome_result_guards.tellur"),
+            include_str!("../playground/borrowed_record_spawn_results.vn"),
+            include_str!("../playground/borrowed_outcome_spawn_results.vn"),
+            include_str!("fixtures/source_borrowed_outcome_result_guards.vn"),
         ] {
             carrier_matrix(
                 &synchronous_carriers(source),
@@ -1012,7 +1012,7 @@ outcome result {@exit 0 done}
 
     #[test]
     fn live_owned_primitives_match_reference_scripts_and_rust() {
-        let f = Fixture::new(include_str!("../playground/llvm_primitives.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_primitives.vn"));
         let checked = compile_file(
             &f.source,
             Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
@@ -1251,7 +1251,7 @@ outcome result {@exit 0 done}
 
     #[test]
     fn live_resources_borrow_read_and_consume_close_through_owned_records() {
-        let f = Fixture::new(include_str!("../playground/llvm_resources.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_resources.vn"));
         let file = f.root.join("input.dat");
         let bytes = vec![0, 65, 255, 10];
         fs::write(&file, &bytes).unwrap();
@@ -1312,7 +1312,7 @@ outcome result {@exit 0 done}
 
     #[test]
     fn scripted_resources_errors_faults_and_fuel_match_both_executors() {
-        let f = Fixture::new(include_str!("../playground/llvm_resources.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_resources.vn"));
         let checked = compile_file(
             &f.source,
             Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
@@ -1471,7 +1471,7 @@ outcome result {@exit 0 done}
     fn collections_preserve_mutation_element_borrows_faults_and_fuel() {
         let scenarios=[0,1,99].into_iter().flat_map(|index| [false,true].map(move |fail|json!({"entry":"main","arguments":[{"kind":"u32","value":index},{"kind":"bool","value":fail}],"calls":[]}))).collect::<Vec<_>>();
         carrier_matrix(
-            include_str!("../playground/llvm_collections.tellur"),
+            include_str!("../playground/llvm_collections.vn"),
             &scenarios,
             &(0..=55).map(Some).chain([None]).collect::<Vec<_>>(),
         );
@@ -1559,7 +1559,7 @@ control main(u32 index) exits auto {
     #[test]
     fn collections_of_shared_references_keep_external_origins_after_transfer() {
         carrier_matrix(
-            include_str!("fixtures/borrowed_collections.tellur"),
+            include_str!("fixtures/borrowed_collections.vn"),
             &[json!({"entry":"main","arguments":[],"calls":[]})],
             &[None],
         );
@@ -1590,7 +1590,7 @@ control main() exits done {string text="ok";delta first(borrow text) {found {aut
             &[json!({"entry":"main","arguments":[],"calls":[]})],
             &[None],
         );
-        let bad = include_str!("fixtures/borrowed_collections.tellur")
+        let bad = include_str!("fixtures/borrowed_collections.vn")
             .replace("emit(word)", "first=\"early\";emit(word)");
         assert_eq!(
             tellur::compile(
@@ -1675,7 +1675,7 @@ control main() exits auto {
             .chain((0..=100).map(Some))
             .collect::<Vec<_>>();
         carrier_matrix(
-            include_str!("../playground/llvm_loops.tellur"),
+            include_str!("../playground/llvm_loops.vn"),
             &scenarios,
             &fuels,
         );
@@ -1840,7 +1840,7 @@ control main() exits done {{
 
     #[test]
     fn constructors_deliver_directly_and_keep_faults_and_every_fuel_cut() {
-        let source = include_str!("../playground/llvm_constructors.tellur");
+        let source = include_str!("../playground/llvm_constructors.vn");
         let checked = tellur::compile(
             source,
             Manifest::from_json(include_str!("../playground/manifest.json")).unwrap(),
@@ -2075,7 +2075,7 @@ control main() exits done {
     fn imported_generic_constructors_preserve_names_and_partial_initialization_faults() {
         let f = Fixture::new(
             r#"
-import "helpers.tellur" as helpers;
+import "helpers.vn" as helpers;
 control main(bool fail) exits result faults {
     auto value = helpers.wrapper<helpers.message>(helpers.message(fail));
     emit(move value.value.text);
@@ -2085,7 +2085,7 @@ outcome result {@exit 0 done}
 "#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"
 pub struct wrapper<t> {
     pub t value;
@@ -2135,7 +2135,7 @@ pub struct message {
 
     #[test]
     fn named_boundaries_preserve_settlement_retained_owners_faults_and_fuel() {
-        carrier_matrix(include_str!("../playground/llvm_supervision.tellur"),
+        carrier_matrix(include_str!("../playground/llvm_supervision.vn"),
             &[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),
             &(0..=65).map(Some).chain([None]).collect::<Vec<_>>());
         carrier_matrix(
@@ -2291,10 +2291,10 @@ outcome result {@exit 0 done}
     #[test]
     fn imported_named_boundaries_keep_private_helpers_and_source_names() {
         let f = Fixture::new(
-            r#"import "helpers.tellur" as helpers; control main() exits result {supervise helpers.request("retained");exit done;} outcome result {@exit 0 done}"#,
+            r#"import "helpers.vn" as helpers; control main() exits result {supervise helpers.request("retained");exit done;} outcome result {@exit 0 done}"#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"
 control fail() faults {fault "imported fault";}
 @contingent control report(string message) exits done {emit(message);exit done;}
@@ -2383,11 +2383,11 @@ contingency(string reason){report(reason);emit(context);terminate;}
     #[test]
     fn lexical_boundaries_recover_with_preserved_supervisor_state_and_structured_faults() {
         lexical_matrix(
-            &Fixture::new(include_str!("../playground/recovery.tellur")),
+            &Fixture::new(include_str!("../playground/recovery.vn")),
             &[json!({"entry":"main","arguments":[],"calls":[]})],
             &(0..=90).map(Some).chain([None]).collect::<Vec<_>>(),
         );
-        lexical_matrix(&Fixture::new(include_str!("../playground/llvm_recovery.tellur")),&[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),&(0..=95).map(Some).chain([None]).collect::<Vec<_>>());
+        lexical_matrix(&Fixture::new(include_str!("../playground/llvm_recovery.vn")),&[false,true].map(|fail|json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),&(0..=95).map(Some).chain([None]).collect::<Vec<_>>());
     }
     #[test]
     fn lexical_boundaries_finalize_fallthrough_outward_again_and_expanded_completions() {
@@ -2462,9 +2462,9 @@ control main(bool broken) exits done {
     #[test]
     fn lexical_boundaries_compose_with_imported_named_work_and_constructor_delivery() {
         let f = Fixture::new(
-            r#"import "helper.tellur" as h;control main() exits done {fault boundary {supervise h.request();exit done;} contingency [] {emit(borrow @fault.message);terminate process 5;}}"#,
+            r#"import "helper.vn" as h;control main() exits done {fault boundary {supervise h.request();exit done;} contingency [] {emit(borrow @fault.message);terminate process 5;}}"#,
         );
-        fs::write(f.root.join("helper.tellur"),r#"struct text {string value;constructor(string input){self.value=input;}} control make() exits ready {text value}{fault boundary {exit ready {text("owned")};} contingency [] {escalate;}} pub boundary request() faults {delta make(){ready {text value}=>ready}[ready]:emit(value.value);fault "request";} contingency(string reason){emit(reason);escalate;}"#).unwrap();
+        fs::write(f.root.join("helper.vn"),r#"struct text {string value;constructor(string input){self.value=input;}} control make() exits ready {text value}{fault boundary {exit ready {text("owned")};} contingency [] {escalate;}} pub boundary request() faults {delta make(){ready {text value}=>ready}[ready]:emit(value.value);fault "request";} contingency(string reason){emit(reason);escalate;}"#).unwrap();
         lexical_matrix(
             &f,
             &[json!({"entry":"main","arguments":[],"calls":[]})],
@@ -2475,12 +2475,12 @@ control main(bool broken) exits done {
     #[test]
     fn every_control_keeps_scratch_allocations_in_its_entry_block() {
         for source in [
-            include_str!("../playground/llvm_recovery.tellur"),
-            include_str!("../playground/llvm_supervision.tellur"),
-            include_str!("../playground/llvm_constructors.tellur"),
-            include_str!("../playground/llvm_loops.tellur"),
-            include_str!("../playground/llvm_collections.tellur"),
-            include_str!("../playground/llvm_carriers.tellur"),
+            include_str!("../playground/llvm_recovery.vn"),
+            include_str!("../playground/llvm_supervision.vn"),
+            include_str!("../playground/llvm_constructors.vn"),
+            include_str!("../playground/llvm_loops.vn"),
+            include_str!("../playground/llvm_collections.vn"),
+            include_str!("../playground/llvm_carriers.vn"),
             "control main(bool a,bool b) exits result {bool value=a && !b || b;exit done {value};} outcome result {@exit 0 done {bool value}}",
         ] {
             let checked = tellur::compile(
@@ -2593,7 +2593,7 @@ control main(bool fail) exits done faults {forward run startup(fail);}
 
     #[test]
     fn frontend_cancellation_keeps_exclusive_caller_loans_and_ordinary_completion() {
-        let f = Fixture::new(include_str!("../playground/llvm_cancel.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_cancel.vn"));
         let scenarios = [false, true].map(|fail|
             json!({"entry":"main","arguments":[{"kind":"bool","value":fail},{"kind":"string","value":"original owner"}],"calls":[]}));
         lexical_matrix(
@@ -2605,7 +2605,7 @@ control main(bool fail) exits done faults {forward run startup(fail);}
 
     #[test]
     fn frontend_constructors_preserve_owned_and_borrowed_destinations_through_yielded_helpers() {
-        let f = Fixture::new(include_str!("../playground/llvm_async_constructors.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_async_constructors.vn"));
         let scenarios = [false, true].map(
             |fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]}),
         );
@@ -2715,14 +2715,14 @@ control main() exits done {
     fn frontend_constructors_preserve_imported_generic_names_and_partial_initialization_faults() {
         let f = Fixture::new(
             r#"
-import "helpers.tellur" as helpers;
+import "helpers.vn" as helpers;
 control main(bool fail) exits done faults {
  auto value=helpers.wrapper<helpers.message>(helpers.message(fail));emit(move value.value.text);exit done;
 }
 "#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"
 async control pause() exits done {yield;exit done;}
 pub struct wrapper<t> {pub t value;pub constructor(t value) {run pause();self.value=move value;}}
@@ -2980,7 +2980,7 @@ control plain() exits done {emit("synchronous");exit done;}
     #[test]
     fn frontend_sets_drain_in_completion_order_and_empty_next_does_not_handoff() {
         let scenario = json!({"entry":"main","arguments":[],"calls":[]});
-        let f = Fixture::new(include_str!("../playground/task_sets.tellur"));
+        let f = Fixture::new(include_str!("../playground/task_sets.vn"));
         let expected = successful_reference(&f, &scenario);
         let emitted = |report: &Json| {
             report["events"]
@@ -3085,7 +3085,7 @@ control main(bool parent_fail,bool member_fail) exits done faults {forward run s
 
     #[test]
     fn frontend_sets_bound_feeding_and_reuse_loop_carried_remainders() {
-        let f = Fixture::new(include_str!("../playground/llvm_task_sets.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_task_sets.vn"));
         let scenarios=[0,1,2,6].map(|limit|json!({"entry":"main","arguments":[{"kind":"u32","value":limit}],"calls":(1..=limit).map(|n|json!({"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":n}]})).collect::<Vec<_>>() }));
         for scenario in &scenarios {
             let report = successful_reference(&f, scenario);
@@ -3300,7 +3300,7 @@ control main() exits done {forward run startup();}
 
     #[test]
     fn frontend_loops_preserve_owned_swaps_resets_nested_awaits_and_expanded_completion() {
-        let f = Fixture::new(include_str!("../playground/llvm_async_loops.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_async_loops.vn"));
         let scenarios = [0, 1, 3].into_iter().flat_map(|limit| [false,true].map(move |fail|
             json!({"entry":"main","arguments":[{"kind":"u32","value":limit},{"kind":"bool","value":fail}],"calls":(1..=limit).map(|n|json!({"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":n}]})).collect::<Vec<_>>() }))).collect::<Vec<_>>();
         for scenario in &scenarios {
@@ -3578,7 +3578,7 @@ control main() exits done {forward run startup();}
             &[json!({"entry":"main","arguments":[],"calls":[]})],
             &(0..=32).map(Some).chain([None]).collect::<Vec<_>>(),
         );
-        let source=include_str!("../playground/llvm_resources.tellur")
+        let source=include_str!("../playground/llvm_resources.vn")
             .replace("control read_owned", "async control read_owned")
             .replace("delta close(input.file)", "yield;delta close(input.file)")
             .replace("control main(string filename, bool fail)", "async control startup(string filename, bool fail)")
@@ -3728,7 +3728,7 @@ control main() exits done {forward run startup();}
             &[json!({"entry":"main","arguments":[],"calls":[]})],
             &(0..=32).map(Some).chain([None]).collect::<Vec<_>>(),
         );
-        let source=include_str!("../playground/llvm_resources.tellur")
+        let source=include_str!("../playground/llvm_resources.vn")
             .replace("control read_owned", "async control read_owned")
             .replace("[read & closed]: exit", "[read & closed]: yield;exit")
             .replace("control main(string filename, bool fail)", "async control startup(string filename, bool fail)")
@@ -3784,7 +3784,7 @@ control main() exits done {forward run startup();}
     fn frontend_spawned_imports_keep_exact_producer_types_across_repeated_runs() {
         let f = Fixture::new(
             r#"
-import "worker.tellur" as work;
+import "worker.vn" as work;
 async control startup(string text) exits done {
     auto task=spawn work.echo(text);yield;
     delta await task {ready {string result}=>ready}
@@ -3794,7 +3794,7 @@ control main() exits done {run startup("first");run startup("second");exit done;
 "#,
         );
         fs::write(
-            f.root.join("worker.tellur"),
+            f.root.join("worker.vn"),
             r#"
 pub async control echo(string text) exits ready {string result} {yield;exit ready {text};}
 "#,
@@ -3848,7 +3848,7 @@ pub async control echo(string text) exits ready {string result} {yield;exit read
     }
     #[test]
     fn frontend_host_operations_share_run_await_cold_and_spawned_tasks() {
-        let f = host_fixture(include_str!("../playground/llvm_host.tellur"));
+        let f = host_fixture(include_str!("../playground/llvm_host.vn"));
         let scenarios = [0,1,7].map(|waits| json!({"entry":"main","arguments":[],"calls":[host_call("run",waits),host_call("cold",waits),host_call("spawn",waits),host_call("await",waits)]}));
         for scenario in &scenarios {
             let report = successful_reference(&f, scenario);
@@ -4050,7 +4050,7 @@ control main() exits done faults {{forward run startup();}}
 
     #[test]
     fn frontend_named_supervision_preserves_borrowed_work_and_administrative_settlement() {
-        let f = Fixture::new(include_str!("../playground/llvm_async_supervision.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_async_supervision.vn"));
         lexical_matrix(
         &f,
         &[false, true].map(
@@ -4680,7 +4680,7 @@ control main(bool enabled,bool fail) exits done {{forward run startup(enabled,fa
     #[test]
     fn frontend_named_supervision_preserves_imported_private_and_contingent_names() {
         let f = Fixture::new(
-            r#"import "helpers.tellur" as helpers;
+            r#"import "helpers.vn" as helpers;
 control main() exits done {
     supervise helpers.request("retained");
     emit("parent");
@@ -4689,7 +4689,7 @@ control main() exits done {
 "#,
         );
         fs::write(
-            f.root.join("helpers.tellur"),
+            f.root.join("helpers.vn"),
             r#"async control fail() exits done faults {
     yield;
     fault "imported fault";
@@ -4734,7 +4734,7 @@ contingency(string reason) {
     }
     #[test]
     fn frontend_lexical_recovery_preserves_entry_values_and_reused_path_facts() {
-        let f = Fixture::new(include_str!("../playground/llvm_async_recovery.tellur"));
+        let f = Fixture::new(include_str!("../playground/llvm_async_recovery.vn"));
         lexical_matrix(&f, &[false,true].map(|fail| json!({"entry":"main","arguments":[{"kind":"bool","value":fail}],"calls":[]})),
             &(0..=75).map(Some).chain([None]).collect::<Vec<_>>());
         let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
@@ -4790,7 +4790,7 @@ contingency(string reason) {
     }
     #[test]
     fn frontend_lexical_recovery_preserves_pending_host_and_driver_error_authority() {
-        let source = include_str!("../playground/llvm_async_recovery.tellur").replace("            yield;", r#"            delta await tick("request") {ticked {string reply}=>ready,cancelled=>stopped}
+        let source = include_str!("../playground/llvm_async_recovery.vn").replace("            yield;", r#"            delta await tick("request") {ticked {string reply}=>ready,cancelled=>stopped}
             [ready]:emit(reply);
             [ready|stopped]:yield;"#);
         assert!(source.contains("await tick"));
@@ -4849,7 +4849,7 @@ control main(bool parent_fault) exits done {forward run session(parent_fault);}"
     #[test]
     fn frontend_lexical_imported_helpers_preserve_guarded_scope_paths_and_borrows() {
         let f = Fixture::new(
-            r#"import "helper.tellur" as h;
+            r#"import "helper.vn" as h;
 async control session(bool selected) exits done {
  string owner="imported owner";
  delta selected {true=>work,false=>skip}
@@ -4858,7 +4858,7 @@ async control session(bool selected) exits done {
 }
 control main(bool selected) exits done {forward run session(selected);}"#,
         );
-        fs::write(f.root.join("helper.tellur"),r#"pub async control inspect(ref string owner) exits done faults {string request=clone(owner);fault boundary {yield;emit(request);} contingency [] {escalate;}emit(owner);exit done;}"#).unwrap();
+        fs::write(f.root.join("helper.vn"),r#"pub async control inspect(ref string owner) exits done faults {string request=clone(owner);fault boundary {yield;emit(request);} contingency [] {escalate;}emit(owner);exit done;}"#).unwrap();
         lexical_matrix(&f,&[false,true].map(|selected|json!({"entry":"main","arguments":[{"kind":"bool","value":selected}],"calls":[]})),
             &(0..=50).map(Some).chain([None]).collect::<Vec<_>>());
     }
@@ -4879,10 +4879,7 @@ control main(bool selected) exits done {forward run session(selected);}"#,
     }
     #[test]
     fn frontend_launch_signals_cancel_pending_sets_and_before_first_host_start() {
-        let f = signal_fixture(
-            include_str!("../playground/llvm_launch_signals.tellur"),
-            true,
-        );
+        let f = signal_fixture(include_str!("../playground/llvm_launch_signals.vn"), true);
         let mut scenarios = vec![];
         for name in ["SIGINT", "SIGTERM"] {
             scenarios.push(json!({"entry":"main","arguments":[],"calls":[launch_signal(name)]}));
@@ -5308,7 +5305,7 @@ pub fn tick() -> Box<dyn tick_operation> { Box::new(Tick) }
 #[cfg(feature = "linux-musl-packs")]
 #[test]
 fn cli_links_both_static_linux_targets_from_a_cold_cache_without_build_tools() {
-    let fixture = Fixture::new(include_str!("../playground/hello.tellur"));
+    let fixture = Fixture::new(include_str!("../playground/hello.vn"));
     for (triple, machine) in [
         ("x86_64-unknown-linux-musl", 62),
         ("aarch64-unknown-linux-musl", 183),
@@ -5320,14 +5317,14 @@ fn cli_links_both_static_linux_targets_from_a_cold_cache_without_build_tools() {
 #[cfg(feature = "thylacine-pack")]
 #[test]
 fn cli_links_thylacine_from_a_cold_cache_without_build_tools() {
-    let fixture = Fixture::new(include_str!("../playground/hello.tellur"));
+    let fixture = Fixture::new(include_str!("../playground/hello.vn"));
     check_static_elf(&fixture, "aarch64-unknown-thylacine", 183);
 }
 
 #[cfg(feature = "thylacine-pack")]
 #[test]
 fn thylacine_adapter_rejects_a_misnamed_rust_target_before_cargo() {
-    let fixture = Fixture::new(include_str!("../playground/hello.tellur"));
+    let fixture = Fixture::new(include_str!("../playground/hello.vn"));
     let output = Command::new(env!("CARGO_BIN_EXE_tellur"))
         .env("TELLUR_NATIVE_TARGET_DIR", &fixture.root)
         .env(
@@ -5339,7 +5336,7 @@ fn thylacine_adapter_rejects_a_misnamed_rust_target_before_cargo() {
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .args([
             "pack-adapter",
-            "applications/settings/main.tellur",
+            "applications/settings/main.vn",
             "applications/settings/manifest.json",
             "--target",
             "aarch64-unknown-thylacine",

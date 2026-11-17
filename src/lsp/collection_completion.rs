@@ -1,4 +1,4 @@
-//! Dot is an editor gesture. Replace the whole receiver with an ordinary Tellur call.
+//! Dot is an editor gesture. Replace the whole receiver with an ordinary Villanelle call.
 use super::*;
 use crate::collection_support::{Collection, generic};
 use crate::manifest::reference_inner;

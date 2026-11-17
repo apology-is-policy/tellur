@@ -7,15 +7,16 @@ exports.run = async function () {
   const repo = path.resolve(__dirname, '../../..');
   const workspace = vscode.workspace.workspaceFolders[0].uri.fsPath;
   const example = 'examples/collection_discovery';
-  for (const file of [example + '/main.tellur', example + '/sequences.tellur',
-    example + '/manifest.json', 'library/membership.tellur']) {
+  for (const file of [example + '/main.vn', example + '/sequences.vn',
+    example + '/manifest.json', 'library/membership.vn']) {
     const destination = path.join(workspace, file);
     await fs.mkdir(path.dirname(destination), { recursive: true });
     await fs.copyFile(path.join(repo, file), destination);
   }
 
-  const uri = vscode.Uri.file(path.join(workspace, example, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(workspace, example, 'main.vn'));
   const document = await vscode.workspace.openTextDocument(uri);
+  assert.equal(document.languageId, 'villanelle');
   const editor = await vscode.window.showTextDocument(document);
   const original = document.getText();
   await vscode.extensions.getExtension('tellur-language-local.tellur-language').activate();
@@ -50,5 +51,9 @@ exports.run = async function () {
     await vscode.commands.executeCommand('leaveSnippet');
     assert.equal(document.getText(), original);
   }
+  const output = path.join(workspace, 'build', 'collection-example');
+  const result = await vscode.commands.executeCommand('villanelle.buildAndRun', { output, arguments: ['--json'] });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).outcome, 'done');
   console.log('Three collection completions applied in VS Code with explicit ownership and editable arguments.');
 };

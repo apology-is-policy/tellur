@@ -176,7 +176,7 @@ fn protocol_faults_are_terminal_and_distinct_from_normal_completion() {
 fn native_faults_match_reference_and_expansion_at_both_optimization_levels() {
     let root = std::env::temp_dir().join(format!("tellur-source-fault-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
-    let source = root.join("main.tellur");
+    let source = root.join("main.vn");
     fs::write(&source, BRANCH).unwrap();
     let p = tellur::compile_file(&source, manifest()).unwrap();
     let s = scenario(vec![Value::Bool(false)]);
@@ -264,14 +264,14 @@ fn fault_permissions_cross_file_imports_and_public_snapshots() {
     let root = std::env::temp_dir().join(format!("tellur-imported-fault-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     fs::write(
-        root.join("library.tellur"),
+        root.join("library.vn"),
         "control stop() faults {fault \"broken\";}pub control run() faults {stop();}",
     )
     .unwrap();
-    let main = root.join("main.tellur");
+    let main = root.join("main.vn");
     fs::write(
         &main,
-        "import \"library.tellur\" as lib;pub control main() faults {lib.run();}",
+        "import \"library.vn\" as lib;pub control main() faults {lib.run();}",
     )
     .unwrap();
     let p = tellur::compile_file(&main, manifest()).unwrap();
@@ -284,7 +284,7 @@ fn fault_permissions_cross_file_imports_and_public_snapshots() {
             .unwrap()
             .path
             .unwrap()
-            .ends_with("library.tellur")
+            .ends_with("library.vn")
     );
     let first = tellur::modules::contract_snapshot(&main, manifest()).unwrap();
     let json = serde_json::to_value(&first).unwrap();
@@ -294,7 +294,7 @@ fn fault_permissions_cross_file_imports_and_public_snapshots() {
     );
     fs::write(
         &main,
-        "import \"library.tellur\" as lib;pub control main() exits done {lib.run();}",
+        "import \"library.vn\" as lib;pub control main() exits done {lib.run();}",
     )
     .unwrap();
     assert_eq!(

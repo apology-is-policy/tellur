@@ -13,7 +13,7 @@ fn scenario() -> Scenario {
         calls: vec![],
     }
 }
-const SOURCE: &str = include_str!("../playground/carrier_spawn.tellur");
+const SOURCE: &str = include_str!("../playground/carrier_spawn.vn");
 #[test]
 fn flat_carrier_captures_preserve_schedule_moves_and_selected_origins() {
     let p = compile(SOURCE, manifest()).unwrap();
@@ -97,7 +97,7 @@ fn shared_carriers_copy_but_exclusive_carriers_transfer() {
 
 #[test]
 fn flat_capture_keeps_detached_guard_and_exclusive_parent_authority() {
-    let source = include_str!("fixtures/source_carrier_guards.tellur");
+    let source = include_str!("fixtures/source_carrier_guards.vn");
     let p = compile(source, manifest()).unwrap();
     let expected = p.run(&scenario()).unwrap();
     assert_eq!(expected.events.len(), 3);
@@ -124,7 +124,7 @@ fn flat_capture_keeps_detached_guard_and_exclusive_parent_authority() {
 
 #[test]
 fn carrier_fault_settles_awaited_owner_and_suppresses_stopped_handlers() {
-    let source = include_str!("fixtures/source_carrier_fault.tellur");
+    let source = include_str!("fixtures/source_carrier_fault.vn");
     let p = compile(source, manifest()).unwrap();
     for p in [p.clone(), p.expanded("main").unwrap()] {
         let result = serde_json::to_value(p.run_completion(&scenario(), 1000).unwrap()).unwrap();

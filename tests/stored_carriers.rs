@@ -294,20 +294,20 @@ fn private_imported_carriers_can_be_captured_locally() {
     ));
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(
-        root.join("view.tellur"),
+        root.join("view.vn"),
         r#"pub struct view['a] {ref string text <- 'a;}
  pub control make(ref string input) exits ready {view[input] value} {exit ready {view {input}};}
  pub control lend(ref view input) exits ready {ref view[input['a]] value from input} {exit ready {input};}
  pub control display(ref view input) exits done {emit(input.text);exit done;}"#,
     )
     .unwrap();
-    let source = r#"import "view.tellur" as v;
+    let source = r#"import "view.vn" as v;
  control main() exits done {mutable string owner="module";
  delta v.make(borrow owner) {ready {auto saved}=>made}
  [made]:auto pending=capture v.lend(borrow saved);
  delta pending {ready {auto result}=>ready}[ready]:v.display(result);drop(saved);owner="free";exit done;}"#;
-    std::fs::write(root.join("main.tellur"), source).unwrap();
-    let p = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap();
+    std::fs::write(root.join("main.vn"), source).unwrap();
+    let p = tellur::compile_file(root.join("main.vn"), manifest()).unwrap();
     let scenario = Scenario {
         entry: "main".into(),
         arguments: vec![],
@@ -318,12 +318,12 @@ fn private_imported_carriers_can_be_captured_locally() {
         p.expanded("main").unwrap().run(&scenario).unwrap()
     );
     std::fs::write(
-        root.join("main.tellur"),
+        root.join("main.vn"),
         source.replace("delta pending", "drop(saved);delta pending"),
     )
     .unwrap();
     assert_eq!(
-        tellur::compile_file(root.join("main.tellur"), manifest())
+        tellur::compile_file(root.join("main.vn"), manifest())
             .unwrap_err()
             .diagnostic
             .code,
@@ -334,7 +334,7 @@ fn private_imported_carriers_can_be_captured_locally() {
 
 #[test]
 fn expansion_certificates_reject_modified_stored_carrier_code() {
-    let p = same(include_str!("fixtures/stored_carriers.tellur"));
+    let p = same(include_str!("fixtures/stored_carriers.vn"));
     let original = p.expansion_artifact("main").unwrap();
     p.accept_expansion(&original).unwrap();
     let mut artifact = original;
@@ -347,7 +347,7 @@ fn expansion_certificates_reject_modified_stored_carrier_code() {
 
 #[test]
 fn native_stored_carriers_match_before_and_after_expansion() {
-    let fixture = include_str!("fixtures/stored_carriers.tellur");
+    let fixture = include_str!("fixtures/stored_carriers.vn");
     let absent = fixture.replace("some { edit_job { borrow mutable saved } }", "none {}");
     let adapter = SOURCE
         .replace(

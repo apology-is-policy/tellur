@@ -1,4 +1,4 @@
-import "../../library/json_file.tellur" as json_file;
+import "../../library/json_file.vn" as json_file;
 
 // Domain policy. The host exposes file/JSON/text mechanisms through the manifest.
 pub outcome loaded_settings {

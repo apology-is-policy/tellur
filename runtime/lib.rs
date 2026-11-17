@@ -1,4 +1,4 @@
-//! Native runtime linked into Tellur executables through the versioned C ABI.
+//! Native runtime linked into Villanelle executables through the versioned C ABI.
 #![allow(dead_code)]
 
 #[path = "../src/native/runtime.rs"]

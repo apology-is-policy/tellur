@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/borrowed_tagged_spawn_results.tellur");
-const GUARDS: &str = include_str!("fixtures/source_borrowed_tagged_result_guards.tellur");
+const SOURCE: &str = include_str!("../playground/borrowed_tagged_spawn_results.vn");
+const GUARDS: &str = include_str!("fixtures/source_borrowed_tagged_result_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -218,7 +218,7 @@ control main() exits done {forward run startup();}
 }
 #[test]
 fn whole_variant_results_preserve_nested_outcome_handling_and_generic_forwarding() {
-    let nested = include_str!("fixtures/source_borrowed_tagged_result_outcomes.tellur");
+    let nested = include_str!("fixtures/source_borrowed_tagged_result_outcomes.vn");
     for replacement in [
         "holder.wrapped { some { reply.held { borrow owner } } }",
         "holder.wrapped { some {reply.empty {}} }",
@@ -246,7 +246,7 @@ fn whole_variant_results_preserve_nested_outcome_handling_and_generic_forwarding
 }
 #[test]
 fn whole_borrowed_tagged_fault_results_settle_before_owning_contingency() {
-    let source = include_str!("fixtures/source_borrowed_tagged_result_fault.tellur");
+    let source = include_str!("fixtures/source_borrowed_tagged_result_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

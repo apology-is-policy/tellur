@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 function registerBuildCommands(context) {
-  const output = vscode.window.createOutputChannel('Tellur Build');
+  const output = vscode.window.createOutputChannel('Villanelle Build');
   context.subscriptions.push(output);
   let busy = false;
   let active;
@@ -20,13 +20,13 @@ function registerBuildCommands(context) {
       if (dir === root || path.dirname(dir) === dir) break;
       dir = path.dirname(dir);
     }
-    throw new Error('No manifest.json found. Set tellurLanguage.manifestPath or add one beside your source.');
+    throw new Error('No manifest.json found. Set villanelleLanguage.manifestPath or add one beside your source.');
   }
   async function execute(run, overrides = {}) {
-    if (!vscode.workspace.isTrusted) throw new Error('Trust the workspace before building or running Tellur programs.');
-    if (busy) throw new Error('A Tellur build is already running.');
+    if (!vscode.workspace.isTrusted) throw new Error('Trust the workspace before building or running Villanelle programs.');
+    if (busy) throw new Error('A Villanelle build is already running.');
     const document = vscode.window.activeTextEditor?.document;
-    if (!document || !['tellur', 'path'].includes(document.languageId) || document.isUntitled) throw new Error('Open a saved .tellur or .path file first.');
+    if (!document || !['villanelle', 'tellur', 'path'].includes(document.languageId) || document.isUntitled) throw new Error('Open a saved .vn or .path file first.');
     if (!(await document.save())) throw new Error('The source file could not be saved.');
     const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath || path.dirname(document.uri.fsPath);
     const config = configuration(vscode, document.uri);
@@ -48,7 +48,7 @@ function registerBuildCommands(context) {
         active = child;
         child.stdout.on('data', data => { stdout += data; output.append(data.toString()); });
         child.stderr.on('data', data => { stderr += data; output.append(data.toString()); });
-        child.on('error', error => reject(new Error(`Could not start ${command}: ${error.message}. Set tellurLanguage.compilerPath.`)));
+        child.on('error', error => reject(new Error(`Could not start ${command}: ${error.message}. Set villanelleLanguage.compilerPath.`)));
         child.on('close', code => {
           output.appendLine(`\n${code === 0 ? 'Finished' : 'Failed'} (exit ${code})`);
           resolve({ code, stdout, stderr, executable: buildFile });

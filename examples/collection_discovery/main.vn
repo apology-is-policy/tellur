@@ -1,5 +1,5 @@
-import "../../library/membership.tellur" as membership;
-import "sequences.tellur" as sequences;
+import "../../library/membership.vn" as membership;
+import "sequences.vn" as sequences;
 
 control main() exits done { vector<u32> lower, vector<u32> upper }, unexpected {
     vector<u32> values = [2, 1, 3];

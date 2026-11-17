@@ -302,7 +302,7 @@ fn retained_file_modules_live_and_scripted_paths_preserve_host_policy() {
         "pub use self::files::{InputFile,file_open,file_chunk,file_release};",
     )
     .unwrap();
-    let p = f.program(include_str!("../examples/retained_file/main.tellur"), &m);
+    let p = f.program(include_str!("../examples/retained_file/main.vn"), &m);
     let input = f.root.join("input");
     let scenario = f.root.join("script.json");
     for expanded in [false, true] {

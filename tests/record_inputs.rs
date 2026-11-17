@@ -280,7 +280,7 @@ fn native_inputs_match_interpreter_and_expansion_at_both_optimization_levels() {
     control main() exits done... {mutable string a="a";view p=view {borrow mutable a};
         delta relay(p) {ready {auto result}=>ready}
         [ready]: deref result.value="changed";exit done {a};}"#;
-    for (case, source) in [include_str!("fixtures/record_inputs.tellur"), exclusive]
+    for (case, source) in [include_str!("fixtures/record_inputs.vn"), exclusive]
         .iter()
         .enumerate()
     {

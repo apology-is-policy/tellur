@@ -1,5 +1,5 @@
 // Polled response transmission and connection completion for the bounded
-// loopback HTTP profile. The awaiting Tellur task parks while the socket would
+// loopback HTTP profile. The awaiting Villanelle task parks while the socket would
 // block (writable for responses, readable while draining); other tasks keep
 // running. Validation, limits and deadlines match the blocking baseline.
 use super::http::{Connection, response};

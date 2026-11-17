@@ -151,7 +151,7 @@ pub(crate) fn checked(
                 .ok_or("no checked history is available for this selection")?;
             let selection = history.summary(source.start_line - 1);
             let mut markdown = format!(
-                "# Tellur path selection\n\n{}\n\n{}\n",
+                "# Villanelle path selection\n\n{}\n\n{}\n",
                 link(&source.path, site.range.start),
                 history.markdown(source.start_line - 1)
             );
@@ -194,7 +194,7 @@ pub(crate) fn checked(
                 .ok_or_else(|| format!("control `{control}` has no outcome `{outcome}`"))?;
             let name = index.name(internal);
             let mut markdown = format!(
-                "# Tellur outcome contributors\n\nControl `{name}`, outcome `{outcome}`.\n\nRecorded structural contributors (a set, not an execution sequence):\n\n"
+                "# Villanelle outcome contributors\n\nControl `{name}`, outcome `{outcome}`.\n\nRecorded structural contributors (a set, not an execution sequence):\n\n"
             );
             for c in &evidence.contributors {
                 let action = match c.kind {

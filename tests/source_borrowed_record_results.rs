@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/borrowed_record_spawn_results.tellur");
-const GUARDS: &str = include_str!("fixtures/source_borrowed_record_result_guards.tellur");
+const SOURCE: &str = include_str!("../playground/borrowed_record_spawn_results.vn");
+const GUARDS: &str = include_str!("fixtures/source_borrowed_record_result_guards.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -267,7 +267,7 @@ fn generic_nested_children_forward_whole_record_origin_contracts() {
 }
 #[test]
 fn whole_borrowed_record_fault_results_settle_before_owning_contingency() {
-    let source = include_str!("fixtures/source_borrowed_record_result_fault.tellur");
+    let source = include_str!("fixtures/source_borrowed_record_result_fault.vn");
     let joined = source
         .replace(
             "    yield;\n    yield;\n    delta await result",

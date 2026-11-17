@@ -1,5 +1,5 @@
 // Intentionally reaches the executor's instruction limit; this is not fault syntax.
-// ./bin/tellurc exec playground/execution_faults.tellur -- --json --fuel 40
+// ./bin/tellurc exec playground/execution_faults.vn -- --json --fuel 40
 control worker(bool repeat) exits done {
     loop retry(bool pending = repeat) {
         delta pending {

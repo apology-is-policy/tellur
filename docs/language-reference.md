@@ -1,9 +1,9 @@
-# Tellur language reference
+# Villanelle language reference
 
-<!-- tellur-reference-version: 0.284.0 -->
+<!-- villanelle-reference-version: 0.285.0 -->
 
-This manual describes **compiler 0.284.0**, including the current ownership model,
-control flow, data types and editor workflow. It is the reference for writing Tellur
+This manual describes **compiler 0.285.0**, including the current ownership model,
+control flow, data types and editor workflow. It is the reference for writing Villanelle
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
 says they are implemented. The [archived v0.1 reference](language-reference-v0.1.md)
@@ -37,7 +37,7 @@ Retained lexical recovery, suspending constructors and launch signals joined the
 LLVM profile in 0.267, 0.269 and 0.270. Typed Rust adapters support synchronous
 data and resources, polled operations, timers and live socket readiness.
 
-Tellur is still experimental. When this manual and the compiler disagree, treat that
+Villanelle is still experimental. When this manual and the compiler disagree, treat that
 as a bug to investigate, not a promise that either must remain unchanged. The
 [maintenance checklist](reference/maintenance.md) requires semantic and example
 updates at every implementation checkpoint.
@@ -59,7 +59,7 @@ must permit fault settlement for every owner retained across a handoff, includin
 transitive callees and nested boundary owners. Native local fault recovery resumes
 the owning continuation immediately; the contingency and recovered work keep the
 selected turn until a reached `await` or `yield`. See the
-[local recovery example](../playground/local_recovery_tasks.tellur).
+[local recovery example](../playground/local_recovery_tasks.vn).
 Started children can be [cancelled](reference/async-execution.md#cancellation)
 cooperatively, and an entry can opt into cancellation by
 [launch signals](reference/async-execution.md#launch-signals).
@@ -94,7 +94,7 @@ The companion chapters provide quick lookup:
 - [Contingency and boundaries](reference/contingency.md): checked contingency calls, retained owners, supervision and terminal escalation.
 - [Async execution](reference/async-execution.md): `async control`, `run`, direct and stored-task `await`, owned captures with contained references, whole borrowed carrier captures, borrowed completions and current limits.
 - [Execution failures](reference/execution-failures.md): `fault`/`faults`, public permissions, explicit resource dispositions and activation reports.
-- [Glossary](reference/glossary.md): precise meanings of Tellur's terminology.
+- [Glossary](reference/glossary.md): precise meanings of Villanelle's terminology.
 
 ## Contents
 
@@ -147,8 +147,8 @@ control body, and callers choose their own binding names. The payload above is a
 string, not an implicit `option<string>`. Several alternatives form a completion
 contract; `option<t>` is a separate ordinary variant with `some` and `none` tags.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control greeting() exits found { string text } {
     string message = "hello";
     exit found { message };
@@ -196,41 +196,41 @@ programmer's intended runtime invariant.
 
 ## Edit and run
 
-Open `tellur.code-workspace` in VS Code and trust this local workspace when
-prompted. Open `playground/hello.tellur`, then use **Tellur: Build and Run** (`⌘⌥R` or
-`Ctrl+Alt+R`). **Tellur: Build Native Program** uses `⌘⌥B` / `Ctrl+Alt+B`. Output goes
-to **Tellur Build**. Hover over a control's declaration name to see its checked exit
+Open `villanelle.code-workspace` in VS Code and trust this local workspace when
+prompted. Open `playground/hello.vn`, then use **Villanelle: Build and Run** (`⌘⌥R` or
+`Ctrl+Alt+R`). **Villanelle: Build Native Program** uses `⌘⌥B` / `Ctrl+Alt+B`. Output goes
+to **Villanelle Build**. Hover over a control's declaration name to see its checked exit
 contract; Outline also shows inferred contracts. Diagnostics use unsaved source.
 
 Use **Format Document** to format the current buffer with your editor's indentation
 settings. The formatter preserves labels, optional braces, comments and literals.
 Long lists and conditions wrap at a default 100-column target. Set
 `tellurLanguage.formatWidth` in VS Code or pass `--width N` to the CLI to change it.
-From the terminal, `./bin/tellurc format SOURCE` previews formatted text;
+From the terminal, `./bin/vnc format SOURCE` previews formatted text;
 `--write` updates the file and `--check` checks its layout without writing.
 See [formatting](reference/formatting.md) for exact behavior and limits.
 
-**Tellur: Show Public Contract Snapshot** opens a JSON description of the checked
+**Villanelle: Show Public Contract Snapshot** opens a JSON description of the checked
 public interfaces in the current file and its imports, including unsaved changes.
 The terminal equivalents are `contract-snapshot` and `contract-diff`; see
 [public contract snapshots](reference/contract-snapshots.md) for baseline review and
 the distinction between contract equality and unchanged behavior.
 
-**Tellur: Show Outcome Absorption Snapshot** adds bounded internal contributor
+**Villanelle: Show Outcome Absorption Snapshot** adds bounded internal contributor
 evidence to those public contracts. `absorption-snapshot` and `absorption-diff`
 provide the terminal workflow. See [outcome absorption](reference/outcome-absorption.md)
-and try `playground/outcome_absorption.tellur`.
+and try `playground/outcome_absorption.vn`.
 
-Try `outcome_origins.tellur`, `public_variants.tellur`, `borrowed_outcomes.tellur`, `opaque_splits.tellur`, `carrier_reborrows.tellur`, `record_inputs.tellur`, `inferred_payloads.tellur`, `stored_references.tellur`, `forwarding.tellur`, `named_outcomes.tellur`, `stored_adapters.tellur`, `adapters.tellur`, `outcomes.tellur`, `collections.tellur`, `references.tellur`, `count.tellur`, `port.tellur`, and `read_file.tellur`. Create new `.tellur` files beside
+Try `outcome_origins.vn`, `public_variants.vn`, `borrowed_outcomes.vn`, `opaque_splits.vn`, `carrier_reborrows.vn`, `record_inputs.vn`, `inferred_payloads.vn`, `stored_references.vn`, `forwarding.vn`, `named_outcomes.vn`, `stored_adapters.vn`, `adapters.vn`, `outcomes.vn`, `collections.vn`, `references.vn`, `count.vn`, `port.vn`, and `read_file.vn`. Create new `.vn` files beside
 `playground/manifest.json` to use the same library. The entry file and its explicit import graph form the program; unrelated files
 are not implicitly included. Put helpers in the same file or import their module. File paths are relative to the
 working directory (the workspace root when launched by the extension).
 
 ```sh
-./bin/tellurc check playground/hello.tellur
-./bin/tellurc exec playground/count.tellur
-./bin/tellurc exec playground/port.tellur --entry parse_port -- 443
-./bin/tellurc build playground/hello.tellur --release --out build/hello
+./bin/vnc check playground/hello.vn
+./bin/vnc exec playground/count.vn
+./bin/vnc exec playground/port.vn --entry parse_port -- 443
+./bin/vnc build playground/hello.vn --release --out build/hello
 ./build/hello
 ```
 
@@ -243,8 +243,8 @@ to build the application without Rust/Cargo. Select `--target x86_64-unknown-lin
 
 ## Controls and declarations
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits auto {
     u32 number = 42;
     string text = u32_text(number);
@@ -259,8 +259,8 @@ and declarations put the type first. Bindings are immutable by default and requi
 `ref auto` and `ref mutable auto` infer the referent type in initialized local
 bindings and decision payload bindings. The reference mode remains explicit:
 
-<!-- tellur:body -->
-```tellur
+<!-- villanelle:body -->
+```villanelle
 mutable string first = "before";
 ref mutable auto first_b = borrow mutable first;
 deref first_b = "after";
@@ -310,8 +310,8 @@ of the same value on disjoint paths are allowed if their types match.
 | `option<t>` | `some { value }`, contextually typed `none` |
 | Record / variant | Declared in source or the manifest; `pair { left, right }`, `state.ready { value }` |
 
-<!-- tellur:body -->
-```tellur
+<!-- villanelle:body -->
+```villanelle
 [entry]:
     option<u32> missing = none;
     auto present = some { 42 };
@@ -337,8 +337,8 @@ form: their bodies may perform checked operations or fault.
 
 ## Structs, variants and distinct wrappers
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct user_id {
     u32 value;
 }
@@ -377,8 +377,8 @@ Named construction specifies every field exactly once, in any order:
 
 _Context fragment: Uses the person and user_id declarations above._
 
-<!-- tellur:fragment Uses the person and user_id declarations above. -->
-```tellur
+<!-- villanelle:fragment Uses the person and user_id declarations above. -->
+```villanelle
 person value = person { name: "Ada", id: user_id { value: 7 } };
 ```
 
@@ -393,7 +393,7 @@ fields cannot mix in one construction. There are no implicit defaults, field-nam
 shorthands, update spreads or nominal conversions. Named fields currently construct
 structs; variant/outcome payloads keep positional braces. Imported structs require
 all fields to be public for direct construction. See
-[the runnable example](../playground/named_fields.tellur).
+[the runnable example](../playground/named_fields.vn).
 
 Composition embeds other types; there is no implementation inheritance. Declarations
 may precede or follow their users within one compilation unit, and a unit may contain
@@ -409,7 +409,7 @@ Declarations and fields are visible within their defining file. Use `pub` on typ
 controls and individual struct fields to expose them across imports. Generic
 bounds on data parameters and recursive layouts remain unsupported. Local struct
 reference fields are supported; see [stored references](#stored-references-in-local-structs). One-field structs supply distinct wrappers without a new keyword.
-See `playground/data_types.tellur` and [the accepted type-system direction](type-system.md).
+See `playground/data_types.vn` and [the accepted type-system direction](type-system.md).
 
 ### Declared constructors
 
@@ -432,8 +432,8 @@ obligations or create escaping borrows of temporary-owned storage. See
 
 ## Outcomes, payloads and paths
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control parse_port(string input) exits ready { u32 port }, invalid {
     [entry]:
         delta parse_u32(input) {
@@ -482,8 +482,8 @@ loop). Inference is not a search for concretely feasible paths or backward type 
 An arm can finish the enclosing control immediately with `=> exit`, instead of
 introducing a path label used only for that exit:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control parse_port(string input) exits ready { u32 port }, invalid {
     delta parse_u32(input) {
         number { u32 port } => parsed,
@@ -512,8 +512,8 @@ exit. A later statement whose selection overlaps an already terminated history i
 still rejected; use the continuing arm's path to select subsequent work. There is
 no implicit subtraction of exited histories from `[entry]`:
 
-<!-- tellur:reject E_TERMINATED -->
-```tellur
+<!-- villanelle:reject E_TERMINATED -->
+```villanelle
 control finish(bool stop) exits done {
     delta stop { true => exit done, false => continuing }
     [entry]: exit done;
@@ -522,13 +522,13 @@ control finish(bool stop) exits done {
 
 Select `[continuing]:` for that final statement. Direct exits do not add arbitrary
 arm statement blocks, direct loop restarts or general expression-position adapters.
-See [the runnable example](../playground/arm_exits.tellur) and the validation/storage
+See [the runnable example](../playground/arm_exits.vn) and the validation/storage
 paths in the maintained settings application.
 
 ### Infer selected payloads with `...`
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control lookup(bool available) exits ready..., missing {
     exit delta available {
         true => ready { "found" },
@@ -562,7 +562,7 @@ Public controls and the existing trait-method profile require explicit contracts
 implementations; body-free trait declarations and named outcome definitions cannot
 use payload inference. `...` is only a declaration marker, not an exit expression
 or arm-pattern marker. Existing ownership, lifetime, coverage and recursion checks
-remain in force. See [the runnable example](../playground/inferred_payloads.tellur).
+remain in force. See [the runnable example](../playground/inferred_payloads.vn).
 
 ### Explicit public contracts
 
@@ -572,8 +572,8 @@ and `label...` remain available on private controls. This applies even to an unu
 generic definition: an implementation edit must not silently grow its exported API.
 A private `main` remains a valid executable entry point.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control lookup(bool available) exits auto {
     exit delta available {
         true => ready { "found" },
@@ -606,8 +606,8 @@ completion contracts bind their groups at `exits reply[input, ...]`. These are t
 same checked origin rules used by private controls; public boundaries require the
 annotations instead of inferring them from the body.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 pub control text_view(ref string input)
     exits ready { ref string value from input }
 {
@@ -617,7 +617,7 @@ pub control text_view(ref string input)
 
 An incorrect explicit origin still fails lifetime checking. Local `auto` bindings
 and pattern inference are unaffected. See [public-contract diagnostics](reference/diagnostics-and-limits.md#public-interfaces-e_public_contract)
-and [the runnable example](../playground/public_contracts.tellur).
+and [the runnable example](../playground/public_contracts.vn).
 
 ## Named outcome contracts
 
@@ -627,8 +627,8 @@ overrides, completeness checking, and final-contract semantics.
 
 Borrowed named outcomes can declare [origin groups and completion bindings](#named-outcome-and-option-origin-schemas), including dependencies inherited through options.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome message {
     ready { string text },
     empty
@@ -666,8 +666,8 @@ Explicit construction does not invoke a producer:
 
 _Context fragment: Uses the message contract above; both outcomes still need handling._
 
-<!-- tellur:fragment Uses the message contract above; both outcomes still need handling. -->
-```tellur
+<!-- villanelle:fragment Uses the message contract above; both outcomes still need handling. -->
+```villanelle
 message saved = ready { "hello" };  // The annotation selects the contract.
 auto absent = message.empty {};    // Qualification selects it without an annotation.
 ```
@@ -681,8 +681,8 @@ A typed adapter can explicitly target a named contract:
 
 _Context fragment: Uses message above and a boolean available; saved still needs handling._
 
-<!-- tellur:fragment Uses message above and a boolean available; saved still needs handling. -->
-```tellur
+<!-- villanelle:fragment Uses message above and a boolean available; saved still needs handling. -->
+```villanelle
 message saved = delta available {
     true  => ready { "adapted" },
     false => empty {}
@@ -700,12 +700,12 @@ mean one nullary exit of that same name, write `exits { message }` (or `message 
 Without a matching named declaration, the existing `exits done` syntax still means
 one nullary exit. `outcome<producer>` remains available for producer-specific types;
 an explicit annotation can retain that type even when the producer adopts a named
-contract. See `playground/named_outcomes.tellur`.
+contract. See `playground/named_outcomes.vn`.
 
 ## Inline outcome adapters
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control first(ref vector<string> words) exits auto {
     exit delta vector_get(words, 0) {
         found { ref string word } => [available]: found { word },
@@ -726,8 +726,8 @@ payload bindings and path names are local to the arm; sibling arms may reuse a n
 with different types. Existing rules still prohibit shadowing an enclosing value.
 Flat delta patterns keep their existing path-dependent outer bindings.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control successor(string input) exits auto {
     exit delta parse_u32(input) {
         number { u32 number } => delta checked_add(number, 1) {
@@ -755,8 +755,8 @@ Adapters can also initialize an owning outcome binding:
 
 _Context fragment: Inside a control with a vector<string> words binding._
 
-<!-- tellur:fragment Inside a control with a vector<string> words binding. -->
-```tellur
+<!-- villanelle:fragment Inside a control with a vector<string> words binding. -->
+```villanelle
 auto saved = delta vector_get(borrow words, 0) {
     found { ref string word } => ready { clone(word) },
     out_of_bounds         => empty {}
@@ -777,8 +777,8 @@ typed value boundary:
 
 _Context fragment: Inside a control with available and the choose producer below; saved needs handling._
 
-<!-- tellur:fragment Inside a control with available and the choose producer below; saved needs handling. -->
-```tellur
+<!-- villanelle:fragment Inside a control with available and the choose producer below; saved needs handling. -->
+```villanelle
 outcome<choose> saved = delta available {
     true  => ready { "an adapted message" },
     false => empty {}
@@ -795,12 +795,12 @@ implicitly assignable. Inferred adapter types are private to their expression; u
 
 Adapters currently work in tail exits and declaration initializers, including nested
 arms. Assignment right-hand sides, call arguments and arm statement blocks are not
-yet adapter positions. See `playground/stored_adapters.tellur` and `adapters.tellur`.
+yet adapter positions. See `playground/stored_adapters.vn` and `adapters.vn`.
 
 ## Captured completed outcomes
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits auto {
     outcome<choose> saved = capture choose(true);
     emit("The call has already completed.");
@@ -835,8 +835,8 @@ A whole result can be forwarded without listing its alternatives:
 
 _Context fragment: Uses the choose producer in the preceding complete example._
 
-<!-- tellur:fragment Uses the choose producer in the preceding complete example. -->
-```tellur
+<!-- villanelle:fragment Uses the choose producer in the preceding complete example. -->
+```villanelle
 control forward(outcome<choose> saved) exits auto {
     exit saved;
 }
@@ -859,14 +859,14 @@ that dependency to the selected payload; the other constructors contribute no lo
 as values; a typed adapter can explicitly map into an existing producer contract.
 Implicit cross-producer structural assignment, whole-outcome
 bindings inside adapter patterns, general expression-position adapters, general graph extraction,
-and borrowed or escaping async task support remain future work. See `playground/outcomes.tellur`.
+and borrowed or escaping async task support remain future work. See `playground/outcomes.vn`.
 
 ## Single-completion calls and forwarding
 
 _Context fragment: Uses display and the first and second values supplied by the enclosing control._
 
-<!-- tellur:fragment Uses display and the first and second values supplied by the enclosing control. -->
-```tellur
+<!-- villanelle:fragment Uses display and the first and second values supplied by the enclosing control. -->
+```villanelle
 display(first);
 forward display(second);
 ```
@@ -888,8 +888,8 @@ In a tail or stored adapter, bare `forward` preserves one entire selected outcom
 
 _Context fragment: Inside a control with a ref vector<string> words parameter._
 
-<!-- tellur:fragment Inside a control with a ref vector<string> words parameter. -->
-```tellur
+<!-- villanelle:fragment Inside a control with a ref vector<string> words parameter. -->
+```villanelle
 exit delta vector_get(words, 0) {
     found => forward,
     out_of_bounds => empty {}
@@ -903,7 +903,7 @@ also retain a borrowed payload; immediate adapters can return a borrow of their 
 Forwarding delegates the callee's contract. A new outcome fails against an explicit
 target that lacks it, but may remain compatible with a wider target or grow an
 inferred contract. Keep explicit arms when each alternative deserves a separate
-review. See `playground/forwarding.tellur` and the [semantic foundation](semantic-foundation.md).
+review. See `playground/forwarding.vn` and the [semantic foundation](semantic-foundation.md).
 
 ## Path selection and scopes
 
@@ -919,8 +919,8 @@ boundary. Indentation helps readers see that extent; it does not determine selec
 Keep ordinary labels unbraced. Use `[path]: { ... }` when an explicit end makes a
 shared continuation easier to see:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control announce(bool enabled) exits done {
     delta enabled { true => yes, false => no }
     [yes]: {
@@ -951,8 +951,8 @@ intended. Arbitrary unlabeled block statements are not supported.
 A nested selector cannot escape its group; the following `no` statement selects
 no history and is rejected:
 
-<!-- tellur:reject E_EMPTY -->
-```tellur
+<!-- villanelle:reject E_EMPTY -->
+```villanelle
 control announce(bool enabled) exits done {
     delta enabled { true => yes, false => no }
     [yes]: {
@@ -966,7 +966,7 @@ The recommended layout puts labels at one indentation level and their selected
 statements one level deeper. A grouped body adds one indentation level. Keep a
 shared continuation aligned with the group's label, as above. A formatter must
 preserve selection extent, never add or remove braces as a purely cosmetic edit.
-See [the runnable example](../playground/path_groups.tellur) for nested selection
+See [the runnable example](../playground/path_groups.vn) for nested selection
 and an entry reset inside a group.
 
 ### Selected-history hover
@@ -983,7 +983,7 @@ statement's selection; comments and whitespace have no selection hover.
 Decision-arm locations identify where the displayed facts came from. Local facts
 from adapters and direct exits are marked as local outcomes, not exported path
 labels. Repeated names from distinct decisions gain an `@line:column` suffix in
-this explanatory display; that suffix is not executable Tellur syntax. Hover on
+this explanatory display; that suffix is not executable Villanelle syntax. Hover on
 `auto` retains its inferred-type information instead of being replaced by path
 information. Declaration hovers likewise keep their contracts.
 
@@ -998,7 +998,7 @@ omitted conditions are never described as unconditional.
 The hover requires the current compilation unit to check successfully, including
 unsaved imports. Invalid source has no stale or guessed selection. Generic bodies
 use their universally checked definition, independent of concrete callers.
-See [history_hover.tellur](../playground/history_hover.tellur) for an executable
+See [history_hover.vn](../playground/history_hover.vn) for an executable
 example. This adds editor feedback; it does not change path or lifetime semantics.
 
 ### Call-site contract hover
@@ -1023,7 +1023,7 @@ parameter names, result-origin mappings and ordered group names remain visible.
 The signature includes checked fault and contingency permission, including private
 inference. It does not display implementation fields or internal completion labels.
 Try `text_pair(...)` and `editable_text(...)` in
-[borrowed_construction.tellur](../playground/borrowed_construction.tellur).
+[borrowed_construction.vn](../playground/borrowed_construction.vn).
 
 Since 0.80, a concrete trait call such as `reader<text_source>.read(...)` shows
 the validated trait-side signature. Associated types are resolved, while parameter
@@ -1033,11 +1033,11 @@ this presentation. Named contracts list their alternatives; fault and contingenc
 permission follow the trait declaration, even when an implementation needs less.
 Private fields and body-derived origin projections are not displayed. Concrete
 associated-type selections in call targets and explicit type arguments are resolved
-from the same checked snapshot. Try [traits.tellur](../playground/traits.tellur).
+from the same checked snapshot. Try [traits.vn](../playground/traits.vn).
 
 Imported names use the caller's aliases. A type from a transitive dependency with no
-local import is displayed with its defining file, for example `types.tellur::token`;
-that is a display identity, not Tellur import syntax. The highlighted range covers
+local import is displayed with its defining file, for example `types.vn::token`;
+that is a display identity, not Villanelle import syntax. The highlighted range covers
 the qualified callee, including explicit type arguments, rather than its value
 arguments. Literals, comments and argument expressions retain their existing hover
 behavior.
@@ -1046,11 +1046,11 @@ Contracts come from a successful check of the current document and its unsaved
 dependencies. Editing an imported signature refreshes the hover; a failed check
 suppresses it rather than showing an old signature. Symbolic generic calls are
 described below. This is not general expression-type hover. Try the calls in
-[the JSON file example](../examples/json_file/main.tellur).
+[the JSON file example](../examples/json_file/main.vn).
 
 Since 0.88, ordinary generic helper calls inside generic bodies show a **symbolic
 call contract** from the universally checked definition. For `identity<item>(value)`
-in [generic_controls.tellur](../playground/generic_controls.tellur), hover keeps
+in [generic_controls.vn](../playground/generic_controls.vn), hover keeps
 `item` abstract even when all current callers supply `string`. Nested type arguments,
 associated-type arguments, declared bounds, named result origins, private inferred
 payloads and checked return lifetimes follow the definition. Anonymous result types
@@ -1058,7 +1058,7 @@ use the same bounded rendering as inferred-type hover; payload names are preserv
 No concrete implementation or caller is chosen to manufacture the signature.
 
 Since 0.89, trait calls inside generic controls also show the declared interface.
-For `reader<r>.peek(input)` in [borrowed_traits.tellur](../playground/borrowed_traits.tellur),
+For `reader<r>.peek(input)` in [borrowed_traits.vn](../playground/borrowed_traits.vn),
 `r` and `reader<r>.t_item` remain abstract. Parameter names, payload names, origin
 mappings and fault/contingency permissions come from the trait, regardless of a
 concrete implementation's names or narrower behavior. Named outcomes retain their
@@ -1069,7 +1069,7 @@ suppresses the hover until repaired.
 
 Since 0.90, constructor calls inside generic controls or constructors also show
 a symbolic contract. `box<item>(move input)` in
-[generic_construction.tellur](../playground/generic_construction.tellur) shows
+[generic_construction.vn](../playground/generic_construction.vn) shows
 `constructor(item input)`, even without a concrete caller. Borrowed constructors
 preserve shared/exclusive modes, result-origin bindings and ordered group names.
 Nested and associated-type arguments remain abstract, and fault/contingency
@@ -1084,13 +1084,13 @@ Since 0.81, calls inside an implementation also resolve its lexical `self` and
 associated-type aliases, including aliases defined through other associated types.
 These take precedence over same-named module types. Hover preserves the written
 callee spelling while showing concrete input and result contracts. Try
-[trait_aliases.tellur](../playground/trait_aliases.tellur).
+[trait_aliases.vn](../playground/trait_aliases.vn).
 
 Ordinary generic helper calls also retain their named result contract when its type
 arguments contain concrete associated projections. Named borrowed results show the
 declared origin mappings on their alternatives; private inference still appears as
 checked lifetime notes when no mapping was authored. Try `prepare<text_editor>(...)`
-in [aggregate_traits.tellur](../playground/aggregate_traits.tellur). These mappings
+in [aggregate_traits.vn](../playground/aggregate_traits.vn). These mappings
 come from the validated source schema, rather than private implementation fields.
 
 Since 0.82, hover at a named `supervise` call shows the boundary's owned input
@@ -1099,14 +1099,14 @@ handled faults do not add `faults` to this interface: that marker describes esca
 from contingency, which abandons the supervisor's continuation. Supervision exposes
 no outcome or fault value. Imported names and unsaved changes follow the same
 checked-snapshot rules. Try both `request(...)` calls in
-[contingency.tellur](../playground/contingency.tellur).
+[contingency.vn](../playground/contingency.vn).
 
 ### Scoped intersections
 
 _Context fragment: Uses path atoms produced by earlier read and close decisions._
 
-<!-- tellur:fragment Uses path atoms produced by earlier read and close decisions. -->
-```tellur
+<!-- villanelle:fragment Uses path atoms produced by earlier read and close decisions. -->
+```villanelle
 path any_failure = read_bad | close_bad;
 [opened] over &: {
     [read_bad]: emit("Read failed");
@@ -1128,8 +1128,8 @@ new binding, passing them by value, emitting them, or returning them transfers o
 possible payload is Copy. Existing non-resource opaque manifest types are Copy;
 resource types are not. There are no user-defined Copy/Clone/Drop implementations yet.
 
-<!-- tellur:body -->
-```tellur
+<!-- villanelle:body -->
+```villanelle
 [entry]:
     mutable string message = "first";
     string saved = clone(borrow message);
@@ -1194,8 +1194,8 @@ second feature remains unsupported and is diagnosed. Declarations still need an
 initializer. `&` and `|` remain the path intersection/union operators, and `&&` and
 `||` remain boolean operators.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control duplicate(ref string text) exits auto {
     [entry]: exit copied { clone(text) };
 }
@@ -1235,8 +1235,8 @@ parameter, pass `borrow mutable owner` or an existing exclusive reference. Calls
 existing references: the caller can use its reference again once the call and any
 returned loans finish. A helper can update the caller's original storage.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control rewrite(ref mutable string text) exits rewritten { ref mutable string result } {
     [entry]:
         deref text = "changed by a helper";
@@ -1269,8 +1269,8 @@ has its own contract.
 
 A struct field can hold a reference. Its owner stays separate from the struct:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct view {
     ref string text;
 }
@@ -1326,12 +1326,12 @@ Reference-bearing storage cannot yet be rebound or assigned, and disjoint defini
 cannot merge into one record binding. Owned fields can be assigned normally.
 These remaining boundaries are diagnosed rather than losing contained-loan information.
 
-See [the runnable example](../playground/stored_references.tellur).
+See [the runnable example](../playground/stored_references.vn).
 
 ### Local borrowed variants and outcomes
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 variant selection {
     found { ref string text },
     empty
@@ -1387,16 +1387,16 @@ reference-bearing loop parameters remain gated. Loop-local nested borrowed
 values are recreated on each iteration. An unproduced borrowed exit still
 needs an explicit origin when the body supplies no inference evidence.
 
-See [borrowed_outcomes.tellur](../playground/borrowed_outcomes.tellur) and
-[nested_borrows.tellur](../playground/nested_borrows.tellur).
+See [borrowed_outcomes.vn](../playground/borrowed_outcomes.vn) and
+[nested_borrows.vn](../playground/nested_borrows.vn).
 
 ### Grouped variant contracts
 
 Source variants can declare origin groups just as structs do. Groups cover reference
 leaves across alternatives; an alternative with no references needs no mapping.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 variant text_selection['source] {
     found { ref string text <- 'source },
     empty
@@ -1458,7 +1458,7 @@ and stored locally or in public containers with complete nested schemas. Borrowe
 trait results, collection storage and rebinding remain separate checkpoints. Grouped named outcomes and builtin
 options now compose with these variant schemas across owned boundaries.
 
-See [public_variants.tellur](../playground/public_variants.tellur) for exclusive references
+See [public_variants.vn](../playground/public_variants.vn) for exclusive references
 crossing nested record/variant boundaries and releasing their owners independently.
 
 ### Named outcome and option origin schemas
@@ -1467,8 +1467,8 @@ A named outcome uses the same ordered origin groups as a variant. Unlike an ordi
 variant, it still requires handling or transfer, even when its selected alternative
 has no payload. Wrapping it in an option does not remove that obligation.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 outcome borrowed_text['source] {
     found { ref string text <- 'source },
     missing
@@ -1514,8 +1514,8 @@ An option automatically inherits the ordered origin groups of its inner type.
 additional option layers preserve those same groups. An option of an ungrouped
 reference-bearing aggregate does not invent a complete schema for that aggregate.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control maybe_text(ref string input, bool present)
     exits ready { option<ref string>[input] value }
 {
@@ -1550,7 +1550,7 @@ Anonymous producer-outcome schemas, exclusive/nested collection elements,
 rebinding and borrowed loop state remain unsupported. Trait signatures support grouped named contracts and aggregate results with explicit
 origin bindings; see [trait origin contracts](#aggregate-trait-origin-contracts).
 
-See [outcome_origins.tellur](../playground/outcome_origins.tellur) for independent
+See [outcome_origins.vn](../playground/outcome_origins.vn) for independent
 exclusive owner groups carried through a named outcome and an option.
 
 ### Borrowing whole sums
@@ -1575,8 +1575,8 @@ Nested aggregate payloads become references to those aggregates, so another delt
 can inspect a nested sum. A shared carrier never grants exclusive access through
 its nested fields. Payload fields still respect module privacy.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 variant message { text { string value }, empty }
 
 control preview(ref message input)
@@ -1616,8 +1616,8 @@ the schema described above at public boundaries. Selectors retain their usual me
 `from input` protects the sum's storage, while `from input['source]` selects an
 external source carried inside it.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control optional_preview(ref option<ref mutable string> input)
     exits found { ref string text from input['source] }, missing
 {
@@ -1641,7 +1641,7 @@ storage and contained-source dependencies, as described below.
 Reference rebinding, stored references to references, and exclusive/nested
 collection elements remain separate checkpoints.
 
-See [sum_carriers.tellur](../playground/sum_carriers.tellur) for a named outcome
+See [sum_carriers.vn](../playground/sum_carriers.vn) for a named outcome
 that is inspected, edited through an exclusive reborrow, and finally handled.
 
 ### Returning references to reference-bearing aggregates
@@ -1651,8 +1651,8 @@ variant, named outcome or option that itself contains references. Two contracts
 apply: the outer reference borrows the carrier's storage, and the contained
 references retain their external sources.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_view['source] {
     ref mutable string text <- 'source;
 }
@@ -1706,7 +1706,7 @@ described below. Public containers use explicit schemas for each reference layer
 Trait results use the same explicit contracts. Reference rebinding and
 reference-bearing loop state remain separate work.
 
-Try [carrier_results.tellur](../playground/carrier_results.tellur). Declaration hover
+Try [carrier_results.vn](../playground/carrier_results.vn). Declaration hover
 shows the storage origin and contained origin groups; hover on `auto` shows the
 inferred reference type.
 
@@ -1717,8 +1717,8 @@ itself contains references. Storage retains the complete dependency tree: the
 carrier's storage, its contained sources and any authorizing carrier guards.
 Construction, moves, capture and stored adapters preserve this information.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_view['source] { ref mutable string text <- 'source; }
 struct edit_job { ref mutable text_view target; }
 
@@ -1777,7 +1777,7 @@ reference-bearing loop state and reference rebinding are not included.
 Public containers also work when their declarations map every reference layer,
 as described in [public nested-reference contracts](#public-nested-reference-contracts).
 
-Try [stored_carriers.tellur](../playground/stored_carriers.tellur) for capture, a
+Try [stored_carriers.vn](../playground/stored_carriers.vn) for capture, a
 nested local record, borrowed inspection and final consumption. Hover on `auto`
 shows the inferred container or reference type.
 
@@ -1787,8 +1787,8 @@ A reference field has two distinct lifetimes when its referent itself contains
 references. Brackets on the referent map its contained origins; the arrow after
 the field names the referent's storage. Neither mapping replaces the other.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_view['text] { ref mutable string text <- 'text; }
 struct edit_job['storage, 'text] {
     ref mutable text_view['text] target <- 'storage;
@@ -1856,13 +1856,13 @@ reference rebinding and reference-bearing loop state remain separate
 work. Generic layouts with statically known carrier schemas do work. This feature
 does not add `ref ref` types.
 
-Try [public_carriers.tellur](../playground/public_carriers.tellur). Declaration hover
+Try [public_carriers.vn](../playground/public_carriers.vn). Declaration hover
 shows both mappings; `auto` hover reports the resulting container/reference type.
 
 ### Grouped struct results: `['a]`, `<-` and `[input]`
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_pair['a, 'b] {
     ref string left <- 'a;
     ref string right <- 'b;
@@ -1909,14 +1909,14 @@ Origin groups describe dependencies; they do not manufacture access permissions.
 Borrowed-record trait results require explicit origin mappings. Local shared-reference collection elements are supported; exclusive elements and
 public collection-origin contracts remain separate stages.
 Local captured borrowed outcomes are supported. See [origin groups in depth](precise-origins.md)
-and [the runnable example](../playground/origin_groups.tellur).
+and [the runnable example](../playground/origin_groups.vn).
 
 ### Record inputs and contained origins: `input['group]`
 
 _Context fragment: Uses the text_pair declaration in the preceding section._
 
-<!-- tellur:fragment Uses the text_pair declaration in the preceding section. -->
-```tellur
+<!-- villanelle:fragment Uses the text_pair declaration in the preceding section. -->
+```villanelle
 control first(text_pair input)
     exits found { ref string value from input['a] }
 {
@@ -1948,8 +1948,8 @@ storage. `from input['a]` anchors an external referent carried by the record:
 
 _Context fragment: Uses the text_pair declaration above._
 
-<!-- tellur:fragment Uses the text_pair declaration above. -->
-```tellur
+<!-- villanelle:fragment Uses the text_pair declaration above. -->
+```villanelle
 control first_borrowed(ref text_pair input)
     exits found { ref string value from input['a] }
 {
@@ -1970,12 +1970,12 @@ its possible sources. Live carrier borrows retain their contained loans. Call al
 checks include those loans and protect earlier arguments during later argument
 evaluation. Copies, moves, forwarding and immediate adapters preserve dependencies.
 
-Try [record_inputs.tellur](../playground/record_inputs.tellur).
+Try [record_inputs.vn](../playground/record_inputs.vn).
 
 ### Reborrowing exclusive fields through a carrier
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct editor['source] {
     ref mutable string text <- 'source;
 }
@@ -2023,15 +2023,15 @@ forwarding, immediate adapters and borrowed collection operations preserve this
 information. The historical `region` spelling cannot duplicate exclusive carrier
 permissions either.
 
-See [carrier_reborrows.tellur](../playground/carrier_reborrows.tellur) for parent access
+See [carrier_reborrows.vn](../playground/carrier_reborrows.vn) for parent access
 being restored independently for two fields.
 
 ### Splitting an opaque owner
 
 _Context fragment: Uses a document struct with string title and body fields._
 
-<!-- tellur:fragment Uses a document struct with string title and body fields. -->
-```tellur
+<!-- villanelle:fragment Uses a document struct with string title and body fields. -->
+```villanelle
 control edit(ref mutable document input)
     exits ready {
         ref mutable string title from input,
@@ -2060,15 +2060,15 @@ shared references still cannot grant mutable access. Trait signatures may promis
 this result shape, and every implementation must satisfy it. Independent calls do
 not automatically produce disjoint references to the same owner.
 
-See [opaque_splits.tellur](../playground/opaque_splits.tellur).
+See [opaque_splits.vn](../playground/opaque_splits.vn).
 
 ### Declared result origins: `from`
 
 An exit payload declaration has the form `type field_name`, optionally followed by
 `from parameter_name` for a reference payload:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control echo(ref string input)
     exits found { ref string text from input } {
     exit found { input };
@@ -2094,8 +2094,8 @@ binding name nor the contract field name must match the input parameter's name.
 
 The same spelling may occupy both roles:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control echo(ref string x) exits found { ref string x from x } {
     exit found { x };
 }
@@ -2115,8 +2115,8 @@ does not extend the owner's lifetime.
 
 Trait signatures use the same declaration:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 trait reader {
     type item;
     control peek(ref self input) exits found { ref item value from input }, empty;
@@ -2137,7 +2137,7 @@ exclusive ones, may name the same input. Every implementation must construct the
 without exclusive aliasing; shared outputs may alias each other. The same rule applies
 to trait implementations and generic calls. Declared unions and field-specific anchors
 are not yet supported; inferred direct-control contracts retain their existing rules.
-Try [borrowed_traits.tellur](../playground/borrowed_traits.tellur).
+Try [borrowed_traits.vn](../playground/borrowed_traits.vn).
 
 `borrow deref reference` creates a shared reborrow; `borrow mutable deref reference` creates an exclusive
 one when the parent is exclusive. Reborrows and their copies keep the underlying
@@ -2168,7 +2168,7 @@ Remaining restrictions include abstract origin-shape bounds, exclusive/nested
 collection elements, reference rebinding, reference loop parameters and references
 to references. Local reference-bearing records and nested tagged values are supported. Reference binding names must be unique within a lexical scope,
 including declarations on disjoint paths. These limitations are diagnosed; this is not the full Rust
-borrow model. See `playground/references.tellur` for a complete executable example.
+borrow model. See `playground/references.vn` for a complete executable example.
 
 ### Aggregate trait origin contracts
 
@@ -2178,8 +2178,8 @@ carrier references. A result's bracket arguments are mandatory when its type con
 references; a direct reference also needs its storage contract, `from input` or
 `from input['group]`. Implementation bodies prove those declarations.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct text_view['text] { ref string text <- 'text; }
 trait reader {
     control view(ref string input) exits ready { text_view[input] value };
@@ -2211,8 +2211,8 @@ infer these relationships from their bodies.
 This unused implementation is rejected because it changes the source promised by
 the trait, even though its body agrees with its own declaration:
 
-<!-- tellur:reject E_ORIGIN -->
-```tellur
+<!-- villanelle:reject E_ORIGIN -->
+```villanelle
 struct text_view['text] { ref string text <- 'text; }
 trait reader {
     control view(ref string first, ref string second)
@@ -2245,14 +2245,14 @@ Origin-shape bounds for associated and generic types are future work. This relea
 does not add runtime dispatch, general reference type arguments, public borrowed-collection
 contracts or reference rebinding.
 
-Try [aggregate_traits.tellur](../playground/aggregate_traits.tellur) for a complete
+Try [aggregate_traits.vn](../playground/aggregate_traits.vn) for a complete
 nested, exclusive example with an associated type, named completion, generic helper
 and captured result. Hover `auto job` to see its concrete inferred type.
 
 ## Arrays, vectors and maps
 
-<!-- tellur:body -->
-```tellur
+<!-- villanelle:body -->
+```villanelle
 array<u32, 3> numbers = [10, 20, 30];
 mutable vector<string> words = ["hello", "path"];
 mutable map<string, u32> counts = map {};
@@ -2304,8 +2304,8 @@ existing key when replacing an equal key and returns the previous value. Replace
 outside an array/vector's bounds returns the supplied value unchanged. There is no
 indexing syntax with an implicit panic.
 
-<!-- tellur:tail -->
-```tellur
+<!-- villanelle:tail -->
+```villanelle
 [entry]:
     mutable vector<string> words = ["first"];
     delta vector_get(borrow words, 0) {
@@ -2339,9 +2339,9 @@ The current map implementation uses sorted flat storage, so lookup/insertion/rem
 are linear in entry count. Vector removal at the front is linear too; consuming drain
 loops can consequently be quadratic. These are reference-implementation costs, not
 promised permanent complexity. Allocation exhaustion is a host failure, not a
-recoverable Tellur outcome; length is limited to u32. Borrowed slices, iterators, custom
+recoverable Villanelle outcome; length is limited to u32. Borrowed slices, iterators, custom
 key ordering, collection literals with inferred element types, exclusive-reference
-elements and public collection-origin contracts remain future work. See `playground/collections.tellur` for a complete
+elements and public collection-origin contracts remain future work. See `playground/collections.vn` for a complete
 runnable example.
 
 ### Local collections of shared references
@@ -2350,8 +2350,8 @@ Since 0.43, local `array<ref t, n>`, `vector<ref t>` and `map<key, ref t>` value
 can retain references to external owners. The referent type `t` must have an owning
 layout without stored references. Map keys remain `bool`, `u32` or `string`.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control main() exits done {
     mutable string owner = "hello";
     mutable vector<ref string> views = [borrow owner];
@@ -2386,8 +2386,8 @@ remaining collection retains its previous candidates until its last use or expli
 and releases its retainers on that branch. Other surviving copies or returned
 references keep their own dependencies.
 
-<!-- tellur:reject E_LOAN -->
-```tellur
+<!-- villanelle:reject E_LOAN -->
+```villanelle
 control main() exits done {
     mutable string owner = "hello";
     mutable vector<ref string> views = [borrow owner];
@@ -2414,7 +2414,7 @@ and permission contracts. A control may use a local collection to return a selec
 reference with an ordinary `from input` contract. Generic bodies can build local
 `vector<ref t>` values without admitting reference type arguments to user generics.
 
-Try [borrowed_collections.tellur](../playground/borrowed_collections.tellur).
+Try [borrowed_collections.vn](../playground/borrowed_collections.vn).
 
 ## Must-complete resources
 
@@ -2427,8 +2427,8 @@ payload when decided. Constant empty variants do not erase their type's obligati
 
 _Context fragment: Inside a file-handling control after its opened path has bound file._
 
-<!-- tellur:fragment Inside a file-handling control after its opened path has bound file. -->
-```tellur
+<!-- villanelle:fragment Inside a file-handling control after its opened path has bound file. -->
+```villanelle
 [opened]:
     delta read(borrow file) {
         data { bytes contents } => read_ok,
@@ -2448,8 +2448,8 @@ be bound before borrowing or projecting so their remaining obligations are track
 
 ## Loops
 
-<!-- tellur:tail -->
-```tellur
+<!-- villanelle:tail -->
+```villanelle
 loop count_up(u32 number = 1) {
     [entry]: delta (number <= 5) { true => more, false => finished }
     [more]:
@@ -2482,13 +2482,13 @@ provides both a persistent CLI and a bounded, sequential loopback HTTP service.
 The service exposes key removal through `POST /remove` with a JSON `key` field.
 Missing keys return 404 without writing; replacement uncertainty remains explicit
 in the 500 response. This application operation uses the existing library contracts.
-Its [server](../applications/settings/server.tellur) is a larger example of tail
+Its [server](../applications/settings/server.vn) is a larger example of tail
 loops, captures, independent failures, explicit completion and public entry contracts.
-Its [HTTP policy](../applications/settings/http.tellur) composes the same settings
+Its [HTTP policy](../applications/settings/http.vn) composes the same settings
 module used by the CLI. This is synchronous execution; first-class tasks remain planned.
 
 Since 0.45, a project manifest can bind primitive operations to typed Rust wrappers
-and explicitly locked Cargo dependencies. Tellur checks calls against the manifest;
+and explicitly locked Cargo dependencies. Villanelle checks calls against the manifest;
 the native build generates Rust outcome enums and checks each wrapper signature.
 Supported data includes owned scalars, strings, bytes, vectors and maps, plus shared
 input borrows that last for the call. Since 0.49, `rust.resources` binds opaque
@@ -2497,9 +2497,9 @@ calls receive `T`, and resource payloads return ownership under a fresh identity
 The same explicit completion and borrow/move rules apply as for other resources.
 Returned foreign borrows, exclusive foreign mutation, callbacks and asynchronous
 adapters remain outside this profile. See the runnable
-[retained-file example](../examples/retained_file/main.tellur).
+[retained-file example](../examples/retained_file/main.vn).
 
-Each binding declares `immediate` or `blocking` execution. Neither suspends a Tellur
+Each binding declares `immediate` or `blocking` execution. Neither suspends a Villanelle
 control. This preserves a separate boundary for future tasks and LLVM coroutine
 lowering. Rust panics are not recoverable outcome alternatives. Checking and editor
 diagnostics do not execute adapters; native builds compile them, and reference or
@@ -2508,16 +2508,16 @@ native scenario runs use scripts instead of live Rust dispatch.
 See [Rust adapter contracts and build workflow](rust-adapters.md) and the maintained
 [settings application](../applications/settings/README.md). The settings module
 contains the domain policy; Rust supplies file and JSON mechanisms. Normal builds
-require the committed dependency lock; `tellurc lock-native` is the explicit action
+require the committed dependency lock; `vnc lock-native` is the explicit action
 for updating it. This is source interoperability, not a stable Rust binary ABI.
 
 ## File modules and private representations
 
 _Context fragment: Import syntax; see the linked modules playground for the complete file graph._
 
-<!-- tellur:fragment Import syntax; see the linked modules playground for the complete file graph. -->
-```tellur
-import "people.tellur" as people;
+<!-- villanelle:fragment Import syntax; see the linked modules playground for the complete file graph. -->
+```villanelle
+import "people.vn" as people;
 ```
 
 Import paths are relative to the file containing the import. Qualify public members
@@ -2530,7 +2530,7 @@ contract in `exits` must expose a public contract, even when all payload types a
 public. This also applies to generic and grouped completion contracts. Variants/outcomes export their whole
 alternative contract when public.
 
-Open `playground/modules/main.tellur` and use the normal build/run commands. The CLI
+Open `playground/modules/main.vn` and use the normal build/run commands. The CLI
 loads the complete graph and the LSP observes unsaved imported buffers. See
 [file modules](modules.md) for identity, visibility, provenance and current limits.
 
@@ -2538,8 +2538,8 @@ loads the complete graph and the LSP observes unsaved imported buffers. See
 
 Structs, ordinary variants and named outcomes can have first-order type parameters:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 struct box<item> { item value; }
 variant optional<item> { some { item value }, none }
 outcome lookup<item, error> {
@@ -2579,7 +2579,7 @@ Imports qualify the type constructor: `data.box<string>`. Aliases of one file sh
 specializations; different files retain distinct identities. Field privacy and public
 interface restrictions apply to the generic type and its arguments. Specialization
 limits (1,024 layouts, depth 64, type spelling 16,384 bytes) produce errors rather than
-partial programs. See [the runnable example](../playground/generic_data.tellur).
+partial programs. See [the runnable example](../playground/generic_data.vn).
 
 ## Concrete traits and associated types
 
@@ -2599,8 +2599,8 @@ receiver. A trait cannot require that an implementor store a particular field, b
 it can require an operation that provides access to data. Associated bounds such
 as `type item: clone;` constrain the chosen item type, not the implementor itself.
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 trait reader {
     type item;
     control read(ref self input) exits ready { item value };
@@ -2756,15 +2756,15 @@ polymorphism remain planned. Borrowed
 inputs and results are supported. Direct reference results require a storage origin;
 grouped results require explicit bracket mappings. See
 [aggregate trait origin contracts](#aggregate-trait-origin-contracts). Associated
-reference types remain unsupported. Try [the trait example](../playground/traits.tellur).
+reference types remain unsupported. Try [the trait example](../playground/traits.vn).
 
 ## Generic controls
 
 Controls can declare first-order type parameters and call one another with explicit
 arguments:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control identity<item>(item value) exits auto {
     exit delivered { value };
 }
@@ -2782,8 +2782,8 @@ record. Calling an invalid definition only with `u32` does not make it valid. Tw
 parameters remain distinct even when a particular caller supplies the same type twice.
 Generic controls can request explicit capabilities:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 control duplicate<item: clone>(ref item value) exits ready { item value } {
     exit ready { clone(value) };
 }
@@ -2811,13 +2811,13 @@ parameters, and a generic body has no permissions beyond its bounds.
 failing or effectful user operation. Such operations belong to explicit control
 contracts. Bounds on data declarations remain planned.
 Generic declarations use `control`, whose owning-value rules apply; legacy `region`
-syntax is limited to nongeneric definitions. Try `playground/capabilities.tellur`.
+syntax is limited to nongeneric definitions. Try `playground/capabilities.vn`.
 
 Trait requirements use the same bound list. Associated types can promise sealed
 permissions:
 
-<!-- tellur:check -->
-```tellur
+<!-- villanelle:check -->
+```villanelle
 trait reader {
     type item: clone;
     control read(ref self input) exits ready { item value };
@@ -2835,7 +2835,7 @@ permissions and are checked even when never instantiated. Concrete type argument
 do not make invalid generic bodies valid. Distinct traits' associated types remain
 distinct in a generic definition even if a particular pair of implementations chooses
 the same concrete type. Associated trait bounds and equality constraints remain outside
-this profile. Try [the generic trait example](../playground/trait_bounds.tellur).
+this profile. Try [the generic trait example](../playground/trait_bounds.vn).
 
 `exits auto` produces a checked parametric contract, shown in hover and Outline.
 Named generic outcome contracts work as well. Concrete calls are specialized and
@@ -2861,7 +2861,7 @@ with depth 64 and type spelling 16,384 bytes. Exhaustion is an error.
 
 Certified graph expansion handles concrete generic instances. `extract-tail` can
 extract from a non-generic caller using generic calls; selecting a generic template
-itself is currently rejected. See [the runnable example](../playground/generic_controls.tellur).
+itself is currently rejected. See [the runnable example](../playground/generic_controls.vn).
 
 ## Live primitive library
 
@@ -2872,7 +2872,7 @@ uncertain replacement failures. Both use explicit byte limits and borrowed input
 Importing these controls does not choose application defaults, process exit codes
 or a host implementation. The project manifest supplies their four primitive
 signatures and explicitly selected [Rust source modules](rust-adapters.md#explicit-source-modules).
-The [independent example](../examples/json_file/main.tellur) and settings service
+The [independent example](../examples/json_file/main.vn) and settings service
 reuse the same files. There is no implicit standard-library import or package resolver.
 
 The [bounded loopback HTTP library](../library/README.md#bounded-loopback-http)
@@ -2910,50 +2910,20 @@ completion cleans escaped host resources outside the language trace.
 
 ## Tools and compatibility
 
-### Tellur name and migration
+### Villanelle name and migration
 
-From compiler 0.36, the language is named **Tellur**. New source files use `.tellur`;
-the current compiler command is `tellur` and `tellur lsp` serves the language protocol over stdio. The language's
-`path` keyword, path atoms, masks and provenance keep their meanings and spelling.
-The original v0.1 specification and vision retain their historical names.
+Compiler 0.285 introduces the name **Villanelle**, the **`.vn`** suffix and the **`vnc`** command. Run `vnc check file.vn`, `vnc exec file.vn` or `vnc lsp`. Villanelle was called Tellur from 0.36 through 0.284 and originally used the name Path.
 
-Open `tellur.code-workspace`. Both `.tellur` and `.path` files receive Tellur
-highlighting, hover and diagnostics. Imports use their exact relative filenames;
-a compilation may import either extension, including a mixture of the two.
-Changing a filename also requires updating imports that name it.
+Existing `.tellur` and `.path` programs still compile. A module import uses its exact relative filename and may use any of the three suffixes. When migrating a project, rename its files and update their import paths together. The checkout's examples and library now use `.vn`. Cargo also builds the compatibility commands `tellur`, `tellurc`, `pathc`, `tellur-lsp` and `path-lsp` with `--bins`.
 
-The compiler aliases `tellurc` and `pathc` and the standalone server names
-`tellur-lsp` and `path-lsp` remain available. They report the Tellur release version. Existing `path.*` editor
-commands and explicitly assigned `path` language IDs remain accepted. New commands
-are `tellur.build`, `tellur.buildAndRun`, and `tellur.restartServer`.
+Open `villanelle.code-workspace` for editor support. The extension recognizes all three suffixes and provides the `villanelle` language ID and `villanelle.*` commands. Explicit `villanelleLanguage.*` settings take precedence over `tellurLanguage.*` and `pathLanguage.*`. The installed extension ID stays `tellur-language-local.tellur-language` so the Villanelle package upgrades the existing extension. The legacy language IDs, workspace files and editor command bindings remain available.
 
-Settings now use `tellurLanguage.*`. An explicitly set new setting wins; otherwise
-the matching explicitly set `pathLanguage.*` setting is used. Empty strings and
-`false` count as explicit values. The default applies only when neither is set.
-The language client's trace setting uses `tellurLanguage.trace.server`.
-
-The extension ID is `tellur-language-local.tellur-language`. When installing it
-manually over the old package, uninstall `path-language-local.path-language` to
-avoid two servers handling the same files, then reload the editor window. The local
-release installation performs this replacement. A new extension identity does not
-migrate arbitrary per-extension VS Code state.
-
-The checkout directory remains `outputs/path-prototype`, preserving existing absolute
-paths. The old workspace file remains usable. Existing `.path` playground files,
-including user edits, were preserved; their `.tellur` copies are the new starting
-points. These are independent files, not synchronized views: continue editing the
-new copy. Future user-created `.path` files remain supported.
-
-Native builds now write `name.tellur-build/` and default to `.tellur-cache/` beside
-the output. Set `TELLUR_NATIVE_TARGET_DIR` to share the Cargo target cache. When it
-is unset, `PATH_NATIVE_TARGET_DIR` is accepted as a fallback. Existing build outputs
-and caches are left in place. The Rust library crate is now `tellur`.
-
+The Cargo package is `villanelle`. Its library import name is `tellur` for existing Rust integrations. Runtime ABI names, serialized report identifiers, native build directories and toolchain environment variables retain their established spellings.
 
 ```sh
-./bin/tellurc inspect playground/count.tellur playground/manifest.json main
-./bin/tellurc expand playground/count.tellur playground/manifest.json main
-./bin/tellurc run examples/load.tellur examples/manifest.json examples/double-failure.json
+./bin/vnc inspect playground/count.vn playground/manifest.json main
+./bin/vnc expand playground/count.vn playground/manifest.json main
+./bin/vnc run examples/load.vn examples/manifest.json examples/double-failure.json
 ```
 
 Native executables accept `--json`, `--entry`, `--scenario FILE`, `--fuel N`, and `--`
@@ -2982,7 +2952,7 @@ General expression-type hover remains unsupported.
 The historical `region` spelling retains v0.1 implicit copying and implicit borrowed
 arguments for compatibility. New programs should use `control` for the ownership rules
 described here. Borrowed slices, exclusive/nested collection elements, public collection-origin contracts
-and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.284.0.
+and broader spawn payloads (anonymous contracts and reference-bearing collections) remain planned; they are not executable features of 0.285.0.
 ## Contingency and supervised boundaries
 
 The [contingency reference](reference/contingency.md) specifies `@contingent`,
@@ -2994,13 +2964,13 @@ Faults remain outside the outcome algebra.
 ## Compare supplied scenarios
 
 ```sh
-./bin/tellurc compare playground/algebra/original.tellur playground/manifest.json \
-  playground/algebra/identity.tellur playground/algebra/scenarios.json
+./bin/vnc compare playground/algebra/original.vn playground/manifest.json \
+  playground/algebra/identity.vn playground/algebra/scenarios.json
 ```
 
 The scenario file is a JSON array. The report lists checked entries, observed
 agreement, declared outcome-shape equality, fault-permission equality and counterexamples. Replace
-`identity.tellur` with `reordered.tellur` to observe changed event order. The command
+`identity.vn` with `reordered.vn` to observe changed event order. The command
 returns nonzero for a mismatch or an inconclusive error. Matching inputs and
 reachable type layouts are required. Source faults compare their full messages and
 preceding events. Other runtime failures and budget exhaustion are inconclusive. Passing cases establish agreement only for those cases, not general
@@ -3013,8 +2983,8 @@ correspondence. All `--expanded` executions/builds now validate that derivation.
 To export the graph and its certificate for inspection:
 
 ```sh
-./bin/tellurc certify-expansion playground/forwarding.tellur playground/manifest.json main > expansion.json
-./bin/tellurc verify-expansion playground/forwarding.tellur playground/manifest.json expansion.json
+./bin/vnc certify-expansion playground/forwarding.vn playground/manifest.json main > expansion.json
+./bin/vnc verify-expansion playground/forwarding.vn playground/manifest.json expansion.json
 ```
 
 Verification checks the artifact against the supplied source without rerunning the
@@ -3025,8 +2995,8 @@ See [checked expansion certificates](expansion-certificates.md).
 ## Extract a tail into a helper
 
 ```sh
-./bin/tellurc extract-tail playground/extraction/original.tellur playground/manifest.json \
-  greeting 12 finish_greeting > /tmp/path-extracted.tellur
+./bin/vnc extract-tail playground/extraction/original.vn playground/manifest.json \
+  greeting 12 finish_greeting > /tmp/path-extracted.vn
 ```
 
 The command selects the unconditional tail starting on line 12, infers typed inputs,
@@ -3039,8 +3009,8 @@ ownership restrictions and the distinction between rechecking and equivalence.
 ## Query structural protocols
 
 ```sh
-./bin/tellurc protocol playground/read_file.tellur playground/manifest.json show_file playground/protocol/read_failed.json
-./bin/tellurc protocol-compare playground/algebra/original.tellur playground/manifest.json playground/algebra/identity.tellur main
+./bin/vnc protocol playground/read_file.vn playground/manifest.json show_file playground/protocol/read_failed.json
+./bin/vnc protocol-compare playground/algebra/original.vn playground/manifest.json playground/algebra/identity.vn main
 ```
 
 The first command asks what may follow a prefix: here, a successful open followed by

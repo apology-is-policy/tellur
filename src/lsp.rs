@@ -645,7 +645,7 @@ impl Server {
                 {
                     let ty = source_spelling(uri, &unit, &program, &binding.display_type);
                     return json!({"contents":{"kind":"markdown","value":format!(
-                        "```tellur\n{ty} {name}\n```\n\nInferred binding type from the checked source."
+                        "```villanelle\n{ty} {name}\n```\n\nInferred binding type from the checked source."
                     )},"range":diagnostic_range(&doc.text,*keyword)});
                 }
             }
@@ -719,7 +719,7 @@ impl Server {
             if self.checked(uri).is_err() {
                 return Value::Null;
             }
-            return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{description}\n```\n\nExplicit trait/type selection uses `trait_name<type>.member`. Implementations are checked for ownership, exit contracts, coherence and privacy; calls dispatch statically.")},"range":diagnostic_range(&doc.text,at)});
+            return json!({"contents":{"kind":"markdown","value":format!("```villanelle\n{description}\n```\n\nExplicit trait/type selection uses `trait_name<type>.member`. Implementations are checked for ownership, exit contracts, coherence and privacy; calls dispatch statically.")},"range":diagnostic_range(&doc.text,at)});
         }
         for data in &unit.data {
             if let Some(c) = &data.constructor
@@ -740,7 +740,7 @@ impl Server {
                     })
                     .unwrap_or(c.fault_contract == Some(true));
                 return json!({"contents":{"kind":"markdown","value":format!(
-                    "```tellur\n{}\n```\n\nConstructs `{}`. Every field must be initialized exactly once on each normally completing history. No partial `self` can escape.{} Raw brace construction remains available wherever field visibility permits it.",
+                    "```villanelle\n{}\n```\n\nConstructs `{}`. Every field must be initialized exactly once on each normally completing history. No partial `self` can escape.{} Raw brace construction remains available wherever field visibility permits it.",
                     constructor_description(c), data.name,
                     if faults { " May fault; initialized fields and pending inputs retain their resource obligations." } else { "" }
                 )},"range":diagnostic_range(&doc.text,c.name_span)});
@@ -755,10 +755,10 @@ impl Server {
                 };
                 let m = program.manifest();
                 if !data.type_parameters.is_empty() {
-                    return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{}\n```\n\nGeneric nominal data. Copy and must-complete properties are derived from each specialization's fields. Type arguments are explicit.",data_description(data))},"range":range});
+                    return json!({"contents":{"kind":"markdown","value":format!("```villanelle\n{}\n```\n\nGeneric nominal data. Copy and must-complete properties are derived from each specialization's fields. Type arguments are explicit.",data_description(data))},"range":range});
                 }
                 let description = format!(
-                    "```tellur\n{}\n```\n\nNominal data type. Copy: {}. Must-complete contents: {}.\n\nOrdinary data has no outcome-handling obligation of its own; contained resources and outcomes retain theirs.",
+                    "```villanelle\n{}\n```\n\nNominal data type. Copy: {}. Must-complete contents: {}.\n\nOrdinary data has no outcome-handling obligation of its own; contained resources and outcomes retain theirs.",
                     data_description(data),
                     m.is_copy(&data.name),
                     m.linear(&data.name)
@@ -844,7 +844,7 @@ impl Server {
                             .join(", ")
                     )
                 };
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\noutcome {} {{ {} }}\n```\n\nA named closed contract. Every stored value must be handled or transferred, even with an empty payload.{}",name,description,statuses)},"range":range});
+                return json!({"contents":{"kind":"markdown","value":format!("```villanelle\noutcome {} {{ {} }}\n```\n\nA named closed contract. Every stored value must be handled or transferred, even with an empty payload.{}",name,description,statuses)},"range":range});
             }
         }
         let auto_exits = syntax::auto_exit_spans(&doc.text).unwrap_or_default();
@@ -880,7 +880,7 @@ impl Server {
                     .map(|p| format!("{} {}", display_type(&p.ty), p.name))
                     .collect::<Vec<_>>()
                     .join(", ");
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{}control {}{}({params}){}\n```\n\nGeneric definition checked using only its declared capabilities. Concrete type arguments are explicit. Unconstrained values can be borrowed or transferred. Sealed bounds grant permissions: copy implies clone, and clone implies drop.",if generic.contingent { "@contingent\n" } else { "" },region.name,bounded_type_parameters(&region.type_parameters, &region.type_bounds),completion_description(&source_spelling(uri,&unit,&program,&checked_exit_description(&generic.exits,region)), generic.faults))},"range":range});
+                return json!({"contents":{"kind":"markdown","value":format!("```villanelle\n{}control {}{}({params}){}\n```\n\nGeneric definition checked using only its declared capabilities. Concrete type arguments are explicit. Unconstrained values can be borrowed or transferred. Sealed bounds grant permissions: copy implies clone, and clone implies drop.",if generic.contingent { "@contingent\n" } else { "" },region.name,bounded_type_parameters(&region.type_parameters, &region.type_bounds),completion_description(&source_spelling(uri,&unit,&program,&checked_exit_description(&generic.exits,region)), generic.faults))},"range":range});
             }
             let Some(checked) = program.region(&region.name) else {
                 return Value::Null;
@@ -934,7 +934,7 @@ impl Server {
                     .last()
                     .map(|p| p.name.as_str())
                     .unwrap_or("reason");
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\ncontingency(string {reason})\n```\n\nRuns after the failed activation retires, with the boundary's retained owners. Calls must be contingent. `terminate` settles this boundary; `escalate` propagates the original fault. Neither resumes the abandoned work.")},"range":range});
+                return json!({"contents":{"kind":"markdown","value":format!("```villanelle\ncontingency(string {reason})\n```\n\nRuns after the failed activation retires, with the boundary's retained owners. Calls must be contingent. `terminate` settles this boundary; `escalate` propagates the original fault. Neither resumes the abandoned work.")},"range":range});
             }
             if let Some(b) = &region.boundary {
                 let disposition = if b.retained.is_empty() {
@@ -948,7 +948,7 @@ impl Server {
                     .and_then(|b| program.region(&b.handler))
                     .is_some_and(|h| h.faults);
                 let faults = if escape { " faults" } else { "" };
-                return json!({"contents":{"kind":"markdown","value":format!("```tellur\nboundary {}({params}){disposition}{faults}\n```\n\nEnter with `supervise`. Completion carries no outcome or payload. A source fault abandons the normal body and hands retained parameters to its contingency after failed activations retire. `faults` permits contingency escape to the supervisor's boundary.",region.name)},"range":range});
+                return json!({"contents":{"kind":"markdown","value":format!("```villanelle\nboundary {}({params}){disposition}{faults}\n```\n\nEnter with `supervise`. Completion carries no outcome or payload. A source fault abandons the normal body and hands retained parameters to its contingency after failed activations retire. `faults` permits contingency escape to the supervisor's boundary.",region.name)},"range":range});
             }
             let completion = completion_description(&exits, checked.faults);
             let details = format!(
@@ -969,7 +969,7 @@ impl Server {
             } else {
                 ""
             };
-            return json!({"contents":{"kind":"markdown","value":format!("```tellur\n{annotation}control {}({params}){completion}\n```{inferred}{details}{borrows}{permission}",region.name)},"range":range});
+            return json!({"contents":{"kind":"markdown","value":format!("```villanelle\n{annotation}control {}({params}){completion}\n```{inferred}{details}{borrows}{permission}",region.name)},"range":range});
         }
         if let Some(hover) = call_hover::hover(self, uri, &unit, line, character) {
             return hover;
@@ -1066,7 +1066,8 @@ impl Server {
             "textDocument/didSave" | "workspace/didChangeWatchedFiles" => self.dirty = true,
             "workspace/didChangeConfiguration" => {
                 let settings = params["settings"]
-                    .get("tellurLanguage")
+                    .get("villanelleLanguage")
+                    .or_else(|| params["settings"].get("tellurLanguage"))
                     .or_else(|| params["settings"].get("pathLanguage"))
                     .unwrap_or(&params["settings"]);
                 if let Some(path) = settings["manifestPath"].as_str() {
@@ -1335,7 +1336,7 @@ pub fn serve(connection: Connection) -> std::result::Result<(), Box<dyn std::err
         "positionEncoding":"utf-16", "textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},
         "completionProvider":{"triggerCharacters":["."]}, "documentSymbolProvider":true, "hoverProvider":true, "documentFormattingProvider":true,
         "experimental":{"tellurContractSnapshot":1,"tellurAbsorptionSnapshot":1,"tellurExplain":1}
-    },"serverInfo":{"name":"tellur-lsp","version":env!("CARGO_PKG_VERSION")}}))?;
+    },"serverInfo":{"name":"Villanelle language server","version":env!("CARGO_PKG_VERSION")}}))?;
     let mut last_publication = Instant::now();
     loop {
         match connection.receiver.recv_timeout(Duration::from_millis(150)) {

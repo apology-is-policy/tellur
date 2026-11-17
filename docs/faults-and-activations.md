@@ -32,7 +32,7 @@ Keep these situations distinct:
 | `missing`, `invalid_file`, `write_failed` | Ordinary declared alternatives; callers handle them with delta/adaptation/forwarding |
 | Explicit invariant failure | Source-level `fault`; terminates its boundary and is visible transitively |
 | Host instruction budget exhausted | Executor policy, not a new outcome or a source assertion failure |
-| Malformed scripted host reply | Driver/contract rejection; not evidence of a bug in the Tellur source |
+| Malformed scripted host reply | Driver/contract rejection; not evidence of a bug in the Villanelle source |
 | Runtime invariant violation | Compiler/runtime or trusted-host problem; not a domain error to silently classify |
 | Foreign panic, abort, allocation failure, forced termination | Outside the ordinary returned-error channel; reporting and cleanup may be unavailable |
 
@@ -45,7 +45,7 @@ termination; named fault categories remain deferred.
 
 The native host stores retained Rust objects by token. Activation and boundary
 teardown release the failed child's owners while protecting retained handover and
-parent resources. Legacy file handles still have entry-host teardown fallback. It does not call Tellur completion controls,
+parent resources. Legacy file handles still have entry-host teardown fallback. It does not call Villanelle completion controls,
 produce their outcomes, reverse writes, roll back mutated state or establish that
 fallible cleanup succeeded. A consumed Rust owner may already have left the host
 store; its wrapper is part of the trusted boundary.
@@ -65,7 +65,7 @@ obligations disappear. Termination under failing cleanup needs an explicit polic
 Rust's [`catch_unwind`](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html)
 captures unwinding panics, not aborts, and requires exception-safety reasoning.
 The current bridge adds no blanket panic catch. The [Rust panic model](https://doc.rust-lang.org/reference/panic.html)
-also permits non-unwinding termination. An isolated Tellur boundary cannot promise
+also permits non-unwinding termination. An isolated Villanelle boundary cannot promise
 to recover from arbitrary foreign panics simply by wrapping generated code.
 
 ## What an activation identifies
@@ -78,7 +78,7 @@ and the source site that invoked it.
 
 In 0.60, identities start at one in each entry invocation. They are diagnostic
 identities, not addresses, serializable resources, globally unique IDs or values
-available to Tellur source. Only active invocations are retained. Completed calls
+available to Villanelle source. Only active invocations are retained. Completed calls
 and loop iterations do not accumulate an unbounded history.
 
 Both executors now allocate invocation-local storage ranges. References identify
@@ -127,7 +127,7 @@ do not provide a scheduler, pinning protocol or coroutine ABI.
 ## Lift and extraction
 
 Source transformations preserve the declared semantic boundary and external effect
-order. Invocation counts in the executed Tellur graph and instruction fuel consumption are diagnostic
+order. Invocation counts in the executed Villanelle graph and instruction fuel consumption are diagnostic
 implementation details; they need not remain identical after expansion. A report
 must not invent a runtime invocation that no longer exists after inlining.
 
@@ -141,14 +141,14 @@ preservation theorem is claimed for source constructs not yet implemented.
 ## Async and LLVM remain frontend-owned
 
 The chosen boundary model permits later explicit isolated tasks without requiring
-local exception recovery. Tellur must define suspension, resumption, cancellation,
+local exception recovery. Villanelle must define suspension, resumption, cancellation,
 cleanup and child ownership first. LLVM supplies lowering mechanisms for a checked
 state machine, not the language's resource protocol.
 
 For switched-resume coroutines, LLVM's [`coro.destroy`](https://llvm.org/docs/Coroutines.html#llvm-coro-destroy-intrinsic)
-operates on a suspended coroutine. Tellur must arrange legal frame destruction after
+operates on a suspended coroutine. Villanelle must arrange legal frame destruction after
 its own disposition rules have been satisfied. This is a design inference from the
-LLVM mechanism, not a claim that the intrinsic performs Tellur cleanup. LLVM's
+LLVM mechanism, not a claim that the intrinsic performs Villanelle cleanup. LLVM's
 [coroutine documentation](https://llvm.org/docs/Coroutines.html) warns that release
 compatibility is not guaranteed, so native coroutine experiments need a pinned
 toolchain. The current native backend still generates Rust and uses its LLVM backend.

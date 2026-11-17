@@ -7,8 +7,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'composed-construction-checkpoint');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const uri = vscode.Uri.file(path.join(fixture, 'composed_construction.tellur'));
-  const source = await fs.readFile(path.join(__dirname, '../../../playground/composed_construction.tellur'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'composed_construction.vn'));
+  const source = await fs.readFile(path.join(__dirname, '../../../playground/composed_construction.vn'), 'utf8');
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

@@ -6,8 +6,8 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'carrier-tasks');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const source = await fs.readFile(path.join(__dirname, '../../../playground/carrier_tasks.tellur'), 'utf8');
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const source = await fs.readFile(path.join(__dirname, '../../../playground/carrier_tasks.vn'), 'utf8');
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);
@@ -52,7 +52,7 @@ exports.run = async function (root) {
   const report = JSON.parse(result.stdout);
   assert.equal(report.outcome, 'done');
   assert.deepEqual(report.events.filter(e => e.kind === 'emit').map(e => e.message), ['carrier borrowed', 'first', 'released at await', 'released after last use']);
-  const structured = await fs.readFile(path.join(__dirname, '../../../playground/structured_tasks.tellur'), 'utf8');
+  const structured = await fs.readFile(path.join(__dirname, '../../../playground/structured_tasks.vn'), 'utf8');
   await replace(structured);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn work')).includes('queues an invocation-owned child'), 'structured task hover');
   assert.ok((await hover('yield;')).includes('Host quotas do not cause source handoffs'));
@@ -69,7 +69,7 @@ exports.run = async function (root) {
   assert.equal(tasks.code, 0, tasks.stderr);
   assert.deepEqual(JSON.parse(tasks.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'first', 'second', 'parent', 'first', 'second', 'joined first', 'joined second']);
-  const helpers = await fs.readFile(path.join(__dirname, '../../../playground/structured_helpers.tellur'), 'utf8');
+  const helpers = await fs.readFile(path.join(__dirname, '../../../playground/structured_helpers.vn'), 'utf8');
   await replace(helpers);
   await waitFor(async () => diagnostics().length === 0 && (await hover('auto value')).includes('message'), 'synchronous helper admission');
   const hiddenHandoff = helpers.replace('deref text = "updated";', 'fault boundary {run worker();} contingency [] {escalate;} deref text = "updated";');
@@ -98,7 +98,7 @@ exports.run = async function (root) {
   await waitFor(async () => diagnostics().length === 0 && (await hover('auto child')).includes('task<work>'), 'parent await beside owned child');
   await replace(awaited.replace('delta close(h)', 'yield;delta close(h)').replace('[closed|failed]:yield;', '[closed|failed]:'));
   await waitFor(() => diagnostics().some(d => code(d) === 'E_ASYNC' && d.message.includes('await beside started children')), 'awaited producer stop permission refresh');
-  const parentAwait = await fs.readFile(path.join(__dirname, '../../../playground/parent_await.tellur'), 'utf8');
+  const parentAwait = await fs.readFile(path.join(__dirname, '../../../playground/parent_await.vn'), 'utf8');
   await replace(parentAwait);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('Cold/direct awaits may retain parent borrows'), 'parent await repair and hover');
   await document.save();
@@ -108,7 +108,7 @@ exports.run = async function (root) {
   assert.equal(parentRun.code, 0, parentRun.stderr);
   assert.deepEqual(JSON.parse(parentRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['worker started', 'editor started', 'worker done', 'edited', 'editor started']);
-  const handing = await fs.readFile(path.join(__dirname, '../../../playground/cooperative_helpers.tellur'), 'utf8');
+  const handing = await fs.readFile(path.join(__dirname, '../../../playground/cooperative_helpers.vn'), 'utf8');
   await replace(handing);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('inline boundaries'), 'handing helper admission and hover');
   await document.save();
@@ -118,7 +118,7 @@ exports.run = async function (root) {
   assert.equal(handingRun.code, 0, handingRun.stderr);
   assert.deepEqual(JSON.parse(handingRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['helper started', 'inline started', 'worker started', 'helper returned', 'edited', 'worker finished']);
-  const borrowed = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_spawn.tellur'), 'utf8');
+  const borrowed = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_spawn.vn'), 'utf8');
   await replace(borrowed);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('stay live until the consuming join'), 'direct borrowed spawn admission');
   const conflicting = borrowed.replace('emit("parent");', 'emit(borrow values.left);');
@@ -134,7 +134,7 @@ exports.run = async function (root) {
   assert.equal(borrowedRun.code, 0, borrowedRun.stderr);
   assert.deepEqual(JSON.parse(borrowedRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'first', 'second', 'parent', 'shared', 'shared', 'left edited', 'right edited']);
-  const resultSource = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_spawn_results.tellur'), 'utf8');
+  const resultSource = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_spawn_results.vn'), 'utf8');
   await replace(resultSource);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn lend')).includes('Direct borrowed results retain their declared origins after join'), 'borrowed spawned result admission');
   const resultConflict = resultSource.replace('deref value = "edited through result";', 'left = "too soon";');
@@ -150,7 +150,7 @@ exports.run = async function (root) {
   assert.equal(resultRun.code, 0, resultRun.stderr);
   assert.deepEqual(JSON.parse(resultRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'released at join', 'edited through result', 'released after result', 'right']);
-  const carrierSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn.tellur'), 'utf8');
+  const carrierSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn.vn'), 'utf8');
   await replace(carrierSource);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('captures/results may nest'), 'flat carrier admission');
   const carrierConflict = carrierSource.replace('auto moved = move selected;', 'right = "too soon";auto moved = move selected;');
@@ -166,7 +166,7 @@ exports.run = async function (root) {
   assert.equal(carrierRun.code, 0, carrierRun.stderr);
   assert.deepEqual(JSON.parse(carrierRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'other capture', 'editing', 'released at join', 'selected', 'edited in child', 'released after edit']);
-  const flatResultSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn_results.tellur'), 'utf8');
+  const flatResultSource = await fs.readFile(path.join(__dirname, '../../../playground/carrier_spawn_results.vn'), 'utf8');
   await replace(flatResultSource);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn relay')).includes('selected result leaf loans'), 'flat result admission');
   const flatResultConflict = flatResultSource.replace('emit(result.right);', 'right = "too soon";emit(result.right);');
@@ -182,7 +182,7 @@ exports.run = async function (root) {
   assert.equal(flatResultRun.code, 0, flatResultRun.stderr);
   assert.deepEqual(JSON.parse(flatResultRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'left', 'right', 'owned result', 'edited in child', 'released after result']);
-  const nestedSource = await fs.readFile(path.join(__dirname, '../../../playground/nested_spawn.tellur'), 'utf8');
+  const nestedSource = await fs.readFile(path.join(__dirname, '../../../playground/nested_spawn.vn'), 'utf8');
   await replace(nestedSource);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('captures/results may nest'), 'nested record admission');
   const nestedConflict = nestedSource.replace('emit(fields.right.text);', 'right = "too soon";emit(fields.right.text);');
@@ -198,7 +198,7 @@ exports.run = async function (root) {
   assert.equal(nestedRun.code, 0, nestedRun.stderr);
   assert.deepEqual(JSON.parse(nestedRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['shared', 'queued', 'worker', 'shared', 'worker', 'left edited', 'right edited']);
-  const tagged = await fs.readFile(path.join(__dirname, '../../../playground/tagged_spawn.tellur'), 'utf8');
+  const tagged = await fs.readFile(path.join(__dirname, '../../../playground/tagged_spawn.vn'), 'utf8');
   await replace(tagged);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('Named outcomes retain mandatory handling'), 'tagged payload admission');
   await replace(tagged.replace('emit(a);', 'left="too soon";emit(a);'));
@@ -212,7 +212,7 @@ exports.run = async function (root) {
   assert.equal(taggedRun.code, 0, taggedRun.stderr);
   assert.deepEqual(JSON.parse(taggedRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
-  const outcomeSource = await fs.readFile(path.join(__dirname, '../../../playground/outcome_spawn.tellur'), 'utf8');
+  const outcomeSource = await fs.readFile(path.join(__dirname, '../../../playground/outcome_spawn.vn'), 'utf8');
   await replace(outcomeSource);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn edit')).includes('Named outcomes retain mandatory handling'), 'named outcome admission');
   await replace(outcomeSource.replace('auto selected = move value.selected;', 'drop(value.selected);auto selected = move value.selected;'));
@@ -226,7 +226,7 @@ exports.run = async function (root) {
   assert.equal(outcomeRun.code, 0, outcomeRun.stderr);
   assert.deepEqual(JSON.parse(outcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
-  const borrowedRecords = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_record_spawn.tellur'), 'utf8');
+  const borrowedRecords = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_record_spawn.vn'), 'utf8');
   await replace(borrowedRecords);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Borrowed record captures retain whole-holder storage'), 'borrowed record admission');
   await replace(borrowedRecords.replace('auto moved = move child;', 'drop(saved);auto moved = move child;'));
@@ -242,7 +242,7 @@ exports.run = async function (root) {
   assert.equal(borrowedRecordRun.code, 0, borrowedRecordRun.stderr);
   assert.deepEqual(JSON.parse(borrowedRecordRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['queued', 'reader', 'released at join', 'selected', 'edited']);
-  const borrowedTags = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_tagged_spawn.tellur'), 'utf8');
+  const borrowedTags = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_tagged_spawn.vn'), 'utf8');
   await replace(borrowedTags);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Borrowed option/variant captures'), 'borrowed tagged admission');
   await replace(borrowedTags.replace('auto moved = move pending;', 'drop(saved);auto moved = move pending;'));
@@ -258,7 +258,7 @@ exports.run = async function (root) {
   assert.equal(borrowedTagRun.code, 0, borrowedTagRun.stderr);
   assert.deepEqual(JSON.parse(borrowedTagRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
-  const borrowedOutcomes = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_outcome_spawn.tellur'), 'utf8');
+  const borrowedOutcomes = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_outcome_spawn.vn'), 'utf8');
   await replace(borrowedOutcomes);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Borrowed named outcomes retain the owning caller handling obligation'), 'borrowed outcome admission');
   await replace(borrowedOutcomes.replaceAll('consume_envelope<string>(saved);', ''));
@@ -274,7 +274,7 @@ exports.run = async function (root) {
   assert.equal(borrowedOutcomeRun.code, 0, borrowedOutcomeRun.stderr);
   assert.deepEqual(JSON.parse(borrowedOutcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
-  const wholeRecords = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_record_spawn_results.tellur'), 'utf8');
+  const wholeRecords = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_record_spawn_results.vn'), 'utf8');
   await replace(wholeRecords);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn choose')).includes('Whole borrowed record results retain holder storage'), 'whole record result admission');
   assert.ok((await hover('auto a')).includes('ref view'));
@@ -291,7 +291,7 @@ exports.run = async function (root) {
   assert.equal(wholeRecordRun.code, 0, wholeRecordRun.stderr);
   assert.deepEqual(JSON.parse(wholeRecordRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'after', 'available']);
-  const wholeTags = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_tagged_spawn_results.tellur'), 'utf8');
+  const wholeTags = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_tagged_spawn_results.vn'), 'utf8');
   await replace(wholeTags);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Whole borrowed option/variant results retain active or empty holder storage'), 'whole tagged result admission');
   assert.ok((await hover('auto result')).includes('ref choice'));
@@ -308,7 +308,7 @@ exports.run = async function (root) {
   assert.equal(wholeTagRun.code, 0, wholeTagRun.stderr);
   assert.deepEqual(JSON.parse(wholeTagRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
-  const wholeOutcomes = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_outcome_spawn_results.tellur'), 'utf8');
+  const wholeOutcomes = await fs.readFile(path.join(__dirname, '../../../playground/borrowed_outcome_spawn_results.vn'), 'utf8');
   await replace(wholeOutcomes);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn first')).includes('Whole borrowed named-outcome results retain holder storage'), 'whole outcome result admission');
   assert.ok((await hover('auto result')).includes('ref choice'));
@@ -327,7 +327,7 @@ exports.run = async function (root) {
   assert.equal(wholeOutcomeRun.code, 0, wholeOutcomeRun.stderr);
   assert.deepEqual(JSON.parse(wholeOutcomeRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message),
     ['left', 'right', 'empty', 'edited', 'none']);
-  const recordChains = await fs.readFile(path.join(__dirname, '../../../playground/record_chain_spawn.tellur'), 'utf8');
+  const recordChains = await fs.readFile(path.join(__dirname, '../../../playground/record_chain_spawn.vn'), 'utf8');
   await replace(recordChains);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn choose')).includes('Record-only reference chains retain every intermediate holder'), 'record reference chain admission');
   assert.ok((await hover('auto a')).includes('ref view'));
@@ -343,7 +343,7 @@ exports.run = async function (root) {
   });
   assert.equal(recordChainRun.code, 0, recordChainRun.stderr);
   assert.deepEqual(JSON.parse(recordChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
-  const taggedChains = await fs.readFile(path.join(__dirname, '../../../playground/tagged_chain_spawn.tellur'), 'utf8');
+  const taggedChains = await fs.readFile(path.join(__dirname, '../../../playground/tagged_chain_spawn.vn'), 'utf8');
   await replace(taggedChains);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn choose')).includes('Option and closed-variant reference chains retain active or empty holder storage'), 'tagged reference chain admission');
   assert.ok((await hover('auto a')).includes('ref view'));
@@ -359,7 +359,7 @@ exports.run = async function (root) {
   });
   assert.equal(taggedChainRun.code, 0, taggedChainRun.stderr);
   assert.deepEqual(JSON.parse(taggedChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
-  const outcomeChains = await fs.readFile(path.join(__dirname, '../../../playground/outcome_chain_spawn.tellur'), 'utf8');
+  const outcomeChains = await fs.readFile(path.join(__dirname, '../../../playground/outcome_chain_spawn.vn'), 'utf8');
   await replace(outcomeChains);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn choose')).includes('Named-outcome reference chains retain every holder and selected supplier'), 'outcome reference chain admission');
   assert.ok((await hover('auto a')).includes('ref view'));
@@ -375,7 +375,7 @@ exports.run = async function (root) {
   });
   assert.equal(outcomeChainRun.code, 0, outcomeChainRun.stderr);
   assert.deepEqual(JSON.parse(outcomeChainRun.stdout).events.filter(e => e.kind === 'emit').map(e => e.message), ['left', 'right']);
-  const boundaries = await fs.readFile(path.join(__dirname, '../../../playground/boundary_helpers.tellur'), 'utf8');
+  const boundaries = await fs.readFile(path.join(__dirname, '../../../playground/boundary_helpers.vn'), 'utf8');
   await replace(boundaries);
   await waitFor(async () => diagnostics().length === 0 && (await hover('spawn worker')).includes('Synchronous helpers may enter named or lexical boundaries'), 'uninterrupted boundary helper hover');
   await replace('async control pause() exits done {yield;exit done;}\n' + boundaries.replace('supervise request(true);', 'supervise request(true);run pause();'));

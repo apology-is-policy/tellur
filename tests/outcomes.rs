@@ -202,7 +202,7 @@ fn captured_load_keeps_read_close_failures_and_order_before_later_effect() {
     let m = Manifest::from_json(include_str!("../examples/manifest.json")).unwrap();
     let source = format!(
         "{}\ncontrol main(string path) exits auto {{auto loaded=capture load(path);emit(\"after load\");exit loaded;}}",
-        include_str!("../examples/load.tellur")
+        include_str!("../examples/load.vn")
     );
     let p = compile(&source, m).unwrap();
     let mut s: Scenario =

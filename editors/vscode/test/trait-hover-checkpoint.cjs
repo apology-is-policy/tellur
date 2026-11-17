@@ -7,9 +7,9 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'trait-hover');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const original = await fs.readFile(path.join(__dirname, '../../../playground/traits.tellur'), 'utf8');
+  const original = await fs.readFile(path.join(__dirname, '../../../playground/traits.vn'), 'utf8');
   const source = original.replace('control read(ref self input) exits read_result<item> {', 'control read(ref self owner) exits read_result<item> {').replace('borrow input.text', 'borrow owner.text');
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

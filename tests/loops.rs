@@ -4,7 +4,7 @@ use tellur::{
     manifest::Manifest,
     runtime::{Event, Scenario, ScriptCall},
 };
-const RETRY: &str = include_str!("../examples/fetch_retry.tellur");
+const RETRY: &str = include_str!("../examples/fetch_retry.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../examples/manifest.json")).unwrap()
 }

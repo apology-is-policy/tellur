@@ -273,7 +273,7 @@
       },
       "implementations": {}
     },
-    "file:../../library/json_file.tellur": {
+    "file:../../library/json_file.vn": {
       "declarations": {
         "load": {
           "kind": "control",
@@ -298,7 +298,7 @@
           ],
           "exits": {
             "kind": "named",
-            "type": "file:../../library/json_file.tellur::load_result",
+            "type": "file:../../library/json_file.vn::load_result",
             "origins": []
           }
         },
@@ -374,7 +374,7 @@
           ],
           "exits": {
             "kind": "named",
-            "type": "file:../../library/json_file.tellur::replace_result",
+            "type": "file:../../library/json_file.vn::replace_result",
             "origins": []
           }
         },

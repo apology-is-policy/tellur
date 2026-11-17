@@ -48,15 +48,17 @@ fn examples_have_explicit_status_and_match_the_compiler() {
             );
             let end = cursor;
             cursor += 1;
-            if fence != "```tellur" {
+            if fence != "```villanelle" {
                 continue;
             }
             let location = format!("{}:{}", file.display(), start + 1);
             let mode = start
                 .checked_sub(1)
-                .and_then(|i| lines[i].strip_prefix("<!-- tellur:"))
+                .and_then(|i| lines[i].strip_prefix("<!-- villanelle:"))
                 .and_then(|line| line.strip_suffix(" -->"))
-                .unwrap_or_else(|| panic!("{location}: Tellur example needs a status annotation"));
+                .unwrap_or_else(|| {
+                    panic!("{location}: Villanelle example needs a status annotation")
+                });
             if let Some(reason) = mode.strip_prefix("fragment ") {
                 assert!(
                     reason.split_whitespace().count() >= 3,
@@ -205,7 +207,7 @@ fn manual_targets_the_current_compiler_version() {
     )
     .unwrap();
     let marker = format!(
-        "<!-- tellur-reference-version: {} -->",
+        "<!-- villanelle-reference-version: {} -->",
         env!("CARGO_PKG_VERSION")
     );
     assert!(

@@ -53,7 +53,7 @@ test('comments and strings do not become code', () => {
   assert.ok(ts.filter(t => t.text.includes('Fake')).every(t => t.scopes.some(s => s.startsWith('comment.') || s.startsWith('string.'))));
 });
 test('retry loop, u32 and ASCII delta are highlighted', () => {
-  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../examples/fetch_retry.tellur'), 'utf8'));
+  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../examples/fetch_retry.vn'), 'utf8'));
   has(ts, 'Attempt', 'entity.name.function.tellur'); has(ts, '1u32', 'constant.numeric.tellur'); has(ts, 'again', 'keyword.control.tellur');
   has(tokens('[Entry]: delta true -> [true => Yes, false => No];'), 'delta', 'keyword.control.tellur');
 });
@@ -261,7 +261,7 @@ test('process statuses are annotations on alternatives, outside payloads', () =>
 });
 
 test('optional path groups keep nested labels and following statements distinct', () => {
-  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../playground/path_groups.tellur'), 'utf8'));
+  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../playground/path_groups.vn'), 'utf8'));
   for (const name of ['present', 'absent', 'full', 'brief']) has(ts, name, 'constant.other.tellur');
   has(ts, 'heading', 'variable.other.definition.tellur');
   has(ts, 'describe', 'entity.name.function.tellur');
@@ -270,7 +270,7 @@ test('optional path groups keep nested labels and following statements distinct'
 });
 
 test('direct arm exits distinguish keywords, final outcomes and continuing paths', () => {
-  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../playground/arm_exits.tellur'), 'utf8'));
+  const ts = tokens(fs.readFileSync(path.join(__dirname, '../../../playground/arm_exits.vn'), 'utf8'));
   has(ts, 'exit', 'keyword.control.tellur');
   has(ts, 'invalid', 'entity.name.type.outcome.tellur');
   has(ts, 'parsed', 'constant.other.tellur');

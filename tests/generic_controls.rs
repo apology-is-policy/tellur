@@ -218,7 +218,7 @@ fn generic_call_statements_and_mutable_returned_borrows_work() {
         p.run(&scenario()).unwrap(),
         p.expanded("main").unwrap().run(&scenario()).unwrap()
     );
-    let p = compile(include_str!("../playground/generic_controls.tellur"), m()).unwrap();
+    let p = compile(include_str!("../playground/generic_controls.vn"), m()).unwrap();
     assert_eq!(
         p.run(&scenario()).unwrap(),
         p.expanded("main").unwrap().run(&scenario()).unwrap()

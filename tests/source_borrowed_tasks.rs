@@ -26,11 +26,7 @@ control main() exits done {{forward run startup();}}
 }
 #[test]
 fn direct_spawn_loans_preserve_explicit_schedules_and_disjoint_fields() {
-    let p = compile(
-        include_str!("../playground/borrowed_spawn.tellur"),
-        manifest(),
-    )
-    .unwrap();
+    let p = compile(include_str!("../playground/borrowed_spawn.vn"), manifest()).unwrap();
     let expected = p.run_completion(&scenario(), 1000).unwrap();
     let value = serde_json::to_value(&expected).unwrap();
     let messages: Vec<_> = value["events"]
@@ -166,7 +162,7 @@ fn record_chains_are_admitted_but_temporary_captures_remain_gated() {
 }
 #[test]
 fn sibling_fault_settles_direct_borrowers_without_nested_handlers() {
-    let s = include_str!("fixtures/source_borrowed_task_fault.tellur");
+    let s = include_str!("fixtures/source_borrowed_task_fault.vn");
     for text in [
         s.to_owned(),
         s.replace(

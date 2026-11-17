@@ -7,20 +7,20 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'named-completion-ranges');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const program = await fs.readFile(path.join(__dirname, '../../../playground/count.tellur'), 'utf8');
+  const program = await fs.readFile(path.join(__dirname, '../../../playground/count.vn'), 'utf8');
   const countAt = program.indexOf('control count(');
   const statusAt = program.indexOf('// Process status policy');
   assert.ok(countAt >= 0 && statusAt > countAt);
-  const main = 'import "counter.tellur" as counter;\n' +
+  const main = 'import "counter.vn" as counter;\n' +
     program.slice(0, countAt).replace('count(5)', 'counter.count(5)') + program.slice(statusAt);
   const counter = "pub outcome view<t>['a] { found { ref t value <- 'a } }\npub control helper<t>(ref t input) exits view<t>[input] { exit found { input }; }\npub control direct<t>(ref t input) exits found { ref t value from input } { exit found { input }; }\npub struct borrowed<t>['a] {pub ref t value <- 'a;}\npub control aggregate<t>(ref t input) exits found {borrowed<t>[input] value} {exit found {borrowed<t> {value:input}};}\n" + program.slice(countAt, statusAt)
     .replace('control count(', 'pub control count(')
     .replace('exits auto', 'exits done, arithmetic_fault');
-  await fs.writeFile(path.join(fixture, 'main.tellur'), main);
-  await fs.writeFile(path.join(fixture, 'counter.tellur'), counter);
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  await fs.writeFile(path.join(fixture, 'main.vn'), main);
+  await fs.writeFile(path.join(fixture, 'counter.vn'), counter);
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   const document = await vscode.workspace.openTextDocument(uri);
-  const dependency = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(fixture, 'counter.tellur')));
+  const dependency = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(fixture, 'counter.vn')));
   const original = dependency.getText();
   await vscode.window.showTextDocument(document);
   await vscode.extensions.getExtension('tellur-language-local.tellur-language').activate();

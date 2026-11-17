@@ -5,7 +5,7 @@ async control greeting(string name) exits ready { string text } {
 }
 
 async control startup() exits done {
-    auto pending = defer greeting("Tellur");
+    auto pending = defer greeting("Villanelle");
     emit("arguments captured");
     auto moved = move pending;
     delta await moved {

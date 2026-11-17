@@ -10,7 +10,7 @@ The user selected explicit trait/type qualification on 25 October 2026. Name bot
 the trait and its implementing type when using an associated type or operation.
 The generic `read_one` below is executable with `read_result` declared:
 
-```tellur
+```villanelle
 trait reader {
     type item;
     type error;
@@ -34,7 +34,7 @@ fields, modules and unrelated traits with members of the same name.
 Executable implementation form (with `text_source`, `read_error`, `read_result` and
 `next_text` declared in the program):
 
-```tellur
+```villanelle
 implement reader for text_source {
     type item = string;
     type error = read_error;
@@ -103,7 +103,7 @@ The input must be borrowed, and exclusive outputs require exclusive inputs. Conc
 bodies prove the declared relationship; abstract generic witnesses assume only that
 relationship. A private field can be returned without exposing its projection in the
 public signature. See [lifetime contracts](lifetime-contracts.md) and the
-[borrowed trait example](../playground/borrowed_traits.tellur).
+[borrowed trait example](../playground/borrowed_traits.vn).
 Runtime polymorphism remains D1 and has no implicit fallback here.
 
 ## Implementation sequence and evidence
@@ -135,7 +135,7 @@ borrowed associated types are outside this release. Generic controls can call a
 fixed concrete implementation, and implementation bodies can call existing generic
 helpers. `outcome<reader<text_source>.read>` retains producer-indexed capture semantics.
 
-See [the runnable example](../playground/traits.tellur). Qualified method identities
+See [the runnable example](../playground/traits.vn). Qualified method identities
 remain in checked graphs and provenance, so expansion preserves the author's trait
 and type selection without adding runtime dispatch.
 
@@ -162,7 +162,7 @@ trait bounds, associated-type equalities, higher-kinded parameters and blanket i
 are not part of this profile. Definition checking caps abstract types and abstract
 operations at 4,096 each, in addition to the existing concrete specialization budgets.
 
-[The generic trait example](../playground/trait_bounds.tellur) demonstrates a reader
+[The generic trait example](../playground/trait_bounds.vn) demonstrates a reader
 used through a checked generic control. Borrowed trait outputs use `from input` in
 0.25; ordinary generic controls may also infer origins from their checked bodies.
 
@@ -184,7 +184,7 @@ of `self` or an associated type still require a future origin-shape bound; no su
 bound is inferred from current implementations.
 
 See [the reference](language-reference.md#aggregate-trait-origin-contracts),
-[the example](../playground/aggregate_traits.tellur) and
+[the example](../playground/aggregate_traits.vn) and
 [regression coverage](../tests/aggregate_traits.rs).
 
 ## Symbolic call hover (0.89)

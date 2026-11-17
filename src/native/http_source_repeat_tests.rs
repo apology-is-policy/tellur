@@ -291,7 +291,7 @@ fn native_http_repeated_context_rejects_previous_operations_and_waits() {
     let root = std::env::temp_dir().join(format!("tellur-http-repeat-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_source_repeated_http.tellur"),
+        include_str!("../../tests/fixtures/native_source_repeated_http.vn"),
         repeated_manifest(&root),
     )
     .unwrap()

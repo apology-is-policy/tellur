@@ -30,7 +30,7 @@ impl BuildTestExecutable for CheckedProgram {
     }
 }
 
-// Differential tests compare Tellur outcomes, not application status policy.
+// Differential tests compare Villanelle outcomes, not application status policy.
 // Explicitly configure their standalone harness entries to report completion as 0.
 #[allow(dead_code)]
 pub fn scenario_executable(program: &tellur::CheckedProgram) -> tellur::CheckedProgram {

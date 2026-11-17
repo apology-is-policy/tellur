@@ -1,5 +1,5 @@
-import "http.tellur" as http;
-import "../../library/loopback_http.tellur" as transport;
+import "http.vn" as http;
+import "../../library/loopback_http.vn" as transport;
 
 pub outcome service_result {
     @exit 0 completed,

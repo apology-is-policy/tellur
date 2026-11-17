@@ -355,8 +355,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tellur"
-version = "0.284.0"
+name = "villanelle"
+version = "0.285.0"
 dependencies = [
  "cc",
  "llvm-sys",

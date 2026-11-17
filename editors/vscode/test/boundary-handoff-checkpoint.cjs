@@ -6,14 +6,14 @@ exports.run = async function (root) {
   const fixture = path.join(root, 'boundary-handoff');
   await fs.mkdir(fixture, {recursive:true});
   await fs.copyFile(path.join(__dirname, '../../../playground/manifest.json'), path.join(fixture, 'manifest.json'));
-  const example = await fs.readFile(path.join(__dirname, '../../../playground/boundary_handoff_tasks.tellur'), 'utf8');
+  const example = await fs.readFile(path.join(__dirname, '../../../playground/boundary_handoff_tasks.vn'), 'utf8');
   const split = example.indexOf('async control worker');
   assert.ok(split > 0);
   const helper = example.slice(0, split).replace('control helper<t>', 'pub control helper<t>').replace('ref t value from input } {', 'ref t value from input } faults {');
-  const source = 'import "helpers.tellur" as helpers;\n' + example.slice(split).replace('delta helper<string>', 'delta helpers.helper<string>');
-  const helperUri = vscode.Uri.file(path.join(fixture, 'helpers.tellur'));
+  const source = 'import "helpers.vn" as helpers;\n' + example.slice(split).replace('delta helper<string>', 'delta helpers.helper<string>');
+  const helperUri = vscode.Uri.file(path.join(fixture, 'helpers.vn'));
   await fs.writeFile(helperUri.fsPath, helper);
-  const uri = vscode.Uri.file(path.join(fixture, 'main.tellur'));
+  const uri = vscode.Uri.file(path.join(fixture, 'main.vn'));
   await fs.writeFile(uri.fsPath, source);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document);

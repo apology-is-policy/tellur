@@ -1,7 +1,7 @@
 use std::{fs, process::Command};
 
 #[test]
-fn canonical_and_legacy_commands_report_tellur_and_check_both_extensions() {
+fn canonical_and_legacy_commands_report_versions_and_check_all_three_extensions() {
     let root = std::env::temp_dir().join(format!("tellur-branding-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     fs::write(
@@ -16,10 +16,11 @@ fn canonical_and_legacy_commands_report_tellur_and_check_both_extensions() {
     .unwrap();
     let source =
         "import \"helper.path\" as helper; control main() exits done {forward helper.finish();}";
-    for extension in ["tellur", "path"] {
+    for extension in ["vn", "tellur", "path"] {
         fs::write(root.join(format!("main.{extension}")), source).unwrap();
     }
     for (compiler, version_name) in [
+        (env!("CARGO_BIN_EXE_vnc"), "vnc"),
         (env!("CARGO_BIN_EXE_tellur"), "tellur"),
         (env!("CARGO_BIN_EXE_tellurc"), "tellurc"),
         (env!("CARGO_BIN_EXE_pathc"), "tellurc"),
@@ -32,8 +33,8 @@ fn canonical_and_legacy_commands_report_tellur_and_check_both_extensions() {
         );
         let help = Command::new(compiler).arg("--help").output().unwrap();
         assert!(help.status.success());
-        assert!(String::from_utf8_lossy(&help.stdout).contains("Tellur compiler"));
-        for extension in ["tellur", "path"] {
+        assert!(String::from_utf8_lossy(&help.stdout).contains("Villanelle compiler"));
+        for extension in ["vn", "tellur", "path"] {
             let checked = Command::new(compiler)
                 .arg("check")
                 .arg(root.join(format!("main.{extension}")))

@@ -279,7 +279,7 @@ fn trait_description(
         None => alternatives.clone(),
     };
     format!(
-        "**Trait control contract**\n\n```tellur\n{}{}control {}({}){}\n```{}\n\n{}",
+        "**Trait control contract**\n\n```villanelle\n{}{}control {}({}){}\n```{}\n\n{}",
         if source.contingent_contract == Some(true) {
             "@contingent\n"
         } else {
@@ -354,7 +354,7 @@ fn constructor_contract(written: &str, source: &Region, groups: &[String]) -> St
         )
     };
     format!(
-        "**Constructor contract**\n\nConstructs `{}`.\n\n```tellur\n{}\n```{origins}\n\nNormal completion yields the initialized value.{}",
+        "**Constructor contract**\n\nConstructs `{}`.\n\n```villanelle\n{}\n```{origins}\n\nNormal completion yields the initialized value.{}",
         display_type(written),
         constructor_description(source),
         if source.fault_contract == Some(true) {
@@ -462,7 +462,7 @@ fn generic_description(written: &str, resolved: &str, program: &CheckedProgram) 
         None => alternatives.clone(),
     };
     Some(format!(
-        "**Control contract**\n\n```tellur\n{}{}control {}({}){}\n```\n\n{SYMBOLIC_CONTRACT}{}{}{}{}",
+        "**Control contract**\n\n```villanelle\n{}{}control {}({}){}\n```\n\n{SYMBOLIC_CONTRACT}{}{}{}{}",
         if checked.contingent {
             "@contingent\n"
         } else {
@@ -701,7 +701,7 @@ pub(super) fn hover(
                 format!(" retains {}", retained.join(", "))
             };
             format!(
-                "**Boundary contract**\n\n```tellur\n{}boundary {}({params}){disposition}{}\n```\n\nInvoke with `supervise`; inputs transfer into the isolated boundary. Normal work or contingency must finish before the supervisor continues. Completion carries no outcome, payload or fault value. A handled fault abandons the failed work and hands retained parameters to contingency after failed activations retire.{}",
+                "**Boundary contract**\n\n```villanelle\n{}boundary {}({params}){disposition}{}\n```\n\nInvoke with `supervise`; inputs transfer into the isolated boundary. Normal work or contingency must finish before the supervisor continues. Completion carries no outcome, payload or fault value. A handled fault abandons the failed work and hands retained parameters to contingency after failed activations retire.{}",
                 if source.public { "pub " } else { "" },
                 display_type(written),
                 if escape { " faults" } else { "" },
@@ -762,7 +762,7 @@ pub(super) fn hover(
             };
             let permission = if checked.asynchronous { "async " } else { "" };
             format!(
-                "**Control contract**\n\n```tellur\n{annotation}{permission}control {}({params}){}\n```{inferred}{details}{}",
+                "**Control contract**\n\n```villanelle\n{annotation}{permission}control {}({params}){}\n```{inferred}{details}{}",
                 display_type(written),
                 completion_description(&exits, checked.faults),
                 if source.public {
@@ -843,7 +843,7 @@ pub(super) fn hover(
             "\n\nThe manifest declares no normal return."
         };
         format!(
-            "**Manifest primitive**\n\n```tellur\n{}({params}){}\n```\n\nEffects: {effects}.{execution}{asynchronous}{contingent}{pure}{ownership}{returns}",
+            "**Manifest primitive**\n\n```villanelle\n{}({params}){}\n```\n\nEffects: {effects}.{execution}{asynchronous}{contingent}{pure}{ownership}{returns}",
             display_type(written),
             completion_description(&exit_description(&p.outcomes), false)
         )
@@ -855,7 +855,7 @@ pub(super) fn hover(
         description = description.replace(marker, parameter);
     }
     if type_sources.keys().any(|label| description.contains(label)) {
-        description.push_str("\n\nFile-qualified type names identify defining sources not imported here; they are display identities, not Tellur import syntax.");
+        description.push_str("\n\nFile-qualified type names identify defining sources not imported here; they are display identities, not Villanelle import syntax.");
     }
     let selection = syntax::selection_site_at(unit, text, at)
         .map(|site| server.selection_for_site(uri, &program, &site))

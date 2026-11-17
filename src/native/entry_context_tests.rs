@@ -9,7 +9,7 @@ fn host(fuel: usize) -> Host {
                     id,
                     fault::Site {
                         control: format!("site_{id}"),
-                        path: Some("entry.tellur".into()),
+                        path: Some("entry.vn".into()),
                         line: id,
                         column: 4,
                         label: Some("selected".into()),

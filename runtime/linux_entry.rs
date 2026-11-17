@@ -4,6 +4,6 @@ unsafe extern "C" {
 }
 
 fn main() -> std::process::ExitCode {
-    // The checked entry returns a Tellur process status in the range 0..=255.
+    // The checked entry returns a Villanelle process status in the range 0..=255.
     std::process::ExitCode::from(unsafe { tellur_program_main() } as u8)
 }

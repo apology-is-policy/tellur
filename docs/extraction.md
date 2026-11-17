@@ -9,27 +9,27 @@ From the project root:
 
 ```sh
 # Line 12 starts the assignment in greeting.
-./bin/tellurc extract-tail playground/extraction/original.tellur playground/manifest.json \
-  greeting 12 finish_greeting > /tmp/path-extracted.tellur
+./bin/vnc extract-tail playground/extraction/original.vn playground/manifest.json \
+  greeting 12 finish_greeting > /tmp/path-extracted.vn
 
-./bin/tellurc check /tmp/path-extracted.tellur playground/manifest.json
-./bin/tellurc compare playground/extraction/original.tellur playground/manifest.json \
-  /tmp/path-extracted.tellur playground/extraction/scenarios.json
-./bin/tellurc exec /tmp/path-extracted.tellur playground/manifest.json
+./bin/vnc check /tmp/path-extracted.vn playground/manifest.json
+./bin/vnc compare playground/extraction/original.vn playground/manifest.json \
+  /tmp/path-extracted.vn playground/extraction/scenarios.json
+./bin/vnc exec /tmp/path-extracted.vn playground/manifest.json
 ```
 
 Redirect to a different file: shell redirection to the input filename would truncate
 it before the compiler could read it. The checked-in
-[extracted example](../playground/extraction/extracted.tellur) is the generated result;
+[extracted example](../playground/extraction/extracted.vn) is the generated result;
 both example files can also be opened and run in VS Code.
 
 The original tail is:
 
-```tellur
+```villanelle
 control greeting(bool available) exits greeting_result {
     emit("Preparing greeting");
     mutable string text = "Hello";
-    text = concat(text, ", Tellur!");
+    text = concat(text, ", Villanelle!");
     exit delta available {
         true => ready {text},
         false => empty {}
@@ -39,7 +39,7 @@ control greeting(bool available) exits greeting_result {
 
 Extraction produces:
 
-```tellur
+```villanelle
 control greeting(bool available) exits greeting_result {
     emit("Preparing greeting");
     mutable string text = "Hello";
@@ -48,7 +48,7 @@ control greeting(bool available) exits greeting_result {
 
 control finish_greeting(bool available, string extracted_text) exits greeting_result {
     mutable string text = extracted_text;
-    text = concat(text, ", Tellur!");
+    text = concat(text, ", Villanelle!");
     exit delta available {
         true => ready {text},
         false => empty {}
@@ -91,7 +91,7 @@ lines use LF; copied CRLF lines retain CRLF.
 Add `--report` to receive JSON instead of source text:
 
 ```sh
-./bin/tellurc extract-tail playground/extraction/original.tellur playground/manifest.json \
+./bin/vnc extract-tail playground/extraction/original.vn playground/manifest.json \
   greeting 12 finish_greeting --report
 ```
 

@@ -8,7 +8,7 @@ use std::{
     process::ExitCode,
 };
 use tellur::{compile_file, manifest::Manifest, runtime::Scenario};
-const USAGE: &str = "Tellur compiler\n  tellur lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc pack-adapter SOURCE [MANIFEST] --out FILE [--target TRIPLE] [--release]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm] [--target TRIPLE] [--adapter-pack FILE]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nA Linux target triple selects a bundled static musl pack (x86_64 or aarch64).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nThe native distributions embed the LLVM runtime and system link packs for supported targets. Cargo is required to compile source adapters or use --backend rust. An LLVM build can reuse a matching --adapter-pack without Cargo.\nCompilers with an embedded native target pack default to LLVM. Source builds with --no-default-features use Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
+const USAGE: &str = "Villanelle compiler\n  tellurc lsp  (language server over stdio)\n  tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]\n  tellurc absorption-snapshot SOURCE [MANIFEST]  (bounded outcome contributor JSON)\n  tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]\n  tellurc contract-snapshot SOURCE [MANIFEST]  (checked public interface JSON)\n  tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]  (exact contract differences)\n  tellurc format SOURCE [--check | --write] [--width N]  (stdout by default; no manifest needed)\n  tellurc check SOURCE [MANIFEST] [--json]\n  tellurc pack-adapter SOURCE [MANIFEST] --out FILE [--target TRIPLE] [--release]\n  tellurc lock-native SOURCE [MANIFEST]  (explicitly resolve Rust adapter dependencies)\n  tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]  (reference interpreter)\n  tellurc compare SOURCE MANIFEST OTHER_SOURCE SCENARIOS  (finite scenario evidence)\n  tellurc expand SOURCE MANIFEST ENTRY\n  tellurc extract-tail SOURCE MANIFEST CONTROL LINE HELPER [--report]\n  tellurc protocol SOURCE MANIFEST ENTRY [PREFIX_JSON]  (structural abstraction)\n  tellurc protocol-compare SOURCE MANIFEST OTHER_SOURCE ENTRY\n  tellurc certify-expansion SOURCE MANIFEST ENTRY  (JSON graph and correspondence)\n  tellurc verify-expansion SOURCE MANIFEST ARTIFACT\n  tellurc inspect SOURCE MANIFEST ENTRY [--expanded]\n  tellurc build SOURCE [MANIFEST] [--entry main] [--out FILE] [--release] [--expanded] [--backend rust|llvm] [--target TRIPLE] [--adapter-pack FILE]\n  tellurc exec SOURCE [MANIFEST] [build options] [-- PROGRAM_ARGUMENTS]\nBuild writes a native executable, LLVM IR (.ll), and generated source (.tellur-build/).\nA Linux target triple selects a bundled static musl pack (x86_64 or aarch64).\nNative programs accept --help, --json, --scenario FILE, and --fuel N.\nThe native distributions embed the LLVM runtime and system link packs for supported targets. Cargo is required to compile source adapters or use --backend rust. An LLVM build can reuse a matching --adapter-pack without Cargo.\nCompilers with an embedded native target pack default to LLVM. Source builds with --no-default-features use Rust. Pass --backend rust to use generated Rust on any build. See docs/reference/llvm-backend.md for supported operations. Executables are standalone.";
 fn discover(source: &Path) -> Option<PathBuf> {
     let source = if source.is_absolute() {
         source.to_owned()
@@ -39,7 +39,7 @@ fn run(
     }
     if args[0] == "lsp" {
         if args.len() != 1 {
-            return Err("usage: tellur lsp".into());
+            return Err("usage: vnc lsp".into());
         }
         return Ok(tellur::lsp::serve_stdio());
     }
@@ -66,7 +66,7 @@ fn run(
     }
     if args[0] == "absorption-diff" {
         if args.len() < 3 || args.len() > 4 || (args.len() == 4 && args[3] != "--check") {
-            return Err("usage: tellurc absorption-diff BEFORE_JSON AFTER_JSON [--check]".into());
+            return Err("usage: vnc absorption-diff BEFORE_JSON AFTER_JSON [--check]".into());
         }
         let before = tellur::absorption::Snapshot::from_json(&fs::read_to_string(&args[1])?)?;
         let after = tellur::absorption::Snapshot::from_json(&fs::read_to_string(&args[2])?)?;
@@ -86,7 +86,7 @@ fn run(
     }
     if args[0] == "contract-diff" {
         if args.len() < 3 || args.len() > 4 || (args.len() == 4 && args[3] != "--check") {
-            return Err("usage: tellurc contract-diff BEFORE_JSON AFTER_JSON [--check]".into());
+            return Err("usage: vnc contract-diff BEFORE_JSON AFTER_JSON [--check]".into());
         }
         let before = tellur::contracts::Snapshot::from_json(&fs::read_to_string(&args[1])?)?;
         let after = tellur::contracts::Snapshot::from_json(&fs::read_to_string(&args[2])?)?;
@@ -115,9 +115,7 @@ fn run(
                     width_seen = true;
                 }
                 _ => {
-                    return Err(
-                        "usage: tellurc format SOURCE [--check | --write] [--width N]".into(),
-                    );
+                    return Err("usage: vnc format SOURCE [--check | --write] [--width N]".into());
                 }
             }
         }
@@ -149,7 +147,7 @@ fn run(
         if json {
             rest = &rest[..rest.len() - 1];
         }
-        let usage = "usage: tellurc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]";
+        let usage = "usage: vnc explain SOURCE [MANIFEST] (--at LINE:COLUMN | --control NAME --outcome NAME) [--json]";
         let query = match rest {
             [flag, at] if flag == "--at" => {
                 let (line, column) = at.split_once(':').ok_or(usage)?;
@@ -176,7 +174,7 @@ fn run(
     }
     if args[0] == "absorption-snapshot" {
         if index != args.len() {
-            return Err("usage: tellurc absorption-snapshot SOURCE [MANIFEST]".into());
+            return Err("usage: vnc absorption-snapshot SOURCE [MANIFEST]".into());
         }
         let snapshot = tellur::modules::absorption_snapshot(&source, checked_manifest)?;
         println!("{}", serde_json::to_string_pretty(&snapshot)?);
@@ -184,7 +182,7 @@ fn run(
     }
     if args[0] == "contract-snapshot" {
         if index != args.len() {
-            return Err("usage: tellurc contract-snapshot SOURCE [MANIFEST]".into());
+            return Err("usage: vnc contract-snapshot SOURCE [MANIFEST]".into());
         }
         let snapshot = tellur::modules::contract_snapshot(&source, checked_manifest)?;
         println!("{}", serde_json::to_string_pretty(&snapshot)?);
@@ -334,8 +332,7 @@ fn run(
                     "--json" if !json => json = true,
                     _ => {
                         return Err(
-                            "usage: tellurc run SOURCE MANIFEST SCENARIO [--expanded] [--json]"
-                                .into(),
+                            "usage: vnc run SOURCE MANIFEST SCENARIO [--expanded] [--json]".into(),
                         );
                     }
                 }
@@ -486,7 +483,8 @@ fn main() -> ExitCode {
     let compiler_name = match executable.file_stem().and_then(|name| name.to_str()) {
         Some("tellur-lsp" | "path-lsp") => return tellur::lsp::serve_stdio(),
         Some("tellurc" | "pathc") => "tellurc",
-        _ => "tellur",
+        Some("tellur") => "tellur",
+        _ => "vnc",
     };
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.first().is_some_and(|a| a == "check") && args[1..].iter().any(|a| a == "--json") {

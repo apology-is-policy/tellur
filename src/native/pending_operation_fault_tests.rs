@@ -166,7 +166,7 @@ fn generated_pending_fault_retires_nested_borrowers_before_owning_contingency() 
     let root = std::env::temp_dir().join(format!("tellur-pending-fault-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let p = crate::compile(
-        include_str!("../../tests/fixtures/native_pending_fault.tellur"),
+        include_str!("../../tests/fixtures/native_pending_fault.vn"),
         fault_manifest(&root),
     )
     .unwrap()

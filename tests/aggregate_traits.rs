@@ -24,7 +24,7 @@ fn rejects(source: &str, code: &str) {
     assert_eq!(e.code, code, "{e}\n{source}");
     assert!(!e.message.contains("_path_poly_"), "{e}");
 }
-const SOURCE: &str = include_str!("fixtures/aggregate_traits.tellur");
+const SOURCE: &str = include_str!("fixtures/aggregate_traits.vn");
 #[test]
 fn nested_named_contracts_survive_associated_types_generic_dispatch_and_capture() {
     let p = same(SOURCE);
@@ -271,27 +271,27 @@ fn imported_private_layouts_preserve_public_trait_origin_groups() {
         std::process::id()
     ));
     std::fs::create_dir_all(&root).unwrap();
-    std::fs::write(root.join("library.tellur"),r#"pub struct view['a] {ref string text <- 'a;}
+    std::fs::write(root.join("library.vn"),r#"pub struct view['a] {ref string text <- 'a;}
 pub trait reader {control get(ref string input) exits ready {view[input] value};}
 implement reader for string {control get(ref string owner) exits ready {view[owner] value} {exit ready {view {owner}};}}
 pub control print(view input) exits done {emit(input.text);exit done;}"#).unwrap();
-    let source = r#"import "library.tellur" as lib;
+    let source = r#"import "library.vn" as lib;
 control fetch<r:lib.reader>(ref string input) exits ready {lib.view[input] value} {forward lib.reader<r>.get(input);}
 control main() exits done {string text="private";delta fetch<string>(borrow text) {ready {auto value}=>ready}
 [ready]:lib.print(value);exit done;}"#;
-    std::fs::write(root.join("main.tellur"), source).unwrap();
-    let p = tellur::compile_file(root.join("main.tellur"), manifest()).unwrap();
+    std::fs::write(root.join("main.vn"), source).unwrap();
+    let p = tellur::compile_file(root.join("main.vn"), manifest()).unwrap();
     assert_eq!(
         p.run(&scenario()).unwrap(),
         p.expanded("main").unwrap().run(&scenario()).unwrap()
     );
     std::fs::write(
-        root.join("main.tellur"),
+        root.join("main.vn"),
         source.replace("lib.print(value)", "emit(value.text)"),
     )
     .unwrap();
     assert_eq!(
-        tellur::compile_file(root.join("main.tellur"), manifest())
+        tellur::compile_file(root.join("main.vn"), manifest())
             .unwrap_err()
             .diagnostic
             .code,

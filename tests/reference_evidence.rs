@@ -39,7 +39,7 @@ fn capture(region: &Region) -> &[ReferenceOrigin] {
 
 #[test]
 fn fresh_local_carriers_cover_holder_and_all_stored_origins() {
-    let source = include_str!("../playground/local_carrier_tasks.tellur");
+    let source = include_str!("../playground/local_carrier_tasks.vn");
     let p = program(source);
     let startup = p.regions().find(|r| r.name == "startup").unwrap();
     let evidence = capture_evidence(startup);
@@ -149,7 +149,7 @@ fn fresh_local_carriers_cover_holder_and_all_stored_origins() {
 
 #[test]
 fn local_carrier_aliases_retain_broad_ancestors_and_all_their_stored_owners() {
-    let source = include_str!("../playground/aliased_carrier_tasks.tellur");
+    let source = include_str!("../playground/aliased_carrier_tasks.vn");
     let p = program(source);
     let region = p.regions().find(|r| r.name == "startup").unwrap();
     let evidence = capture_evidence(region);
@@ -254,7 +254,7 @@ fn local_carrier_aliases_retain_broad_ancestors_and_all_their_stored_owners() {
 
 #[test]
 fn captures_preserve_erased_alias_guards_without_inventing_shared_holder_dependencies() {
-    let source = include_str!("../playground/guarded_task_captures.tellur");
+    let source = include_str!("../playground/guarded_task_captures.vn");
     let direct = source.replace(
         "    delta detach(carrier) {\n        ready { auto detached } => borrowed\n    }\n\n    [borrowed]:",
         "    ref mutable string detached = borrow mutable deref carrier.text;",
@@ -631,7 +631,7 @@ control main() exits done {forward run startup(true);}
     );
     let startup = p.regions().find(|r| r.name == "startup").unwrap();
     assert!(startup.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(_),args,..} if matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
-    let guarded = program(include_str!("../playground/guarded_task_captures.tellur"));
+    let guarded = program(include_str!("../playground/guarded_task_captures.vn"));
     let exclusive = guarded.regions().find(|r| r.name == "exclusive").unwrap();
     assert!(exclusive.code.iter().any(|i|matches!(&i.action,Action::Decide {operation:Operation::Defer(_),args,..} if matches!(&args[0],Expr::WithReferenceEvidence(_,ReferenceEvidence::Partial(_))))));
     let shared = guarded.regions().find(|r| r.name == "shared").unwrap();
@@ -644,7 +644,7 @@ control main() exits done {forward run startup(true);}
 
 #[test]
 fn local_guarded_closure_survives_expansion_and_rejects_weakened_certificates() {
-    let p = program(include_str!("../playground/local_guarded_tasks.tellur"));
+    let p = program(include_str!("../playground/local_guarded_tasks.vn"));
     let startup = p.regions().find(|r| r.name == "startup").unwrap();
     assert!(capture_evidence(startup).is_complete());
     let artifact = p.expansion_artifact("startup").unwrap();
@@ -704,7 +704,7 @@ fn local_guarded_closure_survives_expansion_and_rejects_weakened_certificates() 
         );
     }
     // Conditional guard ancestry and returned permission families stay partial.
-    let conditional = include_str!("../playground/local_guarded_tasks.tellur")
+    let conditional = include_str!("../playground/local_guarded_tasks.vn")
         .replace("async control startup()", "async control startup(bool selected)")
         .replace("    mutable string owner", "    delta selected { true => yes, false => no }\n    [no]: exit done;\n    [yes]:\n    mutable string owner")
         .replace("run startup()", "run startup(true)");
@@ -755,8 +755,8 @@ control main() exits done {
         assert_eq!(count, expected, "{name}");
     }
     for input in [
-        include_str!("../playground/public_carriers.tellur"),
-        include_str!("../playground/public_variants.tellur"),
+        include_str!("../playground/public_carriers.vn"),
+        include_str!("../playground/public_variants.vn"),
     ] {
         let unsupported = program(input);
         let relay = unsupported.regions().find(|r| r.name == "relay").unwrap();
@@ -812,7 +812,7 @@ control main() exits done {
 
 #[test]
 fn singleton_shared_input_leaves_close_direct_and_aliased_projection_ancestry() {
-    let source = include_str!("../playground/incoming_leaf_tasks.tellur");
+    let source = include_str!("../playground/incoming_leaf_tasks.vn");
     let p = program(source);
     for name in ["inspect", "owned"] {
         let r = p.regions().find(|r| r.name == name).unwrap();
@@ -967,7 +967,7 @@ control main() exits done {exit done;}
 
 #[test]
 fn exclusive_input_proofs_preserve_exact_field_and_broad_holder_through_expansion() {
-    let source = include_str!("../playground/guarded_input_tasks.tellur");
+    let source = include_str!("../playground/guarded_input_tasks.vn");
     let p = program(source);
     let inspect = p.regions().find(|r| r.name == "inspect").unwrap();
     let mut count = 0;
@@ -1081,7 +1081,7 @@ control main() exits done {exit done;}
 
 #[test]
 fn incoming_carriers_reconstruct_full_leaf_and_ancestor_coverage_after_alias_erasure() {
-    let source = include_str!("../playground/incoming_carrier_tasks.tellur");
+    let source = include_str!("../playground/incoming_carrier_tasks.vn");
     let p = program(source);
     let mut count = 0;
     for name in ["bounce", "relay"] {

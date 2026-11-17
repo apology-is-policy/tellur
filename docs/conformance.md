@@ -1,4 +1,6 @@
-# Revision status
+# Villanelle conformance
+
+Compiler 0.285 introduces `vnc` and `.vn`. Earlier release records below use their original names. [Migration guide](language-reference.md#villanelle-name-and-migration)
 
 Compiler 0.145.0 retains the v0.1 profile below and adds revised syntax plus owned
 values, mutation, borrowed calls/results, local lifetime inference, core collections, nested adapters and owned completed
@@ -588,7 +590,7 @@ owner retention and private-type leakage. LSP and TextMate checks cover schemas,
 payload mappings, inferred bindings and unsaved owner errors/repair. The independent
 IR verifier has targeted tagged-metadata corruption cases.
 
-The runnable example is [public_variants.tellur](../playground/public_variants.tellur).
+The runnable example is [public_variants.tellur](../playground/public_variants.vn).
 Editor/native tests use its independent fixture copy, preserving user playground
 edits. The [detailed reference](language-reference.md#grouped-variant-contracts),
 grammar, lexical guide, status matrix and diagnostic examples describe this release.
@@ -633,7 +635,7 @@ The modern reference, canonical examples, workspace and regression fixtures use
 Tellur names. Existing `.path` playground copies, including user edits, remain
 independent preserved files. The original specification/vision and historical v0.1
 reference remain unchanged. The physical checkout directory stays in place.
-See [migration details](language-reference.md#tellur-name-and-migration).
+See [migration details](language-reference.md#villanelle-name-and-migration).
 
 `tests/branding.rs` checks canonical/legacy commands, versions and mixed-extension
 imports. Editor checks cover both extensions, old command/language IDs and the
@@ -694,7 +696,7 @@ inference failures, owner escapes, generic composition and mandatory handling.
 Module/LSP/grammar/editor checks cover imported schemas, qualified contracts, public
 visibility, schematic hover, inferred types, unsaved owner diagnostics and repair.
 The native fixture runs populated/empty results at O0/O2 before/after expansion.
-Try [outcome_origins.tellur](../playground/outcome_origins.tellur); its separate test
+Try [outcome_origins.tellur](../playground/outcome_origins.vn); its separate test
 fixture preserves playground edits. The reference, grammar, diagnostics, glossary,
 feature matrix and roadmap describe the delivered boundary and remaining gates.
 
@@ -747,7 +749,7 @@ contracts do not yet propagate their contained loans. This pre-existing boundary
 now an explicit next roadmap checkpoint, covering records and sums together.
 Ungrouped reference-bearing sums, reference rebinding, borrowed collection elements,
 borrowed loop state and aggregate trait contracts retain their existing boundaries.
-Try [sum_carriers.tellur](../playground/sum_carriers.tellur).
+Try [sum_carriers.tellur](../playground/sum_carriers.vn).
 
 Verification: all **611 Rust tests** pass, including native original/expanded and
 optimization comparisons. After making the whole-carrier result diagnostic
@@ -796,7 +798,7 @@ plus the combined playground example.
 LSP tests and the real VS Code suite check inferred reference-type hover, both return
 lifetime layers, an unsaved premature-drop diagnostic, repair and native Build and
 Run. The maintained manual explains the existing notation; no grammar additions are
-needed. Try [carrier_results.tellur](../playground/carrier_results.tellur).
+needed. Try [carrier_results.tellur](../playground/carrier_results.vn).
 
 C1b.3b.2e is next: storing carrier references inside captured outcomes or aggregates.
 Their dependency paths need a reference-indirection step, and those operations remain
@@ -851,7 +853,7 @@ original/expanded O0/O2 executables for captured references, nested optional job
 empty jobs and stored adapters. Expansion certificates reject modified stored-carrier
 code. Existing whole-carrier result coverage now includes later handling of capture.
 
-The example [stored_carriers.tellur](../playground/stored_carriers.tellur), maintained
+The example [stored_carriers.tellur](../playground/stored_carriers.vn), maintained
 manual and LSP/VS Code coverage include inferred container/reference types, unsaved
 premature-drop diagnostics, repair and native execution. No runtime pointer format
 or source syntax changes are introduced.
@@ -921,7 +923,7 @@ The maintained reference documents the syntax and remaining boundaries. Aggregat
 trait contracts are next. Abstract type-parameter origin-shape bounds, reference type
 arguments, reference-bearing collections, rebinding and reference loop state remain
 separate work. Calls selecting nested origins from constructor arguments currently
-require a local binding first. Try [public_carriers.tellur](../playground/public_carriers.tellur).
+require a local binding first. Try [public_carriers.tellur](../playground/public_carriers.vn).
 
 
 Final verification: all **671 Rust tests** passed. The final focused rerun covered
@@ -978,7 +980,7 @@ and after expansion at O0/O2. LSP and real VS Code checks cover inferred payload
 hover, unsaved conformance errors, repair and native execution.
 
 See [the new reference section](language-reference.md#aggregate-trait-origin-contracts)
-and [aggregate_traits.tellur](../playground/aggregate_traits.tellur). Borrowed
+and [aggregate_traits.tellur](../playground/aggregate_traits.vn). Borrowed
 collection elements are the next roadmap checkpoint; origin-shape bounds, rebinding,
 reference-bearing loop state and runtime polymorphism remain separate work.
 
@@ -1030,7 +1032,7 @@ boundaries. Its native comparisons run three programs before/after expansion at
 O0/O2. LSP and actual VS Code tests cover inferred `auto` hover, unsaved owner
 conflicts, repair and native execution. See the
 [reference section](language-reference.md#local-collections-of-shared-references)
-and [borrowed_collections.tellur](../playground/borrowed_collections.tellur).
+and [borrowed_collections.tellur](../playground/borrowed_collections.vn).
 
 
 Final verification: all **704 Rust tests** passed in the full regression run,

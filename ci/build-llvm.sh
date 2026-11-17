@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install only Tellur's static LLVM libraries, linker drivers and headers.
+# Install only Villanelle's static LLVM libraries, linker drivers and headers.
 set -euo pipefail
 prefix=${1:?expected LLVM installation directory}
 version=22.1.8

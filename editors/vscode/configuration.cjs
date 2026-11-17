@@ -1,11 +1,12 @@
 // A canonical setting wins when explicitly set; otherwise honor existing workspaces.
 function configuration(vscode, resource) {
-  const current = vscode.workspace.getConfiguration('tellurLanguage', resource);
+  const current = vscode.workspace.getConfiguration('villanelleLanguage', resource);
+  const tellur = vscode.workspace.getConfiguration('tellurLanguage', resource);
   const legacy = vscode.workspace.getConfiguration('pathLanguage', resource);
   const levels = ['workspaceFolderLanguageValue', 'workspaceFolderValue', 'workspaceLanguageValue', 'workspaceValue', 'globalLanguageValue', 'globalValue'];
   return {
     get(key, fallback) {
-      for (const config of [current, legacy]) {
+      for (const config of [current, tellur, legacy]) {
         const inspected = config.inspect(key);
         for (const level of levels) {
           if (inspected?.[level] !== undefined) return inspected[level];

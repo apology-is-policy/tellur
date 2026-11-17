@@ -3,8 +3,8 @@ use tellur::{
     manifest::Manifest,
     runtime::{ExecutionProgress, Scenario},
 };
-const SOURCE: &str = include_str!("../playground/tagged_chain_spawn.tellur");
-const GUARDS: &str = include_str!("fixtures/source_tagged_chain_option.tellur");
+const SOURCE: &str = include_str!("../playground/tagged_chain_spawn.vn");
+const GUARDS: &str = include_str!("fixtures/source_tagged_chain_option.vn");
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../playground/manifest.json")).unwrap()
 }
@@ -53,7 +53,7 @@ fn rejects(source: &str, code: &str) {
     assert_eq!(error.code, code, "{error}\n{source}");
 }
 
-const VARIANT: &str = include_str!("fixtures/source_tagged_chain_variant.tellur");
+const VARIANT: &str = include_str!("fixtures/source_tagged_chain_variant.vn");
 fn empty(source: &str) -> String {
     source
         .replace("some { borrow mutable owner }", "none {}")
@@ -242,7 +242,7 @@ await l;drop(left);drop(first);a="free";await r;drop(right);drop(second);b="free
 }
 #[test]
 fn joined_and_unjoined_tagged_fault_results_settle_before_contingency() {
-    let s = include_str!("fixtures/source_tagged_chain_fault.tellur");
+    let s = include_str!("fixtures/source_tagged_chain_fault.vn");
     let joined = s
         .replace(
             "    yield;\n    yield;\n    delta await result",

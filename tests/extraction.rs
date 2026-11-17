@@ -298,11 +298,11 @@ fn extraction_cli_emits_checked_source_and_machine_readable_report() {
 #[test]
 fn runnable_example_preserves_native_behavior_at_o0_o2_before_and_after_expansion() {
     use std::{fs, process::Command};
-    let source = include_str!("../playground/extraction/original.tellur");
+    let source = include_str!("../playground/extraction/original.vn");
     let extracted = extract_tail(source, m(), "greeting", 12, "finish_greeting").unwrap();
     assert_eq!(
         extracted.source,
-        include_str!("../playground/extraction/extracted.tellur")
+        include_str!("../playground/extraction/extracted.vn")
     );
     let original = compile(source, m()).unwrap();
     let candidate = compile(&extracted.source, m()).unwrap();
