@@ -1314,7 +1314,7 @@ impl Host {
     }
     /// Release the resources an unstarted host operation would have consumed.
     pub fn release_consumed(&mut self, name: &str, args: &[V]) -> R<()> {
-        let p = self.declared_primitive(name)?;
+        let p = declared_primitive(&self.manifest, name)?;
         let consumed: Vec<_> = p["parameters"]
             .as_array()
             .unwrap()
@@ -1672,17 +1672,10 @@ impl Host {
             println!("{value}");
         }
     }
-    fn declared_primitive(&self, name: &str) -> R<Json> {
-        self.manifest["primitives"]
-            .as_array()
-            .and_then(|ps| ps.iter().find(|p| p["name"] == name))
-            .cloned()
-            .ok_or_else(|| "E_DRIVER: undeclared primitive".into())
-    }
     /// Start an async host operation. Its scripted completion is bound and
     /// validated now; pending reports never consume or replay script entries.
     pub fn start_host_operation(&mut self, name: &str, args: &[V]) -> R<HostStart> {
-        let p = self.declared_primitive(name)?;
+        let p = declared_primitive(&self.manifest, name)?;
         if p["async"] != true {
             return Err(format!("E_NATIVE: `{name}` is not an async host operation"));
         }
@@ -1746,7 +1739,7 @@ impl Host {
     ) -> R<HostProgress> {
         let progress = operation.poll(&mut self.resources)?;
         if let HostProgress::Ready((outcome, fields)) = &progress {
-            let p = self.declared_primitive(name)?;
+            let p = declared_primitive(&self.manifest, name)?;
             let o = p["outcomes"]
                 .as_array()
                 .unwrap()
@@ -1772,16 +1765,13 @@ impl Host {
         fields: &[V],
     ) -> R<()> {
         if self.trace {
-            let p = self.declared_primitive(name)?;
+            let p = declared_primitive(&self.manifest, name)?;
             self.events.push(json!({"kind":"primitive","operation":name,"arguments":args,"outcome":outcome,"fields":fields,"effects":p["effects"]}));
         }
         Ok(())
     }
     pub fn primitive(&mut self, name: &str, args: Vec<V>) -> R<Outcome> {
-        let p = self.manifest["primitives"]
-            .as_array()
-            .and_then(|ps| ps.iter().find(|p| p["name"] == name))
-            .ok_or("E_DRIVER: undeclared primitive")?;
+        let p = declared_primitive(&self.manifest, name)?;
         validate_declared_fields(&args, &p["parameters"], &self.manifest)?;
         if p["pure"] == true {
             self.check_contract(name, p)?;
@@ -1846,6 +1836,9 @@ impl Host {
                 "E_HOST: no live adapter for `{name}`; supply --scenario or implement an adapter"
             )
         })?;
+        let same_effects = p["effects"].as_array().is_some_and(|actual| {
+            actual.len() == effects.len() && actual.iter().zip(effects).all(|(a, b)| a == *b)
+        });
         for modern in [false, true] {
             let type_name = |t: &'static str| match (modern, t) {
                 (true, "Handle") => "handle",
@@ -1863,12 +1856,8 @@ impl Host {
                         actual["type"] == type_name(ty) && actual["mode"] == *mode
                     });
             let same_outcomes = actual_outcomes.len() == outcomes.len()
-                && outcomes.iter().all(|(name, fields)| {
-                    let public = if modern {
-                        snake_name(name)
-                    } else {
-                        name.to_string()
-                    };
+                && outcomes.iter().all(|&(legacy_name, modern_name, fields)| {
+                    let public = if modern { modern_name } else { legacy_name };
                     actual_outcomes.iter().any(|actual| {
                         actual["name"] == public
                             && actual["fields"].as_array().is_some_and(|actual_fields| {
@@ -1880,7 +1869,7 @@ impl Host {
                             })
                     })
                 });
-            if !same_params || !same_outcomes || p["effects"] != json!(effects) {
+            if !same_params || !same_outcomes || !same_effects {
                 continue;
             }
             for (ty, linear) in [
@@ -1890,7 +1879,7 @@ impl Host {
             ] {
                 let public = type_name(ty);
                 let used = params.iter().any(|(t, _)| *t == ty)
-                    || outcomes.iter().any(|(_, fields)| fields.contains(&ty));
+                    || outcomes.iter().any(|(_, _, fields)| fields.contains(&ty));
                 if used
                     && !self.manifest["types"].as_array().unwrap().iter().any(|t| {
                         t["name"] == public && t["kind"] == "opaque" && t["linear"] == linear
@@ -2085,78 +2074,96 @@ impl Host {
         Ok(())
     }
 }
+fn declared_primitive<'a>(manifest: &'a Json, name: &str) -> R<&'a Json> {
+    manifest["primitives"]
+        .as_array()
+        .and_then(|ps| ps.iter().find(|p| p["name"] == name))
+        .ok_or_else(|| "E_DRIVER: undeclared primitive".into())
+}
+
+// Built-in contracts are shared by all calls. Keep both public spellings here
+// so validation can compare borrowed names directly, including legacy manifests.
 type Contract = (
-    Vec<(&'static str, &'static str)>,
-    Vec<(&'static str, Vec<&'static str>)>,
-    Vec<&'static str>,
+    &'static [(&'static str, &'static str)],
+    &'static [(&'static str, &'static str, &'static [&'static str])],
+    &'static [&'static str],
 );
 fn contract(name: &str) -> Option<Contract> {
+    const NUMBERS: &[(&str, &str)] = &[("U32", "value"), ("U32", "value")];
     Some(match name {
         "parse_u32" => (
-            vec![("String", "value")],
-            vec![
-                ("Number", vec!["U32"]),
-                ("Malformed", vec![]),
-                ("Overflow", vec![]),
+            &[("String", "value")],
+            &[
+                ("Number", "number", &["U32"]),
+                ("Malformed", "malformed", &[]),
+                ("Overflow", "overflow", &[]),
             ],
-            vec![],
+            &[],
         ),
-        "checked_add" | "checked_mul" | "checked_sub" | "checked_div" => (
-            vec![("U32", "value"), ("U32", "value")],
-            vec![
-                (
-                    match name {
-                        "checked_add" => "Sum",
-                        "checked_mul" => "Product",
-                        "checked_sub" => "Difference",
-                        _ => "Quotient",
-                    },
-                    vec!["U32"],
-                ),
-                (
-                    match name {
-                        "checked_sub" => "Underflow",
-                        "checked_div" => "ZeroDivisor",
-                        _ => "Overflow",
-                    },
-                    vec![],
-                ),
+        "checked_add" => (
+            NUMBERS,
+            &[("Sum", "sum", &["U32"]), ("Overflow", "overflow", &[])],
+            &[],
+        ),
+        "checked_sub" => (
+            NUMBERS,
+            &[
+                ("Difference", "difference", &["U32"]),
+                ("Underflow", "underflow", &[]),
             ],
-            vec![],
+            &[],
         ),
-        "u32_text" => (
-            vec![("U32", "value")],
-            vec![("Text", vec!["String"])],
-            vec![],
+        "checked_mul" => (
+            NUMBERS,
+            &[
+                ("Product", "product", &["U32"]),
+                ("Overflow", "overflow", &[]),
+            ],
+            &[],
         ),
+        "checked_div" => (
+            NUMBERS,
+            &[
+                ("Quotient", "quotient", &["U32"]),
+                ("ZeroDivisor", "zero_divisor", &[]),
+            ],
+            &[],
+        ),
+        "u32_text" => (&[("U32", "value")], &[("Text", "text", &["String"])], &[]),
         "concat" => (
-            vec![("String", "value"), ("String", "value")],
-            vec![("Text", vec!["String"])],
-            vec![],
+            &[("String", "value"), ("String", "value")],
+            &[("Text", "text", &["String"])],
+            &[],
         ),
         "decode_utf8" => (
-            vec![("Bytes", "value")],
-            vec![("Text", vec!["String"]), ("Invalid", vec![])],
-            vec![],
+            &[("Bytes", "value")],
+            &[("Text", "text", &["String"]), ("Invalid", "invalid", &[])],
+            &[],
         ),
         "open" => (
-            vec![("String", "value")],
-            vec![
-                ("Opened", vec!["Handle"]),
-                ("NotFound", vec![]),
-                ("Denied", vec![]),
+            &[("String", "value")],
+            &[
+                ("Opened", "opened", &["Handle"]),
+                ("NotFound", "not_found", &[]),
+                ("Denied", "denied", &[]),
             ],
-            vec!["file.open"],
+            &["file.open"],
         ),
         "read" => (
-            vec![("Handle", "borrow")],
-            vec![("Data", vec!["Bytes"]), ("Failed", vec!["ReadError"])],
-            vec!["file.read"],
+            &[("Handle", "borrow")],
+            &[
+                ("Data", "data", &["Bytes"]),
+                ("Failed", "failed", &["ReadError"]),
+            ],
+            &["file.read"],
         ),
         "close" => (
-            vec![("Handle", "consume")],
-            vec![("Closed", vec![]), ("Failed", vec!["CloseError"])],
-            vec!["file.close"],
+            &[("Handle", "consume")],
+            &[
+                ("Closed", "closed", &[]),
+                ("Failed", "failed", &["CloseError"]),
+            ],
+            &["file.close"],
         ),
         _ => return None,
     })

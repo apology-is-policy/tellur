@@ -1201,7 +1201,7 @@ fn file_manifest() -> Json {
             .enumerate()
             .map(|(i, (t, mode))| json!({"name":format!("arg{i}"),"type":ty(t),"mode":mode}))
             .collect::<Vec<_>>();
-        let outcomes=outcomes.iter().map(|(name,fields)|json!({"name":snake_name(name),"fields":fields.iter().enumerate().map(|(i,t)|json!({"name":format!("field{i}"),"type":ty(t)})).collect::<Vec<_>>()})).collect::<Vec<_>>();
+        let outcomes=outcomes.iter().map(|(name,_,fields)|json!({"name":snake_name(name),"fields":fields.iter().enumerate().map(|(i,t)|json!({"name":format!("field{i}"),"type":ty(t)})).collect::<Vec<_>>()})).collect::<Vec<_>>();
         m["primitives"].as_array_mut().unwrap().push(json!({"name":name,"parameters":parameters,"outcomes":outcomes,"effects":effects,"returns":true}));
     }
     m

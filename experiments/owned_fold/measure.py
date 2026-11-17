@@ -18,7 +18,11 @@ from abi_probe import build_allocation_probe, wrap_calls
 parser = argparse.ArgumentParser(description=__doc__)
 for name in ("vnc", "llvm_bin", "results"):
     parser.add_argument(name, type=Path)
-parser.add_argument("--alloc-only", action="store_true", help="reuse timings and run allocation probes only")
+mode = parser.add_mutually_exclusive_group()
+mode.add_argument("--timing-only", action="store_true", help="collect timings separately from allocator probes")
+mode.add_argument("--alloc-only", action="store_true", help="reuse timings and run allocation probes only")
+parser.add_argument("--previous-archive", type=Path, help="baseline runtime for the same fold object")
+parser.add_argument("--borrow-only-archive", type=Path, help="intermediate runtime with declaration borrowing alone")
 args = parser.parse_args()
 llvm = args.llvm_bin.resolve()
 controls = (b"fold<batch_limit>",)
@@ -62,13 +66,19 @@ with tempfile.TemporaryDirectory() as temp:
     (work / "timed.ll").write_text(wrap_calls(ir, controls, "time_first"))
     run(llvm / "opt", "-passes=default<O3>", work / "timed.ll", "-o", work / "timed.bc")
     run(llvm / "llc", "-O3", "-filetype=obj", work / "timed.bc", "-o", work / "timed.o")
-    run("cc", "-O3", "-mmacosx-version-min=13.0", work / "timed.o", search / "timer.c", archive,
-        "-o", work / "vn")
+    archives = {"vn": archive}
+    if args.previous_archive:
+        archives["previous"] = args.previous_archive.resolve()
+    if args.borrow_only_archive:
+        archives["borrow_only"] = args.borrow_only_archive.resolve()
+    for name, runtime in archives.items():
+        run("cc", "-O3", "-mmacosx-version-min=13.0", work / "timed.o", search / "timer.c", runtime,
+            "-o", work / name)
     run("rustc", "-C", "opt-level=3", here / "fold.rs", "-o", work / "rs")
 
     if not args.alloc_only:
         rng = random.Random(291)
-        schedule = [(case, impl) for case in cases for impl in ("vn", "rs")]
+        schedule = [(case, impl) for case in cases for impl in (*archives, "rs")]
         rounds = 7
         rows = []
         for trial in range(13):
@@ -84,27 +94,35 @@ with tempfile.TemporaryDirectory() as temp:
             writer.writerow(("case", "runtime", "trial", "query", "ns"))
             writer.writerows(rows)
         for case in cases:
-            for impl in ("vn", "rs"):
+            for impl in (*archives, "rs"):
                 warm = [ns for c, r, _, i, ns in rows if (c, r) == (case, impl) and i > 1]
                 print(case, impl, statistics.median(warm), "ns")
 
-    probe, names = build_allocation_probe(ir, controls, work, llvm, archive)
+    if args.timing_only:
+        sys.exit(0)
+
+    probes = {}
+    for name, runtime in archives.items():
+        directory = work / (name + "-profile")
+        directory.mkdir()
+        probes[name] = build_allocation_probe(ir, controls, directory, llvm, runtime)
     run("rustc", "-C", "opt-level=3", "--cfg", "alloc_probe", here / "fold.rs",
-        "-C", f"link-arg={work / 'alloc.dylib'}", "-o", work / "rs-probe")
+        "-C", f"link-arg={work / 'vn-profile/alloc.dylib'}", "-o", work / "rs-probe")
+    probes["rs"] = (work / "rs-probe", ["fold"])
     # Change only the unused suffix length to detect whole-input copying on the first visit.
     cases["early_one"] = ([1], 1, "target reached", 1)
     with args.results.with_suffix(".alloc.csv").open("w") as file:
         writer = csv.writer(file, lineterminator="\n")
         writer.writerow(("case", "runtime", "query", "operation", "calls", "allocations", "reallocations", "bytes"))
         for case in cases:
-            for name, exe in (("vn", probe), ("rs", work / "rs-probe")):
+            for name, (exe, names) in probes.items():
                 n = 0
                 for line in query(exe, case, 2, rust=name == "rs"):
                     if line == "query":
                         n += 1
                     else:
                         bucket, *counts = map(int, line.split())
-                        writer.writerow((case, name, n, names[bucket] if name == "vn" else "fold", *counts))
+                        writer.writerow((case, name, n, names[bucket], *counts))
                 assert n == 2
 
     process_probe = work / "process.dylib"

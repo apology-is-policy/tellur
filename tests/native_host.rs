@@ -155,6 +155,46 @@ fn live_contracts_are_checked_before_dispatch() {
     );
 }
 #[test]
+fn live_division_rechecks_the_current_declaration_and_outcome_spelling() {
+    let mut h = Host::new(manifest(), None, true, None);
+    let index = h.manifest["primitives"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|p| p["name"] == "checked_div")
+        .unwrap();
+    let divide =
+        |host: &mut Host, divisor| host.primitive("checked_div", vec![V::U32(6), V::U32(divisor)]);
+    assert_eq!(divide(&mut h, 0).unwrap().0, "zero_divisor");
+    // A successful previous call must not admit a mixed or stale contract.
+    let outcomes = h.manifest["primitives"][index]["outcomes"]
+        .as_array_mut()
+        .unwrap();
+    outcomes
+        .iter_mut()
+        .find(|o| o["name"] == "zero_divisor")
+        .unwrap()["name"] = json!("ZeroDivisor");
+    assert!(
+        divide(&mut h, 2)
+            .unwrap_err()
+            .contains("live adapter contract")
+    );
+    let outcomes = h.manifest["primitives"][index]["outcomes"]
+        .as_array_mut()
+        .unwrap();
+    outcomes
+        .iter_mut()
+        .find(|o| o["name"] == "quotient")
+        .unwrap()["name"] = json!("Quotient");
+    outcomes.reverse();
+    assert_eq!(
+        divide(&mut h, 2).unwrap(),
+        ("Quotient".into(), vec![V::U32(3)])
+    );
+    assert_eq!(divide(&mut h, 0).unwrap().0, "ZeroDivisor");
+}
+
+#[test]
 fn live_arithmetic_and_parsing_boundary_cases() {
     let mut h = Host::new(manifest(), None, true, None);
     for (input, out) in [

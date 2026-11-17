@@ -8,7 +8,7 @@ Write programs in **`.vn`** files. Run `vnc exec playground/hello.vn` to compile
 
 Try the [collection discovery example](examples/collection_discovery/main.vn). Type `headers.` to discover membership or `values.` to see which controls borrow or consume the vector. [Walkthrough](docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
 
-Compiler **0.291.0** implements the v0.1 checked core and the current language
+Compiler **0.292.0** implements the v0.1 checked core and the current language
 revision: `control`, `implement`, snake_case types, type-first declarations,
 `ref` types, `borrow`/`deref` expressions and transparent reference field access,
 brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default

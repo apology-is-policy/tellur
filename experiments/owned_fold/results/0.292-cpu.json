@@ -1,0 +1,48 @@
+{
+  "previous": {
+    "in_fold": 2054,
+    "innermost_abi": {
+      "tellur_rt_v1_primitive": 1259,
+      "tellur_rt_v1_collection": 103,
+      "tellur_rt_v1_call": 102,
+      "tellur_rt_v1_evidence": 97,
+      "tellur_rt_v1_reference": 71,
+      "generated_or_other": 70,
+      "tellur_rt_v1_route": 62,
+      "tellur_rt_v1_store": 47,
+      "tellur_rt_v1_local": 46,
+      "tellur_rt_v1_binary": 45,
+      "tellur_rt_v1_release_local": 42,
+      "tellur_rt_v1_tick": 30,
+      "tellur_rt_v1_variant": 26,
+      "tellur_rt_v1_deref": 17,
+      "tellur_rt_v1_complete": 14,
+      "tellur_rt_v1_ok": 14,
+      "tellur_rt_v1_value": 6,
+      "tellur_rt_v1_frame": 3
+    }
+  },
+  "current": {
+    "in_fold": 1411,
+    "innermost_abi": {
+      "tellur_rt_v1_primitive": 477,
+      "tellur_rt_v1_collection": 134,
+      "tellur_rt_v1_call": 131,
+      "tellur_rt_v1_evidence": 112,
+      "tellur_rt_v1_route": 86,
+      "generated_or_other": 76,
+      "tellur_rt_v1_reference": 72,
+      "tellur_rt_v1_store": 68,
+      "tellur_rt_v1_binary": 52,
+      "tellur_rt_v1_local": 42,
+      "tellur_rt_v1_tick": 39,
+      "tellur_rt_v1_release_local": 31,
+      "tellur_rt_v1_deref": 30,
+      "tellur_rt_v1_variant": 26,
+      "tellur_rt_v1_complete": 12,
+      "tellur_rt_v1_ok": 10,
+      "tellur_rt_v1_frame": 9,
+      "tellur_rt_v1_value": 4
+    }
+  }
+}

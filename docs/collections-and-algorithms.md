@@ -64,6 +64,8 @@ Villanelle 0.291 also proves the successful branch of simple u32 threshold predi
 
 The scale example commits a successful reading before testing the target. A zero reading or an overflowing addition therefore returns the total of the preceding readings. Its live native invocation is `./bin/vnc exec examples/batch_fold/main.vn -- 20 0`. The resource fixture transfers a handle through the loop and closes it once on every route. Scripted index increments use the manifest's `checked_add` operation, as in first-match search. [Library](../library/reduction.vn) · [Example](../examples/batch_fold/main.vn) · [Resource fixture](../tests/fixtures/owned_fold.vn) · [M2 comparison](../experiments/owned_fold/README.md)
 
+With 0.292, a full fold over 256 u32 readings requests 1.06 MB across 9,742 allocations and 513 reallocations. The same fold on 0.291 requested 3.25 MB across 32,270 allocations and 513 reallocations. Stopping after the first reading costs the same 6,403 requested bytes for a one-item vector and a 256-item vector. [Profile by outcome](../experiments/owned_fold/README.md#checked-primitive-dispatch-in-0292)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

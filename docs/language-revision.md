@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Checked primitive dispatch, 17 November 2026
+
+Compiler 0.292 borrows primitive declarations and validates live calls against static built-in signatures. On Apple M2, folding 256 weights fell from 1.646 ms to 1.004 ms with the same LLVM object. Optimized Rust took 166 ns. The 512 checked additions now allocate 2,048 times in aggregate, down from 24,576. The next collection experiment compares consuming split and join on a flat vector and a relaxed radix balanced tree, including front drains and element movement. Direct lowering of live checked arithmetic remains a measured compiler target. [Fold timings and allocation breakdown](../experiments/owned_fold/README.md#checked-primitive-dispatch-in-0292)
+
 ### Owned accumulator fold, 17 November 2026
 
 The experimental source library now folds a borrowed vector with an owned accumulator on compiler 0.291.0. Continue transfers the state to the next iteration. Stop and failure return it immediately, including an outstanding resource. M2 full-scan time for 256 readings is 1.69 ms versus 169 ns for optimized Rust. The two checked additions per item account for 2.40 MB of the 3.25 MB requested inside the fold. Next, isolate the cost of repeated primitive declaration cloning and contract validation. The next collection representation experiment compares consuming split and join on flat vectors and relaxed radix balanced trees. [Ownership contract](collections-and-algorithms.md#fold-a-borrowed-vector-with-an-owned-accumulator) · [Benchmark and allocation breakdown](../experiments/owned_fold/README.md)

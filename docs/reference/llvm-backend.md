@@ -366,6 +366,8 @@ The first emits `42` and returns `delivered` with status 0. The next two return
 
 ## Synchronous primitives
 
+The synchronous primitive ABI borrows the declared signature from the running program's manifest. Since 0.292, built-in adapter contract checks use static descriptions of parameter modes, outcome spellings, payloads and effects. Each live call still validates its declaration, inputs and result. A scenario continues to supply its own declared outcomes and tracing records the actual calls. [Checked fold measurements](../../experiments/owned_fold/README.md#checked-primitive-dispatch-in-0292)
+
 Returning synchronous primitives can take `value`, `borrow` or `consume` arguments
 and return reference-free scalar/record/tagged/opaque payloads. The primitive type profile
 remains reference-free even when controls use reference-bearing carriers. Arguments are

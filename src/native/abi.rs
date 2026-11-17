@@ -2900,7 +2900,7 @@ impl Context<'_> {
         {
             return Err("E_NATIVE: host operation producer or arity differs".into());
         }
-        let declaration = self.host.declared_primitive(leaf.operation)?;
+        let declaration = declared_primitive(&self.host.manifest, leaf.operation)?;
         if declaration["async"] != true
             || declaration["returns"] != true
             || declaration["parameters"].as_array().map(Vec::len) != Some(handles.len())
@@ -4248,7 +4248,7 @@ pub unsafe extern "C" fn tellur_rt_v1_primitive(
     unsafe { &mut *ctx }.perform(|c| {
         c.require_outcome_room()?;
         let name = unsafe { text(name, len)? };
-        let declaration = c.host.declared_primitive(name)?;
+        let declaration = declared_primitive(&c.host.manifest, name)?;
         let parameters = declaration["parameters"]
             .as_array()
             .ok_or("E_NATIVE: invalid ABI primitive parameters")?;
