@@ -1468,6 +1468,135 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn vector_search_prefix_preserves_predicates_scripts_and_fuel() {
+        let template = include_str!("../experiments/first_match/main.vn")
+            .replace("../../library/search.vn", "search.vn");
+        let (before, tail) = template.split_once("vector<u32> readings = ").unwrap();
+        let (_, after) = tail.split_once(';').unwrap();
+        let src = format!("{before}vector<u32> readings = [0, 2, 127, 255];{after}");
+        let f = Fixture::new(&src);
+        fs::write(
+            f.root.join("search.vn"),
+            include_str!("../library/search.vn"),
+        )
+        .unwrap();
+        let manifest =
+            Manifest::from_json(include_str!("../examples/first_match/manifest.json")).unwrap();
+        let program = compile_file(&f.source, manifest.clone()).unwrap();
+        let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+        let fast = program.build_llvm("main", &f.root.join("fast"), 3).unwrap();
+        let prefix = "call void @tellur_rt_v1_search_prefix";
+        assert_eq!(
+            fs::read_to_string(&fast.llvm)
+                .unwrap()
+                .matches(prefix)
+                .count(),
+            2
+        );
+        let compare = |args: &[&str]| {
+            let a = Command::new(&fast.executable).args(args).output().unwrap();
+            let b = Command::new(&slow.executable).args(args).output().unwrap();
+            assert_eq!(
+                (a.status.code(), &a.stdout, &a.stderr),
+                (b.status.code(), &b.stdout, &b.stderr),
+                "{args:?}"
+            );
+            a
+        };
+        for (limit, fallible, message) in [
+            ("0", "false", "0"),
+            ("255", "false", "255"),
+            ("256", "false", "missing"),
+            ("255", "true", "invalid"),
+            ("2", "true", "2"),
+        ] {
+            let result = compare(&[limit, fallible, "1"]);
+            assert!(result.status.success());
+            assert_eq!(
+                String::from_utf8(result.stdout).unwrap(),
+                format!("{message}\ndone\n")
+            );
+            assert!(compare(&["--json", limit, fallible, "1"]).status.success());
+        }
+        for fuel in 0..65 {
+            compare(&["--fuel", &fuel.to_string(), "255", "true", "1"]);
+        }
+        // A scripted increment jumps over both 2 and the failing 127.
+        let path = f.root.join("jump.json");
+        fs::write(&path, json!({"entry":"main","arguments":[{"kind":"u32","value":255},{"kind":"bool","value":true},{"kind":"u32","value":1}],
+            "calls":[{"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":3}]}]}).to_string()).unwrap();
+        let result = compare(&["--scenario", path.to_str().unwrap(), "--json"]);
+        assert_eq!(
+            report(&result)["events"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()["message"],
+            "255"
+        );
+
+        // A checked_add with an incompatible live contract must still fault
+        // at its original call. A first-element match never invokes it.
+        let mut invalid = manifest.clone();
+        invalid
+            .primitives
+            .iter_mut()
+            .find(|p| p.name == "checked_add")
+            .unwrap()
+            .effects
+            .push("test.effect".into());
+        let invalid = compile_file(&f.source, invalid).unwrap();
+        let fast_invalid = invalid
+            .build_llvm("main", &f.root.join("invalid-fast"), 3)
+            .unwrap();
+        let slow_invalid = invalid
+            .build_llvm("main", &f.root.join("invalid-slow"), 0)
+            .unwrap();
+        for (limit, success) in [("0", true), ("255", false)] {
+            let run = |binary: &Path| {
+                Command::new(binary)
+                    .args([limit, "false", "1"])
+                    .output()
+                    .unwrap()
+            };
+            let a = run(&fast_invalid.executable);
+            let b = run(&slow_invalid.executable);
+            assert_eq!(a.status.success(), success);
+            assert_eq!(
+                (a.status.code(), a.stdout, a.stderr),
+                (b.status.code(), b.stdout, b.stderr)
+            );
+        }
+
+        // The ordinary predicate emits on each rejected element. Only the
+        // independent fallible predicate still qualifies for bulk rejection.
+        let effectful = src
+            .replacen("false => exit skipped", "false => rejected", 1)
+            .replacen(
+                "false => rejected\n        }",
+                "false => rejected\n        }\n        [rejected]: emit(\"skip\"); exit skipped;",
+                1,
+            );
+        fs::write(&f.source, effectful).unwrap();
+        let effect = compile_file(&f.source, manifest)
+            .unwrap()
+            .build_llvm("main", &f.root.join("effect"), 3)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(effect.llvm)
+                .unwrap()
+                .matches(prefix)
+                .count(),
+            1
+        );
+        let result = Command::new(effect.executable)
+            .args(["255", "false", "1"])
+            .output()
+            .unwrap();
+        assert_eq!(result.stdout, b"skip\nskip\nskip\n255\ndone\n");
+    }
+
+    #[test]
     fn consuming_map_drain_preserves_the_owned_suffix_and_fuel() {
         let full = r#"outcome result { @exit 0 done, @exit 0 stopped { string key, map<string,u32> rest } }
 control main(map<string,u32> input) exits result {

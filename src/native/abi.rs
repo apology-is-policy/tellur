@@ -354,11 +354,22 @@ impl Context<'_> {
             .ok_or_else(|| "E_NATIVE: invalid or consumed ABI outcome handle".into())
     }
     fn take_many(&mut self, handles: &[u64]) -> R<Vec<V>> {
-        let mut seen = BTreeSet::new();
-        for &handle in handles {
-            self.get(handle)?;
-            if !seen.insert(handle) {
+        // Primitive and predicate calls usually transfer at most two handles.
+        // Check the whole batch before taking the first owner in either path.
+        if handles.len() <= 2 {
+            for &handle in handles {
+                self.get(handle)?;
+            }
+            if matches!(handles, [a, b] if a == b) {
                 return Err("E_NATIVE: duplicate ABI value transfer".into());
+            }
+        } else {
+            let mut seen = BTreeSet::new();
+            for &handle in handles {
+                self.get(handle)?;
+                if !seen.insert(handle) {
+                    return Err("E_NATIVE: duplicate ABI value transfer".into());
+                }
             }
         }
         Ok(handles
@@ -3857,6 +3868,84 @@ pub unsafe extern "C" fn tellur_rt_v1_invalid_resume(ctx: *mut Context<'_>) {
 }
 
 pub type Callback = unsafe extern "C" fn(*mut Context<'_>, *const u64, usize);
+
+/// Advance over values proved to yield a pure predicate rejection. Leave the
+/// candidate and its borrowed result (or failure payload) to the checked code.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_search_prefix(
+    ctx: *mut Context<'_>,
+    vector: usize,
+    rule: usize,
+    position: u64,
+    field: usize,
+    stop: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+            return Ok(());
+        }
+        let pos = c.value_index(position)?;
+        let Some(V::U32(start)) = c.values[pos] else {
+            return Ok(());
+        };
+        // These reads are speculative, including on an empty vector. A missing
+        // operand must fault at its authored instruction if execution reaches it.
+        let borrowed = |slot| {
+            let storage = c.storage.values();
+            let V::Reference { root, fields, .. } =
+                super::slot(storage, c.local(slot).ok()?).ok()?
+            else {
+                return None;
+            };
+            super::project_ref(super::slot(storage, *root).ok()?, fields).ok()
+        };
+        let Some(V::Construct { ty, name, fields }) = borrowed(vector) else {
+            return Ok(());
+        };
+        if ty != "vector<U32>" || name != "vector" {
+            return Ok(());
+        }
+        let Some(V::Construct {
+            fields: rule_fields,
+            ..
+        }) = borrowed(rule)
+        else {
+            return Ok(());
+        };
+        let Some(V::U32(limit)) = rule_fields.get(field) else {
+            return Ok(());
+        };
+        let steps = fields
+            .get(start as usize..)
+            .unwrap_or_default()
+            .iter()
+            .take((u32::MAX - start) as usize)
+            .take_while(|v| matches!(v, V::U32(n) if n < limit && u64::from(*n) != stop))
+            .count();
+        if steps == 0 {
+            return Ok(());
+        }
+        let Some(primitive) = c.host.manifest["primitives"]
+            .as_array()
+            .and_then(|ps| ps.iter().find(|p| p["name"] == "checked_add"))
+        else {
+            return Ok(());
+        };
+        if primitive["rust"].is_object()
+            || primitive["pure"] == true
+            || c.host.check_contract("checked_add", primitive) != Ok(true)
+        {
+            return Ok(());
+        }
+        if c.storage
+            .values_mut()
+            .skip_completed(steps as u64, &c.host.activations)
+        {
+            c.values[pos] = Some(V::U32(start + steps as u32));
+        }
+        Ok(())
+    })
+}
 
 /// Execute only complete, statically proved item iterations. Leave the first
 /// partial or exhausted iteration to the checked graph for exact fuel and sites.

@@ -16,7 +16,25 @@ implement search.predicate for minimum {
     }
 }
 
-control main() exits done, unexpected {
+implement search.fallible_predicate for minimum {
+    type item = u32;
+    type error = string;
+    control test(ref minimum rule, ref u32 value) exits matched,
+        skipped,
+        failed { string reason }
+    {
+        delta (deref value == 127) {
+            true => exit failed { "invalid" },
+            false => valid
+        }
+        [valid]: delta (deref value >= rule.limit) {
+            true => exit matched,
+            false => exit skipped
+        }
+    }
+}
+
+control main(u32 limit, bool fallible, u32 rounds) exits done, unexpected {
     vector<u32> readings = [
         0,
         1,
@@ -275,11 +293,43 @@ control main() exits done, unexpected {
         254,
         255
     ];
-    minimum rule = minimum { limit: 255 };
-    delta search.first<minimum>(borrow readings, borrow rule) {
+    minimum rule = minimum { limit: limit };
+    loop repeat(u32 round = 1) {
+        delta query(borrow readings, borrow rule, fallible) {
+            done => observed
+        }
+        [observed]: delta (round >= rounds) {
+            true => exit done,
+            false => advance
+        }
+        [advance]: delta checked_add(round, 1) {
+            sum { u32 next } => advanced,
+            overflow => exit unexpected
+        }
+        [advanced]: again repeat(next);
+    }
+}
+
+control query(ref vector<u32> readings, ref minimum rule, bool fallible) exits done {
+    delta fallible {
+        true => checked,
+        false => ordinary
+    }
+    [ordinary]: delta search.first<minimum>(readings, rule) {
         found { ref u32 value } => first,
-        missing => exit unexpected
+        missing => absent
     }
     [first]: emit(u32_text(deref value));
+        exit done;
+    [checked]: delta search.try_first<minimum>(readings, rule) {
+        found { ref u32 reading } => valid,
+        missing => checked_absent,
+        failed { string reason } => invalid
+    }
+    [valid]: emit(u32_text(deref reading));
+        exit done;
+    [absent | checked_absent]: emit("missing");
+        exit done;
+    [invalid]: emit(reason);
         exit done;
 }

@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Native first-match search, 17 November 2026
+
+Villanelle 0.289 recognizes live u32 threshold searches whose predicate can reject a prefix without effects. The first candidate still runs its checked predicate, including any failure or returned loan. Scripted, traced and fuel-limited runs execute every step. On Apple M2 the repeated last-match query over 256 values fell from 2.09 ms to 7.75 µs. Rust took 0.166 µs. The next performance work is the fixed cost of forming and forwarding borrowed results. The next algorithm is a fold that accounts for its owned accumulator on every exit, followed by the split/join sequence experiment. [Four-case measurements and allocation counts](../experiments/first_match/README.md)
+
 ### Consuming traversal and first-match search, 17 November 2026
 
 Villanelle 0.288 recognizes complete ordered map drains in optimized LLVM builds. Draining 4,096 settings entries and recording both fields took 169 µs on Apple M2. Rust's pooled B-tree took 228 µs with repeated removal and 155 µs with consuming iteration. At 16,384 entries consuming iteration still leads by 396 µs. A loop that returns a suffix on early exit retains its checked lowering. [Timing and allocation results](../experiments/ordered_maps/README.md#consuming-traversal-in-villanelle-0288)

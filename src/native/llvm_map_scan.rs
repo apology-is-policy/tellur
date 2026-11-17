@@ -76,7 +76,12 @@ fn is_local(e: &Expr, id: Id) -> bool {
 }
 // Expanded calls can repeat an enclosing guard on each instruction. It is
 // already true on entry. Iteration-local atoms are reset at the back edge.
-fn selected(g: &Guard, enclosing: &Guard, locals: &[Id], facts: &BTreeSet<Id>) -> Option<bool> {
+pub(super) fn selected(
+    g: &Guard,
+    enclosing: &Guard,
+    locals: &[Id],
+    facts: &BTreeSet<Id>,
+) -> Option<bool> {
     if g == enclosing {
         return Some(true);
     }

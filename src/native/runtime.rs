@@ -510,6 +510,16 @@ pub fn validate_args(values: &[V], types: &[String], m: &Json) -> R<()> {
     }
     Ok(())
 }
+fn validate_declared_fields(values: &[V], fields: &Json, manifest: &Json) -> R<()> {
+    let fields = fields.as_array().unwrap();
+    if values.len() != fields.len() {
+        return Err("E_DRIVER: argument/payload arity mismatch".into());
+    }
+    for (value, field) in values.iter().zip(fields) {
+        validate(value, field["type"].as_str().unwrap(), manifest)?;
+    }
+    Ok(())
+}
 unsafe extern "C" {
     fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
     fn fread(ptr: *mut c_void, size: usize, count: usize, file: *mut c_void) -> usize;
@@ -1761,17 +1771,10 @@ impl Host {
         let p = self.manifest["primitives"]
             .as_array()
             .and_then(|ps| ps.iter().find(|p| p["name"] == name))
-            .ok_or("E_DRIVER: undeclared primitive")?
-            .clone();
-        let types = p["parameters"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|p| p["type"].as_str().unwrap().into())
-            .collect::<Vec<_>>();
-        validate_args(&args, &types, &self.manifest)?;
+            .ok_or("E_DRIVER: undeclared primitive")?;
+        validate_declared_fields(&args, &p["parameters"], &self.manifest)?;
         if p["pure"] == true {
-            self.check_contract(name, &p)?;
+            self.check_contract(name, p)?;
             return Ok((
                 p["outcomes"][0]["name"].as_str().unwrap().into(),
                 vec![pure(name, args)?],
@@ -1802,8 +1805,9 @@ impl Host {
                 args.clone(),
             )?
         } else {
-            let modern = self.check_contract(name, &p)?;
-            let (mut outcome, mut values) = self.real(name, &args)?;
+            let modern = self.check_contract(name, p)?;
+            let (mut outcome, mut values) =
+                Self::real(name, &args, &mut self.files, &mut self.next_file)?;
             if modern {
                 outcome = snake_name(&outcome);
                 for value in &mut values {
@@ -1820,13 +1824,7 @@ impl Host {
             .iter()
             .find(|o| o["name"] == outcome)
             .ok_or_else(|| format!("E_DRIVER: undeclared outcome {outcome}"))?;
-        let types = o["fields"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|f| f["type"].as_str().unwrap().into())
-            .collect::<Vec<_>>();
-        validate_args(&values, &types, &self.manifest)?;
+        validate_declared_fields(&values, &o["fields"], &self.manifest)?;
         if self.trace {
             self.events.push(json!({"kind":"primitive","operation":name,"arguments":args,"outcome":outcome,"fields":values,"effects":p["effects"]}));
         }
@@ -1839,57 +1837,40 @@ impl Host {
             )
         })?;
         for modern in [false, true] {
-            let type_name = |t: &str| {
-                if modern && ["Handle", "ReadError", "CloseError"].contains(&t) {
-                    snake_name(t)
-                } else {
-                    t.to_string()
-                }
+            let type_name = |t: &'static str| match (modern, t) {
+                (true, "Handle") => "handle",
+                (true, "ReadError") => "read_error",
+                (true, "CloseError") => "close_error",
+                _ => t,
             };
-            let actual_params = p["parameters"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|p| {
-                    (
-                        p["type"].as_str().unwrap().to_string(),
-                        p["mode"].as_str().unwrap().to_string(),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let expected_params = params
-                .iter()
-                .map(|(t, m)| (type_name(t), m.to_string()))
-                .collect::<Vec<_>>();
-            let actual_outcomes = p["outcomes"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|o| {
-                    (
-                        o["name"].as_str().unwrap().to_string(),
-                        o["fields"]
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .map(|f| f["type"].as_str().unwrap().to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>();
-            let expected_outcomes = outcomes
-                .iter()
-                .map(|(n, fields)| {
-                    (
-                        if modern { snake_name(n) } else { n.to_string() },
-                        fields.iter().map(|t| type_name(t)).collect::<Vec<_>>(),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>();
-            if actual_params != expected_params
-                || actual_outcomes != expected_outcomes
-                || p["effects"] != json!(effects)
-            {
+            let actual_params = p["parameters"].as_array().unwrap();
+            let actual_outcomes = p["outcomes"].as_array().unwrap();
+            let same_params = actual_params.len() == params.len()
+                && params
+                    .iter()
+                    .zip(actual_params)
+                    .all(|((ty, mode), actual)| {
+                        actual["type"] == type_name(ty) && actual["mode"] == *mode
+                    });
+            let same_outcomes = actual_outcomes.len() == outcomes.len()
+                && outcomes.iter().all(|(name, fields)| {
+                    let public = if modern {
+                        snake_name(name)
+                    } else {
+                        name.to_string()
+                    };
+                    actual_outcomes.iter().any(|actual| {
+                        actual["name"] == public
+                            && actual["fields"].as_array().is_some_and(|actual_fields| {
+                                actual_fields.len() == fields.len()
+                                    && fields
+                                        .iter()
+                                        .zip(actual_fields)
+                                        .all(|(ty, field)| field["type"] == type_name(ty))
+                            })
+                    })
+                });
+            if !same_params || !same_outcomes || p["effects"] != json!(effects) {
                 continue;
             }
             for (ty, linear) in [
@@ -1916,7 +1897,12 @@ impl Host {
             "E_HOST: `{name}` manifest does not match the live adapter contract"
         ))
     }
-    fn real(&mut self, name: &str, args: &[V]) -> R<Outcome> {
+    fn real(
+        name: &str,
+        args: &[V],
+        files: &mut BTreeMap<String, *mut c_void>,
+        next_file: &mut usize,
+    ) -> R<Outcome> {
         fn text(v: &V) -> &str {
             if let V::String(s) = v {
                 s
@@ -2004,9 +1990,9 @@ impl Host {
                         ("Denied", vec![])
                     }
                 } else {
-                    let token = format!("file-{}", self.next_file);
-                    self.next_file += 1;
-                    self.files.insert(token.clone(), file);
+                    let token = format!("file-{next_file}");
+                    *next_file += 1;
+                    files.insert(token.clone(), file);
                     ("Opened", vec![opaque("Handle", token)])
                 }
             }
@@ -2014,8 +2000,7 @@ impl Host {
                 let V::Opaque { token, .. } = &args[0] else {
                     unreachable!()
                 };
-                let file = *self
-                    .files
+                let file = *files
                     .get(token)
                     .ok_or("E_HOST: invalid/closed file handle")?;
                 let mut bytes = vec![];
@@ -2043,8 +2028,7 @@ impl Host {
                 let V::Opaque { token, .. } = &args[0] else {
                     unreachable!()
                 };
-                let file = self
-                    .files
+                let file = files
                     .remove(token)
                     .ok_or("E_HOST: invalid/closed file handle")?;
                 if unsafe { fclose(file) } == 0 {

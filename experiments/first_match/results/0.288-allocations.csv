@@ -1,0 +1,9 @@
+case,runtime,allocs,reallocs,frees,requested_bytes
+early,rs,131,0,85,12929
+early,vn,995,26,951,321087
+failure,rs,131,0,85,12930
+failure,vn,27019,534,26975,2756838
+last,rs,131,0,85,12931
+last,vn,51740,1046,51696,5048538
+miss,rs,131,0,85,12931
+miss,vn,51878,1046,51834,5059647

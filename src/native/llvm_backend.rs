@@ -7,6 +7,8 @@ use super::*;
 mod adapters;
 #[path = "llvm_map_scan.rs"]
 mod map_scan;
+#[path = "llvm_search.rs"]
+mod search;
 #[path = "llvm_target.rs"]
 mod targets;
 
@@ -78,6 +80,7 @@ declare void @tellur_rt_v1_escalate(ptr)
 declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
@@ -586,6 +589,7 @@ struct ScopeTarget {
 }
 struct Emitter {
     optimize_loops: bool,
+    predicates: BTreeMap<String, search::Predicate>,
     map_wrappers: BTreeMap<String, map_scan::Wrapper>,
     frame_types: String,
     retained: bool,
@@ -1885,6 +1889,15 @@ impl Emitter {
                                 self.effect(format!("call void @tellur_rt_v1_map_drain(ptr %ctx, i64 {}, i64 {}, ptr {emits}, i64 {count})", values[0], scan.ticks)),
                         }
                     }
+                    if self.optimize_loops
+                        && !self.retained
+                        && let Some(search) = search::analyze(i, &self.predicates)
+                    {
+                        let stop = search.predicate.stop.map_or(u64::MAX, u64::from);
+                        self.effect(format!("call void @tellur_rt_v1_search_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {}, i64 {stop})",
+                            self.layout.slots[&search.vector], self.layout.slots[&search.rule],
+                            values[0], search.predicate.field));
+                    }
                     let arguments = self.handles(&values);
                     let restart = self.id();
                     self.loops.insert(
@@ -2100,6 +2113,10 @@ impl CheckedProgram {
         let resumables = resumable_controls(self, &boundaries)?;
         let mut emitter = Emitter {
             optimize_loops,
+            predicates: self
+                .regions()
+                .filter_map(|r| Some((r.name.clone(), search::predicate(r)?)))
+                .collect(),
             map_wrappers: self
                 .regions()
                 .filter_map(|r| Some((r.name.clone(), map_scan::wrapper(r)?)))

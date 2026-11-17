@@ -1,8 +1,8 @@
 # Villanelle language reference
 
-<!-- villanelle-reference-version: 0.288.0 -->
+<!-- villanelle-reference-version: 0.289.0 -->
 
-This manual describes **compiler 0.288.0**, including the current ownership model,
+This manual describes **compiler 0.289.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Villanelle
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual
@@ -2312,7 +2312,7 @@ existing key when replacing an equal key and returns the previous value. Replace
 outside an array/vector's bounds returns the supplied value unchanged. There is no
 indexing syntax with an implicit panic.
 
-In an optimized native build, a complete `map_take` loop can drain eligible maps in linear time when the loop moves each returned remainder to the next iteration. The compiler recognizes simple discards and ordered emissions of string fields or decimal u32 fields. General early exits and resource settlement use the checked loop. The experimental library also provides vector search with a borrowed result and an optional predicate failure. [Collection algorithms](collections-and-algorithms.md#find-the-first-matching-vector-element)
+In an optimized native build, a complete `map_take` loop can drain eligible maps in linear time when the loop moves each returned remainder to the next iteration. The compiler recognizes simple discards and ordered emissions of string fields or decimal u32 fields. General early exits and resource settlement use the checked loop. The experimental library also provides vector search with a borrowed result and an optional predicate failure. In a live optimized search, a proven effect-free u32 rejection path can advance directly to the first candidate. The candidate still executes its checked predicate. [Collection algorithms](collections-and-algorithms.md#find-the-first-matching-vector-element)
 
 <!-- villanelle:tail -->
 ```villanelle
