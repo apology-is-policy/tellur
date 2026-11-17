@@ -4,7 +4,7 @@
 
 ### Standard library direction, 17 November 2026
 
-The agreed route is to exercise public outcomes across expansion, establish library ownership and failure conventions, try a small API in two callers, and test adoption in a fresh project before shipping a supported slice. Collections and algorithms are an explicit design priority alongside the file and JSON modules. The first draft covers membership, borrowed traversal, folds, partitioning and sorting. It proposes experiments with adaptive radix trees for string maps and chunked RRB trees for sequences. The next prototype is borrowed traversal and an ordered string-map comparison. [Collections and algorithms design](collections-and-algorithms.md)
+The agreed route is to exercise public outcomes across expansion, establish library ownership and failure conventions, try a small API in two callers, and test adoption in a fresh project before shipping a supported slice. Collections and algorithms are an explicit design priority alongside the file and JSON modules. The first draft covers membership, borrowed traversal, folds, partitioning and sorting. It proposes experiments with adaptive radix trees for string maps and chunked RRB trees for sequences. Collection controls use small capability traits and module-qualified algorithms with explicit ownership at the call site. The editor experiment will try dot-triggered discovery for membership, traversal and consuming partition. Borrowed traversal and the ordered string-map comparison are the next library prototypes. [Collections and algorithms design](collections-and-algorithms.md)
 
 ### Language roadmap review, 16 November 2026
 

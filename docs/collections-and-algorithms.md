@@ -1,6 +1,14 @@
 # Collections and algorithms for the Tellur standard library
 
-Design draft, 17 November 2026. The standard library will include collections and algorithms. The API and representation choices below are proposals. The existing operations and ownership rules are specified in the [language reference](language-reference.md#arrays-vectors-and-maps).
+Design draft, 17 November 2026. The standard library will include collections and algorithms. The calling convention below is agreed. The individual algorithms and backing representations are proposals. The existing operations and ownership rules are specified in the [language reference](language-reference.md#arrays-vectors-and-maps).
+
+## Calling collection controls
+
+Use small capability traits for the operations a collection supplies. Put reusable algorithms in ordinary modules. Imported controls use their module qualifier, as in the prototype call `membership.contains_key<string>(borrow headers, borrow "origin")`. Inside a trait-bounded control, use the existing trait/type qualifier to select an implementation, as in `reader<r>.read(input)`. The checker resolves the same callee regardless of import order. [Trait qualification](traits.md#accepted-qualification)
+
+Keep ownership visible in the generated and handwritten source. A call on an owned collection spells out `borrow values` for a shared loan, `borrow mutable values` for exclusive access, or `values` for a consuming parameter. An existing reference can be passed directly where its type and permissions match. The caller routes the control's named outcomes in the usual way.
+
+**Editor experiment.** When a programmer types `headers.`, offer applicable collection controls beside field completions. Selecting membership would replace that input with a qualified call carrying the shared borrow. A consuming partition completion should show that it moves the collection before the programmer accepts it. Try membership, traversal and partition to see whether people can discover each operation and predict its ownership effect from the inserted source. Dot after a value is an editor gesture in this proposal. Executable calls use the qualified spelling above.
 
 ## A first operation with two callers
 
