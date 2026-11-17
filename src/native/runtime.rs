@@ -273,8 +273,18 @@ pub fn reference(values: &Frames, root: usize, fields: &[usize], indirect: bool,
     })
 }
 pub fn read_place(values: &[Option<V>], root: usize, fields: &[usize], indirect: bool) -> R<V> {
-    let (root, fields) = address(values, root, fields, indirect)?;
-    project(slot(values, root)?, &fields)
+    let source = slot(values, root)?;
+    if indirect {
+        let V::Reference {
+            root, fields: base, ..
+        } = source
+        else {
+            return Err("E_NATIVE: invalid reference".into());
+        };
+        project(project_ref(slot(values, *root)?, base)?, fields)
+    } else {
+        project(source, fields)
+    }
 }
 pub fn take_place(values: &mut [Option<V>], root: usize, fields: &[usize], indirect: bool) -> R<V> {
     let (root, fields) = address(values, root, fields, indirect)?;
@@ -2427,34 +2437,38 @@ pub fn collection_length(value: V, values: &mut [Option<V>]) -> R<V> {
 pub fn collection(name: &str, args: Vec<V>, values: &mut [Option<V>]) -> R<Outcome> {
     let mut args = args.into_iter();
     let mut first = args.next().ok_or("missing collection")?;
-    let evidence = if let V::Reference { evidence, .. } = &first {
-        evidence.clone()
-    } else {
-        ReferenceEvidence::default()
+    let (container, mut loan) = match first {
+        V::Reference {
+            root,
+            fields,
+            evidence,
+            ..
+        } => (
+            mutable_place(values, root, &fields)?,
+            Some((root, fields, evidence)),
+        ),
+        _ => (&mut first, None),
     };
-    let address = if let V::Reference { root, fields, .. } = &first {
-        Some((*root, fields.clone()))
-    } else {
-        None
-    };
-    let container = if let Some((root, fields)) = &address {
-        mutable_place(values, *root, fields)?
-    } else {
-        &mut first
-    };
-    let (outcome, payloads) = collection_support::operate(name, container, args.collect())?;
+    let (outcome, payloads) = collection_support::operate(name, container, args)?;
+    let count = payloads.len();
     let fields = payloads
         .into_iter()
-        .map(|p| match p {
+        .enumerate()
+        .map(|(position, p)| match p {
             collection_support::Payload::Owned(v) => Ok(v),
             collection_support::Payload::Borrow(index, ty) => {
-                let (root, mut fields) = address.clone().ok_or("borrow of collection temporary")?;
+                let (root, mut fields, evidence) = if position + 1 == count {
+                    loan.take()
+                } else {
+                    loan.clone()
+                }
+                .ok_or("borrow of collection temporary")?;
                 fields.push(index);
                 Ok(V::Reference {
                     ty,
                     root,
                     fields,
-                    evidence: evidence.projected(&[index]),
+                    evidence: evidence.into_projected(&[index]),
                 })
             }
         })

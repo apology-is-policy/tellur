@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Borrowed search runtime costs, 17 November 2026
+
+Villanelle 0.290 reduces temporary allocation in single-value transfers, reference evidence and collection access. On M2, a repeated first hit fell from 68 allocations to 39 and from 7.83 µs to 6.00 µs with identical generated IR. Returning the last element fell from 9.13 µs to 7.29 µs. The next compiler experiment carries a proven scalar predicate through LLVM and constructs the escaping borrow at the successful exit. Fold with an owned accumulator and split/join sequence experiments follow. [Paired Rust comparison and per-operation counts](../experiments/first_match/README.md#where-a-first-element-match-spends-its-time-in-0290)
+
 ### Native first-match search, 17 November 2026
 
 Villanelle 0.289 recognizes live u32 threshold searches whose predicate can reject a prefix without effects. The first candidate still runs its checked predicate, including any failure or returned loan. Scripted, traced and fuel-limited runs execute every step. On Apple M2 the repeated last-match query over 256 values fell from 2.09 ms to 7.75 µs. Rust took 0.166 µs. The next performance work is the fixed cost of forming and forwarding borrowed results. The next algorithm is a fold that accounts for its owned accumulator on every exit, followed by the split/join sequence experiment. [Four-case measurements and allocation counts](../experiments/first_match/README.md)

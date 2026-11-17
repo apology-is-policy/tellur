@@ -91,16 +91,18 @@ pub struct ReferenceEvidence {
 }
 impl ReferenceEvidence {
     pub fn projected(&self, fields: &[usize]) -> Self {
-        let mut evidence = self.clone();
-        if let Some(target) = &mut evidence.target {
+        self.clone().into_projected(fields)
+    }
+    pub fn into_projected(mut self, fields: &[usize]) -> Self {
+        if let Some(target) = &mut self.target {
             if target.fields.len().saturating_add(fields.len()) > LIMIT {
-                evidence.target = None;
-                evidence.origins = Origins::Unavailable("reference path limit exceeded".into());
+                self.target = None;
+                self.origins = Origins::Unavailable("reference path limit exceeded".into());
             } else {
                 target.fields.extend_from_slice(fields);
             }
         }
-        evidence
+        self
     }
     pub fn from_place(values: &Frames, root: usize, fields: &[usize], indirect: bool) -> Self {
         if indirect {
@@ -131,7 +133,7 @@ impl ReferenceEvidence {
                 }),
                 origins: Origins::default(),
             }
-            .projected(fields),
+            .into_projected(fields),
             Err(_) => Self {
                 target: None,
                 origins: Origins::Unavailable(
@@ -191,6 +193,12 @@ pub fn attach_checked(
         // The supported static guarded closure is a fresh local formation. An
         // incoming value must not be promoted by a guarded callee annotation.
         let complete = complete && (fresh || !origins.iter().any(|o| o.guard));
+        if let [origin] = origins
+            && !fresh
+            && already_bound_reborrow(values, &evidence.origins, origin, complete)
+        {
+            return value;
+        }
         let bound = bind(values, origins, complete).unwrap_or_else(Origins::Unavailable);
         if complete && fresh {
             evidence.origins = bound;
@@ -199,6 +207,50 @@ pub fn attach_checked(
         }
     }
     value
+}
+/// A repeated annotation can reuse the existing union when binding its single
+/// origin would preserve the entries, coverage, and both origin budgets.
+fn already_bound_reborrow(
+    values: &Frames,
+    current: &Origins,
+    origin: &Origin,
+    complete: bool,
+) -> bool {
+    if !origin.indirect || !origin.fields.is_empty() || origin.guard || origin.opaque {
+        return false;
+    }
+    let Some(Some(V::Reference {
+        root,
+        fields,
+        evidence,
+        ..
+    })) = values.get(origin.root)
+    else {
+        return false;
+    };
+    let (
+        Some(target),
+        Origins::Complete(incoming) | Origins::Partial(incoming),
+        Origins::Complete(existing) | Origins::Partial(existing),
+    ) = (&evidence.target, &evidence.origins, current)
+    else {
+        return false;
+    };
+    if current.is_complete() && !(complete && evidence.origins.is_complete()) {
+        return false;
+    }
+    if target.fields != *fields
+        || fields.len() > LIMIT
+        || values.require_storage(&target.storage).ok() != Some(*root)
+        || evidence.origins.cost() >= LIMIT
+        || incoming != existing
+    {
+        return false;
+    }
+    // The lists are identical and within budget. Binding adds only the target.
+    existing
+        .iter()
+        .any(|entry| !entry.guard && !entry.opaque && entry.place == *target)
 }
 pub struct InputLeaf {
     pub slot: usize,
@@ -493,16 +545,17 @@ fn bind_origins(
         if origin.indirect {
             result.extend(evidence.origins);
         }
-        let wrap = if complete {
-            Origins::Complete
-        } else {
-            Origins::Partial
-        };
-        result.extend(wrap(vec![BoundOrigin {
-            place: target,
-            guard: origin.guard,
-            opaque: origin.opaque,
-        }]));
+        if let Origins::Partial(entries) | Origins::Complete(entries) = &mut result {
+            let bound = BoundOrigin {
+                place: target,
+                guard: origin.guard,
+                opaque: origin.opaque,
+            };
+            if !entries.contains(&bound) {
+                entries.push(bound);
+                result.bound();
+            }
+        }
     }
     Ok(result)
 }

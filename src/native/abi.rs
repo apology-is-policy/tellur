@@ -418,7 +418,8 @@ impl Context<'_> {
         }
     }
     fn take(&mut self, handle: u64) -> R<V> {
-        Ok(self.take_many(&[handle])?.pop().unwrap())
+        let index = self.value_index(handle)?;
+        Ok(self.values[index].take().unwrap())
     }
     fn construct(&mut self, ty: &str, name: &str, handles: &[u64]) -> R<u64> {
         let collection = collection_support::Collection::parse(ty);
@@ -670,7 +671,8 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
         } else {
             (rest, &[][..])
         };
-        let mut origins = vec![];
+        let mut single_origin = None;
+        let mut multiple = Vec::new();
         while !rest.is_empty() {
             let [slot, flags, count, fields @ ..] = rest else {
                 return Err("E_NATIVE: truncated ABI reference origin".into());
@@ -678,15 +680,25 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
             if *flags > 7 || *count > fields.len() {
                 return Err("E_NATIVE: invalid ABI reference origin".into());
             }
-            origins.push(Origin {
+            let origin = Origin {
                 root: c.local(*slot)?,
                 fields: &fields[..*count],
                 indirect: flags & 1 != 0,
                 guard: flags & 2 != 0,
                 opaque: flags & 4 != 0,
-            });
+            };
+            if multiple.is_empty() && *count == fields.len() {
+                single_origin = Some(origin);
+            } else {
+                multiple.push(origin);
+            }
             rest = &fields[*count..];
         }
+        let origins = if single_origin.is_some() {
+            single_origin.as_slice()
+        } else {
+            multiple.as_slice()
+        };
         // Decode and resolve every local before consuming the operand. Actual
         // holder/leaf relationships remain checked by the existing metadata helpers.
         let guarded = if *kind == 3 {
@@ -730,13 +742,13 @@ pub unsafe extern "C" fn tellur_rt_v1_evidence(
         };
         let value = c.take(value)?;
         let value = if let Some((leaf, holder, fields)) = guarded {
-            attach_guarded_input(c.storage.values(), value, &origins, leaf, holder, fields)
+            attach_guarded_input(c.storage.values(), value, origins, leaf, holder, fields)
         } else if let Some((holder, leaves)) = carrier {
-            attach_carrier_input(c.storage.values(), value, &origins, holder, &leaves)
+            attach_carrier_input(c.storage.values(), value, origins, holder, &leaves)
         } else if *kind == 2 {
             inherit_checked(c.storage.values(), value)
         } else {
-            attach_checked(c.storage.values(), value, &origins, *kind == 1, *fresh != 0)
+            attach_checked(c.storage.values(), value, origins, *kind == 1, *fresh != 0)
         };
         Ok(c.put(value))
     })

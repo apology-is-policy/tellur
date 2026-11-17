@@ -846,3 +846,63 @@ fn carrier_input_attachment_rejects_missing_changed_and_duplicate_fields_without
         assert_eq!(before, format!("{:?}", &*values));
     }
 }
+
+#[test]
+fn repeated_reborrow_matches_full_binding_at_coverage_and_budget_boundaries() {
+    let mut values = Frames::default();
+    let frame = values.enter(2).unwrap();
+    let base = frame.base();
+    values[base] = Some(V::U32(7));
+    let leaf = attach_checked(
+        &values,
+        reference(&values, base, &[], false, "&U32").unwrap(),
+        &[origin(base, &[], false, false)],
+        true,
+        true,
+    );
+    let annotation = [origin(base + 1, &[], true, false)];
+    for count in [1, LIMIT - 1, LIMIT] {
+        for complete in [true, false] {
+            let mut holder = leaf.clone();
+            let V::Reference {
+                evidence: proof, ..
+            } = &mut holder
+            else {
+                unreachable!()
+            };
+            let Origins::Complete(entries) = &mut proof.origins else {
+                unreachable!()
+            };
+            // The binding budget charges inherited entries before deduplication.
+            entries.resize(count, entries[0].clone());
+            if !complete {
+                proof.origins = Origins::Partial(std::mem::take(entries));
+            }
+            values[base + 1] = Some(holder);
+            let operand = reference(&values, base + 1, &[], true, "&U32").unwrap();
+            for declared_complete in [true, false] {
+                let mut expected = evidence(&operand).origins.clone();
+                expected.extend(
+                    bind(&values, &annotation, declared_complete)
+                        .unwrap_or_else(Origins::Unavailable),
+                );
+                let result = attach_checked(
+                    &values,
+                    operand.clone(),
+                    &annotation,
+                    declared_complete,
+                    false,
+                );
+                assert_eq!(evidence(&result).origins, expected);
+            }
+        }
+    }
+    // Retiring and reusing the root may preserve the numeric slot but cannot
+    // make an old formation eligible for reusing the original bound set.
+    values.retire(&frame).unwrap();
+    let reused = values.enter(2).unwrap();
+    assert_eq!(base, reused.base());
+    values[base + 1] = Some(leaf.clone());
+    let result = attach_checked(&values, leaf, &annotation, true, false);
+    assert!(matches!(evidence(&result).origins, Origins::Unavailable(_)));
+}

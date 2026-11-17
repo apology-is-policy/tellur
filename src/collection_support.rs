@@ -143,17 +143,17 @@ pub fn length<V: CollectionValue>(value: &V) -> Result<u32, String> {
 pub fn operate<V: CollectionValue>(
     name: &str,
     container: &mut V,
-    args: Vec<V>,
+    args: impl Iterator<Item = V>,
 ) -> Result<(String, Vec<Payload<V>>), String> {
     use Payload::{Borrow, Owned};
     let (ty, _, _) = container.parts().ok_or("invalid collection value")?;
-    let ty = ty.to_owned();
-    let c = Collection::parse(&ty).ok_or("invalid collection type")?;
+    let c = Collection::parse(ty).ok_or("invalid collection type")?;
     let op = name
-        .strip_prefix(&format!("{}_", c.name()))
+        .strip_prefix(c.name())
+        .and_then(|suffix| suffix.strip_prefix('_'))
         .ok_or("wrong collection operation")?;
     let fields = container.parts_mut().ok_or("invalid collection storage")?;
-    let mut args = args.into_iter();
+    let mut args = args;
     let mut next = || {
         args.next()
             .ok_or_else(|| "missing collection argument".to_owned())
@@ -295,11 +295,9 @@ pub fn operate<V: CollectionValue>(
                 };
                 let mut payload = Vec::with_capacity(width + 1);
                 payload.extend(fields.drain(..width).map(Owned));
-                payload.push(Owned(V::construct(
-                    ty,
-                    c.name().into(),
-                    std::mem::take(fields),
-                )));
+                let remainder = std::mem::take(fields);
+                let (ty, _, _) = container.parts().ok_or("invalid collection value")?;
+                payload.push(Owned(V::construct(ty.into(), c.name().into(), remainder)));
                 ("item", payload)
             }
         }

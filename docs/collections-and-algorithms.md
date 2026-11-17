@@ -49,6 +49,8 @@ A `search.fallible_predicate` also declares an `error` type. Its `failed { error
 
 Optimized LLVM builds can skip a consecutive run of u32 values below a rule's threshold when the checked graph proves the rejection path has no effects. A predicate can also stop at a particular u32 constant, for example to report an offline sensor. The first candidate executes the authored control and retains its declared origin and failure behavior. Tracing, scripted increments, fuel limits and effects on the rejection path preserve step-by-step evaluation. On Apple M2, repeated last-match searches over 256 readings took 7.75 µs in 0.289 versus 2.09 ms in 0.288 and 0.166 µs in Rust. [Search benchmarks](../experiments/first_match/README.md)
 
+The 0.290 runtime reuses identical reborrow evidence and moves an existing collection loan into the returned element. A repeated first hit on M2 now takes 6.00 µs and 39 allocations. The next experiment lowers the scalar predicate directly and materializes the escaping loan once. [Search timings and per-call allocation counts](../experiments/first_match/README.md#where-a-first-element-match-spends-its-time-in-0290)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

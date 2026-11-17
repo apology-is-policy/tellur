@@ -473,7 +473,7 @@ fn collection(
         &mut first
     };
     let (outcome, payloads) =
-        crate::collection_support::operate(name, container, args.collect()).map_err(error)?;
+        crate::collection_support::operate(name, container, args).map_err(error)?;
     let fields = payloads
         .into_iter()
         .map(|p| match p {
