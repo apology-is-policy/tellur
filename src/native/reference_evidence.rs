@@ -2,7 +2,7 @@
 use super::access_resolution::StoragePlace;
 use super::{Frames, R, V};
 
-pub(super) const LIMIT: usize = 4096;
+pub(crate) const LIMIT: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoundOrigin {

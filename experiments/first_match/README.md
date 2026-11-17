@@ -2,6 +2,23 @@
 
 Both programs search the same vector of 256 consecutive u32 values. The first three cases use a threshold of 0, 255 or 256. The fallible predicate rejects the reading 127 with an error before the threshold of 255. Each program returns the same element, miss or error and prints the same output.
 
+## Scalar predicate and borrowed hit in 0.291
+
+The optimized synchronous search passes the candidate and threshold to LLVM as two u32 values. The M2 executable compares them with `cmp` and branches with `b.hs`. A proven match forms the loan into the original vector at the successful exit. The compiler emits the source and exit annotations from the checked program, including their dependence on the original owner. A fallible predicate's sentinel goes through the authored control, even when the sentinel equals the threshold. An observable action in the matching predicate or its caller also keeps the checked path.
+
+| Outcome over 256 elements | 0.290 | 0.291 | Rust per search, batched | Search allocations, 0.290 → 0.291 |
+| --- | ---: | ---: | ---: | ---: |
+| First element | 4.77 µs | 1.69 µs | 0.85 ns | 39 → 13 |
+| Last element | 5.81 µs | 2.58 µs | 94.7 ns | 45 → 19 |
+| Miss | 3.25 µs | 3.35 µs | 96.0 ns | 17 → 17 |
+| Predicate failure at 127 | 6.35 µs | 5.58 µs | 75.2 ns | 40 → 40 |
+
+Both Villanelle compilers built the same fixture at O3. The harness linked each version's generated IR against its own runtime. The medians cover queries two through nine from 25 interleaved trials on Apple M2. The first hit improved in 24 paired trial medians and the last in 23. The miss improved in 11 and the failure in 16. The evidence supports a speedup on hits. Rust throughput uses 1,024 black-boxed searches per timed batch. [Paired timings](results/0.291-paired.csv) · [Per-query allocations](results/0.291-query-allocations.csv) · [Whole-process allocations](results/0.291-process-allocations.csv)
+
+The first hit went from 83 runtime calls to 23, including 11 status checks. Requested heap bytes dropped from 4,387 to 2,731, including two reallocations. The nested predicate call disappears from the successful path. In a separate run of 300,000 first hits checked by the caller, 56 of 106 samples inside the generated search frame were in evidence handling. The surrounding search call and its setup are outside that sampling window and inside the paired timers. The remaining performance work includes transporting the escaping loan and its evidence more cheaply.
+
+To reproduce the interleaved comparison, pass `--compare-ir` with the 0.290 fixture's release IR and `--compare-archive` with its runtime archive. The current fixture still builds through `vnc`. Both versions must accept the same inputs and produce identical results.
+
 ## Where a first-element match spends its time in 0.290
 
 The generated search IR was byte-identical across versions. We linked the same O3 object once with each runtime and interleaved them with the Rust comparator on Apple M2. Each cell below is the median of 200 repeated queries (eight queries from each of 25 fresh processes). The Rust column uses 1,024 black-boxed searches per timed batch to resolve the shortest case. It measures hot throughput per search. Individual Rust calls, including timer overhead, are also in the raw data. [Paired timings](results/0.290-paired.csv)

@@ -1,17 +1,17 @@
 //! Prove an effect-free rejected prefix of a synchronous u32 vector search.
-//! The first candidate (including a possible predicate error) runs normally.
+//! Independently prove the positive branch before lowering a borrowed hit.
 use super::*;
 
 #[derive(Clone, Copy)]
 pub(super) struct Predicate {
     pub field: usize,
     pub stop: Option<u32>,
+    direct_match: bool,
 }
 
-// Follow the false arms of the concrete predicate. Other paths can have
-// arbitrary effects: the bulk traversal stops before any of them is selected.
+// Prove rejection and acceptance separately. Either branch can contain user effects.
 pub(super) fn predicate(region: &Region) -> Option<Predicate> {
-    let [rule, element] = region.parameters.as_slice() else {
+    let [_, element] = region.parameters.as_slice() else {
         return None;
     };
     if element.ty != "&U32"
@@ -22,6 +22,21 @@ pub(super) fn predicate(region: &Region) -> Option<Predicate> {
     {
         return None;
     }
+    let (field, stop) = predicate_path(region, false)?;
+    let direct_match = predicate_path(region, true).is_some_and(|(hit_field, hit_stop)| {
+        hit_field == field && (hit_stop.is_none() || hit_stop == stop)
+    });
+    Some(Predicate {
+        field,
+        stop,
+        direct_match,
+    })
+}
+
+fn predicate_path(region: &Region, matched: bool) -> Option<(usize, Option<u32>)> {
+    let [rule, element] = region.parameters.as_slice() else {
+        return None;
+    };
     let mut facts = BTreeSet::new();
     let mut field = None;
     let mut stop = None;
@@ -53,16 +68,20 @@ pub(super) fn predicate(region: &Region) -> Option<Predicate> {
                     ("==", Expr::Value(Value::U32(n))) if stop.is_none() => stop = Some(*n),
                     _ => return None,
                 }
+                let outcome = if matched && op == ">=" {
+                    "true"
+                } else {
+                    "false"
+                };
                 let arm = arms
                     .iter()
-                    .find(|a| a.outcome == "false" && a.slots.is_empty())?;
+                    .find(|a| a.outcome == outcome && a.slots.is_empty())?;
                 facts.insert(arm.atom);
             }
-            Action::Exit(out, values) if out == "skipped" && values.is_empty() => {
-                return Some(Predicate {
-                    field: field?,
-                    stop,
-                });
+            Action::Exit(out, values)
+                if out == (if matched { "matched" } else { "skipped" }) && values.is_empty() =>
+            {
+                return Some((field?, stop));
             }
             _ => return None,
         }
@@ -81,16 +100,24 @@ fn reborrow(expr: &Expr) -> Option<Id> {
     }
 }
 
-pub(super) struct Search {
+pub(super) struct Hit<'a> {
+    pub source: &'a Expr,
+    pub evidence: &'a ReferenceEvidence,
+    pub outcome: &'a str,
+    pub site: Id,
+}
+
+pub(super) struct Search<'a> {
     pub vector: Id,
     pub rule: Id,
     pub predicate: Predicate,
+    pub hit: Option<Hit<'a>>,
 }
 
-pub(super) fn analyze(
-    inst: &Instruction,
+pub(super) fn analyze<'a>(
+    inst: &'a Instruction,
     predicates: &BTreeMap<String, Predicate>,
-) -> Option<Search> {
+) -> Option<Search<'a>> {
     let Action::Loop {
         id,
         parameters,
@@ -106,6 +133,7 @@ pub(super) fn analyze(
         return None;
     };
     let mut facts = BTreeSet::new();
+    let mut source_expr = None;
     let mut vector = None;
     let mut element = None;
     let mut search = None;
@@ -123,6 +151,7 @@ pub(super) fn analyze(
                 let [source, position] = args.as_slice() else {
                     return None;
                 };
+                source_expr = Some(source);
                 let source = reborrow(source)?;
                 if !local_value(position, *index) || local_slots.contains(&source) {
                     return None;
@@ -158,6 +187,7 @@ pub(super) fn analyze(
                     vector: vector?,
                     rule,
                     predicate: *predicates.get(name)?,
+                    hit: None,
                 });
             }
             Action::Decide {
@@ -185,10 +215,88 @@ pub(super) fn analyze(
                 let [position] = args.as_slice() else {
                     return None;
                 };
-                return local_value(position, next?).then_some(search?);
+                if !local_value(position, next?) {
+                    return None;
+                }
+                let mut search = search?;
+                if search.predicate.direct_match {
+                    search.hit = hit_exit(inst, source_expr?, element?, search.vector, search.rule);
+                }
+                return Some(search);
             }
             _ => return None,
         }
+    }
+    None
+}
+
+// Walk the selected hit path. The source annotation and the returning annotation
+// must bind against inputs that exist before the loop. The result may have a
+// different public outcome name. Any intervening user action keeps the checked path.
+fn hit_exit<'a>(
+    inst: &'a Instruction,
+    source: &'a Expr,
+    element: Id,
+    vector: Id,
+    rule: Id,
+) -> Option<Hit<'a>> {
+    let Action::Loop {
+        body, local_atoms, ..
+    } = &inst.action
+    else {
+        return None;
+    };
+    let input_evidence = |e: &ReferenceEvidence| {
+        matches!(
+            e,
+            ReferenceEvidence::Partial(_) | ReferenceEvidence::Complete(_)
+        ) && e
+            .origins()
+            .iter()
+            .all(|o| o.place.root == vector || o.place.root == rule)
+    };
+    let Expr::WithReferenceEvidence(base, annotation) = source else {
+        return None;
+    };
+    if !input_evidence(annotation)
+        || !matches!(base.as_ref(), Expr::Reference(_, ty) if ty == "&vector<U32>")
+    {
+        return None;
+    }
+    let mut facts = BTreeSet::new();
+    let mut outcomes = ["found", "matched"].into_iter();
+    for step in body {
+        if !map_scan::selected(&step.guard, &inst.guard, local_atoms, &facts)? {
+            continue;
+        }
+        if let Some(outcome) = outcomes.next() {
+            let Action::Decide { arms, .. } = &step.action else {
+                return None;
+            };
+            let arm = arms.iter().find(|a| a.outcome == outcome)?;
+            if outcome == "matched" && !arm.slots.is_empty() {
+                return None;
+            }
+            facts.insert(arm.atom);
+            continue;
+        }
+        let Action::Exit(outcome, args) = &step.action else {
+            return None;
+        };
+        let [Expr::WithReferenceEvidence(value, evidence)] = args.as_slice() else {
+            return None;
+        };
+        if matches!(value.as_ref(), Expr::Reference(p, ty) if p.indirect && p.root == element && p.fields.is_empty() && ty == "&U32")
+            && input_evidence(evidence)
+        {
+            return Some(Hit {
+                source,
+                evidence,
+                outcome,
+                site: step.id,
+            });
+        }
+        return None;
     }
     None
 }

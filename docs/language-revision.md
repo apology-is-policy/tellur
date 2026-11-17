@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Scalar candidate lowering, 17 November 2026
+
+Villanelle 0.291 emits a native unsigned comparison for proven successful u32 vector predicates and projects the loan once into the original owner. A first hit takes 1.69 µs and 13 allocations on M2, compared with 4.77 µs and 39 allocations for 0.290 in the same run. Live effects, failure outcomes, traced execution and fuel-limited calls retain checked behavior. Next in the collections roadmap is a borrowed-sequence fold that accounts for the owned accumulator on continuation, early stop and failure. The split/join sequence experiment follows. Escaping-loan evidence remains an open performance target. [Measurements and checked cases](../experiments/first_match/README.md#scalar-predicate-and-borrowed-hit-in-0291)
+
 ### Borrowed search runtime costs, 17 November 2026
 
 Villanelle 0.290 reduces temporary allocation in single-value transfers, reference evidence and collection access. On M2, a repeated first hit fell from 68 allocations to 39 and from 7.83 µs to 6.00 µs with identical generated IR. Returning the last element fell from 9.13 µs to 7.29 µs. The next compiler experiment carries a proven scalar predicate through LLVM and constructs the escaping borrow at the successful exit. Fold with an owned accumulator and split/join sequence experiments follow. [Paired Rust comparison and per-operation counts](../experiments/first_match/README.md#where-a-first-element-match-spends-its-time-in-0290)

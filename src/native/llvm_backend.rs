@@ -1,6 +1,6 @@
 //! Direct LLVM emission for the synchronous profile and bounded retained controls.
 //! Admission is explicit and occurs before writing/building anything. Every value
-//! operation goes through the runtime's private C ABI; guards are native branches.
+//! access uses the private runtime ABI. Guards and proven scalar tests branch in LLVM.
 use super::*;
 
 #[path = "llvm_adapter.rs"]
@@ -81,6 +81,8 @@ declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
+declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
+declare i64 @tellur_rt_v1_search_loan(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
@@ -820,6 +822,128 @@ impl Emitter {
         ));
         self.value(format!("icmp ne i32 {v}, 0"))
     }
+    fn attach_evidence(
+        &mut self,
+        handle: &str,
+        evidence: &ReferenceEvidence,
+        fresh: bool,
+    ) -> String {
+        let kind = match evidence {
+            ReferenceEvidence::Partial(_) => 0,
+            ReferenceEvidence::Complete(_) => 1,
+            ReferenceEvidence::Incoming => 2,
+            ReferenceEvidence::GuardedInput { .. } => 3,
+            ReferenceEvidence::CarrierInput { .. } => 4,
+        };
+        let mut words = vec![kind, usize::from(fresh && kind < 2)];
+        if kind >= 3 {
+            words.push(0);
+        }
+        let origin_start = words.len();
+        for origin in evidence.origins() {
+            words.extend([
+                self.layout.slots[&origin.place.root],
+                usize::from(origin.place.indirect)
+                    | (usize::from(origin.guard) << 1)
+                    | (usize::from(origin.opaque) << 2),
+                origin.place.fields.len(),
+            ]);
+            words.extend(&origin.place.fields);
+        }
+        if kind >= 3 {
+            words[2] = words.len() - origin_start;
+        }
+        match evidence {
+            ReferenceEvidence::GuardedInput { leaf, holder, .. } => {
+                // Match the Rust emitter: holder.fields is the actual
+                // path inside the original borrowed aggregate, separate
+                // from symbolic indirect/guard/opaque origin paths.
+                words.extend([
+                    self.layout.slots[leaf],
+                    self.layout.slots[&holder.root],
+                    holder.fields.len(),
+                ]);
+                words.extend(&holder.fields);
+            }
+            ReferenceEvidence::CarrierInput { holder, leaves, .. } => {
+                words.extend([self.layout.slots[holder], leaves.len()]);
+                for leaf in leaves {
+                    words.extend([self.layout.slots[&leaf.leaf], leaf.fields.len()]);
+                    words.extend(&leaf.fields);
+                }
+            }
+            _ => {}
+        }
+        let name = self.id();
+        let values = words
+            .iter()
+            .map(|n| format!("i64 {n}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(
+            self.globals,
+            "@{name} = private constant [{} x i64] [{values}]",
+            words.len()
+        )
+        .unwrap();
+        self.call(format!(
+            "call i64 @tellur_rt_v1_evidence(ptr %ctx, i64 {handle}, ptr @{name}, i64 {})",
+            words.len()
+        ))
+    }
+    fn search(&mut self, search: &search::Search<'_>, position: &str, whole_loop: bool) {
+        let stop = search.predicate.stop.map_or(u64::MAX, u64::from);
+        let args = format!(
+            "ptr %ctx, i64 {}, i64 {}, i64 {position}, i64 {}, i64 {stop}",
+            self.layout.slots[&search.vector],
+            self.layout.slots[&search.rule],
+            search.predicate.field
+        );
+        let Some(hit) = search.hit.as_ref().filter(|_| whole_loop) else {
+            self.effect(format!("call void @tellur_rt_v1_search_prefix({args})"));
+            return;
+        };
+        let item = self.scratch("i32");
+        let limit = self.scratch("i32");
+        let ready = self.call(format!(
+            "call i32 @tellur_rt_v1_search_candidate({args}, ptr {item}, ptr {limit})"
+        ));
+        let ready = self.value(format!("icmp ne i32 {ready}, 0"));
+        let compare = self.id();
+        let borrow = self.id();
+        let matched = self.id();
+        let checked = self.id();
+        self.line(format!(
+            "br i1 {ready}, label %{compare}, label %{checked}\n{compare}:"
+        ));
+        let item = self.value(format!("load i32, ptr {item}"));
+        let limit = self.value(format!("load i32, ptr {limit}"));
+        let mut accept = self.value(format!("icmp uge i32 {item}, {limit}"));
+        if let Some(stop) = search.predicate.stop {
+            let ordinary = self.value(format!("icmp ne i32 {item}, {stop}"));
+            accept = self.value(format!("and i1 {accept}, {ordinary}"));
+        }
+        self.line(format!(
+            "br i1 {accept}, label %{borrow}, label %{checked}\n{borrow}:"
+        ));
+        let source = self.expr(hit.source);
+        let loan = self.call(format!(
+            "call i64 @tellur_rt_v1_search_loan(ptr %ctx, i64 {source}, i64 {position}, i64 {})",
+            hit.site
+        ));
+        let valid = self.value(format!("icmp ne i64 {loan}, 0"));
+        self.line(format!(
+            "br i1 {valid}, label %{matched}, label %{checked}\n{matched}:"
+        ));
+        let result = self.attach_evidence(&loan, hit.evidence, false);
+        let args = self.handles(&[result]);
+        let (name, len) = self.text(hit.outcome);
+        self.effect(format!(
+            "call void @tellur_rt_v1_complete(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 1)"
+        ));
+        self.return_control();
+        self.line(format!("{checked}:"));
+    }
     fn expr(&mut self, e: &Expr) -> String {
         match e {
             Expr::Value(v) => self.embedded(v),
@@ -838,68 +962,7 @@ impl Emitter {
             Expr::WithReferenceEvidence(value, evidence) => {
                 let fresh = matches!(value.as_ref(), Expr::Reference(p, _) if !p.indirect);
                 let handle = self.expr(value);
-                let kind = match evidence {
-                    ReferenceEvidence::Partial(_) => 0,
-                    ReferenceEvidence::Complete(_) => 1,
-                    ReferenceEvidence::Incoming => 2,
-                    ReferenceEvidence::GuardedInput { .. } => 3,
-                    ReferenceEvidence::CarrierInput { .. } => 4,
-                };
-                let mut words = vec![kind, usize::from(fresh && kind < 2)];
-                if kind >= 3 {
-                    words.push(0);
-                }
-                let origin_start = words.len();
-                for origin in evidence.origins() {
-                    words.extend([
-                        self.layout.slots[&origin.place.root],
-                        usize::from(origin.place.indirect)
-                            | (usize::from(origin.guard) << 1)
-                            | (usize::from(origin.opaque) << 2),
-                        origin.place.fields.len(),
-                    ]);
-                    words.extend(&origin.place.fields);
-                }
-                if kind >= 3 {
-                    words[2] = words.len() - origin_start;
-                }
-                match evidence {
-                    ReferenceEvidence::GuardedInput { leaf, holder, .. } => {
-                        // Match the Rust emitter: holder.fields is the actual
-                        // path inside the original borrowed aggregate, separate
-                        // from symbolic indirect/guard/opaque origin paths.
-                        words.extend([
-                            self.layout.slots[leaf],
-                            self.layout.slots[&holder.root],
-                            holder.fields.len(),
-                        ]);
-                        words.extend(&holder.fields);
-                    }
-                    ReferenceEvidence::CarrierInput { holder, leaves, .. } => {
-                        words.extend([self.layout.slots[holder], leaves.len()]);
-                        for leaf in leaves {
-                            words.extend([self.layout.slots[&leaf.leaf], leaf.fields.len()]);
-                            words.extend(&leaf.fields);
-                        }
-                    }
-                    _ => {}
-                }
-                let name = self.id();
-                let values = words
-                    .iter()
-                    .map(|n| format!("i64 {n}"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                writeln!(
-                    self.globals,
-                    "@{name} = private constant [{} x i64] [{values}]",
-                    words.len()
-                )
-                .unwrap();
-                self.call(format!(
-                    "call i64 @tellur_rt_v1_evidence(ptr %ctx, i64 {handle}, ptr @{name}, i64 {})",
-                    words.len()
-                ))
+                self.attach_evidence(&handle, evidence, fresh)
             }
             Expr::Construct(ty, name, args) => {
                 let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
@@ -1893,10 +1956,14 @@ impl Emitter {
                         && !self.retained
                         && let Some(search) = search::analyze(i, &self.predicates)
                     {
-                        let stop = search.predicate.stop.map_or(u64::MAX, u64::from);
-                        self.effect(format!("call void @tellur_rt_v1_search_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {}, i64 {stop})",
-                            self.layout.slots[&search.vector], self.layout.slots[&search.rule],
-                            values[0], search.predicate.field));
+                        self.search(
+                            &search,
+                            &values[0],
+                            code.len() == 1
+                                && self.loops.is_empty()
+                                && self.scopes.is_empty()
+                                && !self.constructing,
+                        );
                     }
                     let arguments = self.handles(&values);
                     let restart = self.id();

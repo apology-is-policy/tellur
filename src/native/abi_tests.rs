@@ -2416,3 +2416,70 @@ fn lexical_abi_rejects_bad_layouts_stale_scopes_and_unfinished_completion() {
         c.lexical.is_empty() && c.host.resources.scopes.is_empty() && c.storage.values().is_empty()
     );
 }
+
+#[test]
+fn scalar_search_projects_the_checked_loan_into_its_original_owner() {
+    for complete in [false, true] {
+        let mut host = Host::new(json!({}), None, false, None);
+        host.activations.enter("search").unwrap();
+        let mut c = context(&mut host);
+        unsafe { tellur_rt_v1_frame(&mut c, 2) };
+        let vector = V::Construct {
+            ty: "vector<U32>".into(),
+            name: "vector".into(),
+            fields: vec![V::U32(9), V::U32(42)],
+        };
+        let owner = c.local(0).unwrap();
+        c.storage.values_mut()[owner] = Some(V::Construct {
+            ty: "record".into(),
+            name: "record".into(),
+            fields: vec![V::Unit, vector],
+        });
+        let loan = reference(c.storage.values(), owner, &[1], false, "&vector<U32>").unwrap();
+        let mut handle = c.put(loan);
+        if complete {
+            handle = unsafe { annotate(&mut c, handle, &[1, 1, 0, 0, 1, 1]) };
+        }
+        let input = c.get(handle).unwrap().clone();
+        let (_, mut expected) = collection(
+            "vector_get",
+            vec![input.clone(), V::U32(1)],
+            c.storage.values_mut(),
+        )
+        .unwrap();
+        let position = c.put(V::U32(1));
+        let found = unsafe { tellur_rt_v1_search_loan(&mut c, handle, position, 70) };
+        let actual = c.take(found).unwrap();
+        let expected = expected.pop().unwrap();
+        assert_eq!(actual, expected);
+        let (
+            V::Reference {
+                evidence: actual, ..
+            },
+            V::Reference {
+                evidence: expected, ..
+            },
+        ) = (&actual, &expected)
+        else {
+            panic!("projected loan required")
+        };
+        assert_eq!(actual, expected);
+        assert_eq!(actual.origins.is_complete(), complete);
+        assert!(c.get(handle).is_err() && c.get(position).is_err());
+        // On an unaddressable candidate the original index is still usable by the checked path.
+        let source = c.put(input);
+        let past_end = c.put(V::U32(2));
+        assert_eq!(
+            unsafe { tellur_rt_v1_search_loan(&mut c, source, past_end, 70) },
+            0
+        );
+        assert_eq!(c.take(past_end).unwrap(), V::U32(2));
+        assert!(c.error.is_none());
+        c.host.activations.enter("after").unwrap();
+        let report = c
+            .host
+            .activations
+            .failure("test", fault::Phase::Execution, "done");
+        assert_eq!(report.activations.last().unwrap().id, 3);
+    }
+}

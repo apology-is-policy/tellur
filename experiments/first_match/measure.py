@@ -12,17 +12,19 @@ parser = argparse.ArgumentParser()
 for argument in ("vnc", "llvm_bin", "archive", "results"):
     parser.add_argument(argument, type=Path)
 parser.add_argument("--allocator", type=Path, help="macOS allocation probe dylib")
-parser.add_argument("--compare-archive", type=Path, help="time identical IR linked with a previous ABI-compatible runtime")
+parser.add_argument("--compare-archive", type=Path, help="previous runtime archive (uses current IR unless --compare-ir is given)")
+parser.add_argument("--compare-ir", type=Path, help="release IR for the same fixture from the previous compiler")
 args = parser.parse_args()
+if args.compare_ir and not args.compare_archive:
+    parser.error("--compare-ir requires --compare-archive")
 here = Path(__file__).resolve().parent
 manifest = here.parents[1] / "examples/first_match/manifest.json"
 rng = random.Random(288)
 rows = []
-with tempfile.TemporaryDirectory() as temp:
-    work = Path(temp)
-    subprocess.run([args.vnc.resolve(), "build", here / "main.vn", manifest,
-                    "--release", "--out", work / "search"], check=True)
-    lines = (work / "search.ll").read_text().splitlines()
+
+
+def timed_object(source, work, stem):
+    lines = source.read_text().splitlines()
     # The outer call names its concrete predicate. Leave all inner calls intact.
     for control in (b"first<minimum>", b"try_first<minimum>"):
         name = "".join(f"\\{byte:02X}" for byte in control)
@@ -31,16 +33,27 @@ with tempfile.TemporaryDirectory() as temp:
                   if "call i64 @tellur_rt_v1_call(" in line and f"ptr {symbol}," in line]
         lines[index] = lines[index].replace("@tellur_rt_v1_call", "@time_first")
     lines.append("declare i64 @time_first(ptr, ptr, ptr, i64, ptr, i64)")
-    (work / "timed.ll").write_text("\n".join(lines) + "\n")
-    subprocess.run([args.llvm_bin / "opt", "-passes=default<O3>", work / "timed.ll",
-                    "-o", work / "timed.bc"], check=True)
-    subprocess.run([args.llvm_bin / "llc", "-O3", "-filetype=obj", work / "timed.bc",
-                    "-o", work / "timed.o"], check=True)
+    (work / f"{stem}.ll").write_text("\n".join(lines) + "\n")
+    subprocess.run([args.llvm_bin / "opt", "-passes=default<O3>", work / f"{stem}.ll",
+                    "-o", work / f"{stem}.bc"], check=True)
+    subprocess.run([args.llvm_bin / "llc", "-O3", "-filetype=obj", work / f"{stem}.bc",
+                    "-o", work / f"{stem}.o"], check=True)
+    return work / f"{stem}.o"
+
+
+with tempfile.TemporaryDirectory() as temp:
+    work = Path(temp)
+    subprocess.run([args.vnc.resolve(), "build", here / "main.vn", manifest,
+                    "--release", "--out", work / "search"], check=True)
     archives = {"vn": args.archive}
     if args.compare_archive:
         archives["vn_previous"] = args.compare_archive
+    current_object = timed_object(work / "search.ll", work, "timed")
     for runtime, archive in archives.items():
-        subprocess.run(["cc", "-O3", "-mmacosx-version-min=13.0", work / "timed.o",
+        obj = current_object
+        if runtime == "vn_previous" and args.compare_ir:
+            obj = timed_object(args.compare_ir, work, "previous")
+        subprocess.run(["cc", "-O3", "-mmacosx-version-min=13.0", obj,
                         here / "timer.c", archive, "-o", work / runtime], check=True)
     subprocess.run(["rustc", "-C", "opt-level=3", here / "search.rs",
                     "-o", work / "rs"], check=True)

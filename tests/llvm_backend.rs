@@ -1485,7 +1485,7 @@ outcome result {@exit 0 done}
         let program = compile_file(&f.source, manifest.clone()).unwrap();
         let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
         let fast = program.build_llvm("main", &f.root.join("fast"), 3).unwrap();
-        let prefix = "call void @tellur_rt_v1_search_prefix";
+        let prefix = "call i32 @tellur_rt_v1_search_candidate";
         assert_eq!(
             fs::read_to_string(&fast.llvm)
                 .unwrap()
@@ -1508,6 +1508,7 @@ outcome result {@exit 0 done}
             ("255", "false", "255"),
             ("256", "false", "missing"),
             ("255", "true", "invalid"),
+            ("127", "true", "invalid"),
             ("2", "true", "2"),
         ] {
             let result = compare(&[limit, fallible, "1"]);
@@ -1567,6 +1568,98 @@ outcome result {@exit 0 done}
                 (b.status.code(), b.stdout, b.stderr)
             );
         }
+
+        // A predicate may be pure on rejection and observable on success.
+        // Prefix scanning is legal in this control, scalar hit lowering is not.
+        let on_hit = src.replacen("true => exit matched,", "true => observed,", 1)
+            .replacen("false => exit skipped\n        }", "false => exit skipped\n        }\n        [observed]: emit(\"hit\"); exit matched;", 1);
+        fs::write(&f.source, on_hit).unwrap();
+        let observed = compile_file(&f.source, manifest.clone())
+            .unwrap()
+            .build_llvm("main", &f.root.join("observable-hit"), 3)
+            .unwrap();
+        let ir = fs::read_to_string(observed.llvm).unwrap();
+        assert_eq!(ir.matches(prefix).count(), 1);
+        assert_eq!(
+            ir.matches("call void @tellur_rt_v1_search_prefix").count(),
+            1
+        );
+        let output = Command::new(observed.executable)
+            .args(["255", "false", "1"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"hit\n255\ndone\n");
+
+        // A real fault in the next child observes the activation IDs skipped
+        // on both the rejected prefix and the successful candidate.
+        let mut faulting = src
+            .replace(
+                "exits done, unexpected {",
+                "exits done, unexpected faults {",
+            )
+            .replace(
+                "[observed]: delta",
+                "[observed]: after_search();\n        [observed]: delta",
+            );
+        faulting
+            .push_str("\ncontrol after_search() exits done faults { fault \"after search\"; }\n");
+        fs::write(&f.source, faulting).unwrap();
+        let checked = compile_file(&f.source, manifest.clone()).unwrap();
+        let fast_fault = checked
+            .build_llvm("main", &f.root.join("fault-fast"), 3)
+            .unwrap();
+        let slow_fault = checked
+            .build_llvm("main", &f.root.join("fault-slow"), 0)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(fast_fault.llvm)
+                .unwrap()
+                .matches(prefix)
+                .count(),
+            2
+        );
+        for limit in ["0", "255"] {
+            let run = |bin: &Path| {
+                Command::new(bin)
+                    .args([limit, "false", "1"])
+                    .output()
+                    .unwrap()
+            };
+            let a = run(&fast_fault.executable);
+            let b = run(&slow_fault.executable);
+            assert!(!a.status.success());
+            assert_eq!(
+                (a.status.code(), a.stdout, a.stderr),
+                (b.status.code(), b.stdout, b.stderr)
+            );
+        }
+
+        // A library can also act on the matched outcome before returning
+        // the borrow, independently of effects in the concrete predicate.
+        let library = include_str!("../library/search.vn");
+        let observed_library = library.replacen("matched => exit found { value }", "matched => accepted", 1)
+            .replacen("        [advance]: delta", "        [accepted]: emit(\"accepted\"); exit found { value };\n        [advance]: delta", 1);
+        fs::write(&f.source, &src).unwrap();
+        fs::write(f.root.join("search.vn"), observed_library).unwrap();
+        let program = compile_file(&f.source, manifest.clone()).unwrap();
+        let built = program
+            .build_llvm("main", &f.root.join("observable-return"), 3)
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(built.llvm)
+                .unwrap()
+                .matches(prefix)
+                .count(),
+            1
+        );
+        let output = Command::new(built.executable)
+            .args(["255", "false", "1"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"accepted\n255\ndone\n");
+        fs::write(f.root.join("search.vn"), library).unwrap();
 
         // The ordinary predicate emits on each rejected element. Only the
         // independent fallible predicate still qualifies for bulk rejection.

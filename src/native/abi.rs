@@ -3892,70 +3892,173 @@ pub unsafe extern "C" fn tellur_rt_v1_search_prefix(
     field: usize,
     stop: u64,
 ) {
+    unsafe { &mut *ctx }
+        .perform(|c| search_prefix(c, vector, rule, position, field, stop).map(|_| ()))
+}
+
+/// Writes a pair of plain u32 scalars for LLVM. No address into dynamic value
+/// storage escapes the call. Zero selects the ordinary checked loop.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_search_candidate(
+    ctx: *mut Context<'_>,
+    vector: usize,
+    rule: usize,
+    position: u64,
+    field: usize,
+    stop: u64,
+    item: *mut u32,
+    limit: *mut u32,
+) -> u32 {
     unsafe { &mut *ctx }.perform(|c| {
-        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
-            return Ok(());
-        }
-        let pos = c.value_index(position)?;
-        let Some(V::U32(start)) = c.values[pos] else {
-            return Ok(());
-        };
-        // These reads are speculative, including on an empty vector. A missing
-        // operand must fault at its authored instruction if execution reaches it.
-        let borrowed = |slot| {
-            let storage = c.storage.values();
-            let V::Reference { root, fields, .. } =
-                super::slot(storage, c.local(slot).ok()?).ok()?
-            else {
-                return None;
-            };
-            super::project_ref(super::slot(storage, *root).ok()?, fields).ok()
-        };
-        let Some(V::Construct { ty, name, fields }) = borrowed(vector) else {
-            return Ok(());
-        };
-        if ty != "vector<U32>" || name != "vector" {
-            return Ok(());
-        }
-        let Some(V::Construct {
-            fields: rule_fields,
-            ..
-        }) = borrowed(rule)
+        let Some((value, threshold)) = search_prefix(c, vector, rule, position, field, stop)?
         else {
-            return Ok(());
+            return Ok(0);
         };
-        let Some(V::U32(limit)) = rule_fields.get(field) else {
-            return Ok(());
-        };
-        let steps = fields
-            .get(start as usize..)
-            .unwrap_or_default()
-            .iter()
-            .take((u32::MAX - start) as usize)
-            .take_while(|v| matches!(v, V::U32(n) if n < limit && u64::from(*n) != stop))
-            .count();
-        if steps == 0 {
-            return Ok(());
+        unsafe {
+            item.write(value);
+            limit.write(threshold);
         }
-        let Some(primitive) = c.host.manifest["primitives"]
-            .as_array()
-            .and_then(|ps| ps.iter().find(|p| p["name"] == "checked_add"))
+        Ok(1)
+    })
+}
+
+fn search_prefix(
+    c: &mut Context<'_>,
+    vector: usize,
+    rule: usize,
+    position: u64,
+    field: usize,
+    stop: u64,
+) -> R<Option<(u32, u32)>> {
+    if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+        return Ok(None);
+    }
+    let pos = c.value_index(position)?;
+    let Some(V::U32(start)) = c.values[pos] else {
+        return Ok(None);
+    };
+    // These reads are speculative, including on an empty vector. A missing
+    // operand must fault at its authored instruction if execution reaches it.
+    let borrowed = |slot| {
+        let storage = c.storage.values();
+        let V::Reference { root, fields, .. } = super::slot(storage, c.local(slot).ok()?).ok()?
         else {
-            return Ok(());
+            return None;
         };
-        if primitive["rust"].is_object()
-            || primitive["pure"] == true
-            || c.host.check_contract("checked_add", primitive) != Ok(true)
+        super::project_ref(super::slot(storage, *root).ok()?, fields).ok()
+    };
+    let Some(V::Construct { ty, name, fields }) = borrowed(vector) else {
+        return Ok(None);
+    };
+    if ty != "vector<U32>" || name != "vector" {
+        return Ok(None);
+    }
+    let Some(V::Construct {
+        fields: rule_fields,
+        ..
+    }) = borrowed(rule)
+    else {
+        return Ok(None);
+    };
+    let Some(V::U32(limit)) = rule_fields.get(field) else {
+        return Ok(None);
+    };
+    let steps = fields
+        .get(start as usize..)
+        .unwrap_or_default()
+        .iter()
+        .take((u32::MAX - start) as usize)
+        .take_while(|v| matches!(v, V::U32(n) if n < limit && u64::from(*n) != stop))
+        .count();
+    let candidate = fields
+        .get(start as usize + steps)
+        .and_then(|value| match value {
+            V::U32(n) => Some((*n, *limit)),
+            _ => None,
+        });
+    if steps == 0 {
+        return Ok(candidate);
+    }
+    let Some(primitive) = c.host.manifest["primitives"]
+        .as_array()
+        .and_then(|ps| ps.iter().find(|p| p["name"] == "checked_add"))
+    else {
+        return Ok(None);
+    };
+    if primitive["rust"].is_object()
+        || primitive["pure"] == true
+        || c.host.check_contract("checked_add", primitive) != Ok(true)
+    {
+        return Ok(None);
+    }
+    if !c
+        .storage
+        .values_mut()
+        .skip_completed(steps as u64, &c.host.activations)
+    {
+        return Ok(None);
+    }
+    c.values[pos] = Some(V::U32(start + steps as u32));
+    Ok(candidate)
+}
+
+/// Consume the checked source reborrow. On a proven hit, project its formation
+/// into the original owner and account for the elided predicate activation.
+/// On fallback the loop still owns its position and creates the ordinary loan.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_search_loan(
+    ctx: *mut Context<'_>,
+    source: u64,
+    position: u64,
+    exit_site: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let V::Reference {
+            root,
+            mut fields,
+            evidence,
+            ty,
+        } = c.take(source)?
+        else {
+            return Err("E_NATIVE: search loan requires a reference".into());
+        };
+        let Some(target) = &evidence.target else {
+            return Ok(0);
+        };
+        let storage = c.storage.values();
+        if fields.len() >= execution::reference_evidence::LIMIT
+            || target.fields != fields
+            || storage.require_storage(&target.storage).ok() != Some(root)
         {
-            return Ok(());
+            return Ok(0);
         }
-        if c.storage
+        let V::U32(index) = *c.get(position)? else {
+            return Ok(0);
+        };
+        let container = super::project_ref(super::slot(storage, root)?, &fields)?;
+        if ty != "&vector<U32>"
+            || !matches!(container, V::Construct { ty, name, fields }
+                if ty == "vector<U32>" && name == "vector" && matches!(fields.get(index as usize), Some(V::U32(_))))
+        {
+            return Ok(0);
+        }
+        if !c
+            .storage
             .values_mut()
-            .skip_completed(steps as u64, &c.host.activations)
+            .skip_completed(1, &c.host.activations)
         {
-            c.values[pos] = Some(V::U32(start + steps as u32));
+            return Ok(0);
         }
-        Ok(())
+        c.take(position)?;
+        c.host.at(exit_site);
+        let index = index as usize;
+        fields.push(index);
+        Ok(c.put(V::Reference {
+            ty: "&U32".into(),
+            root,
+            fields,
+            evidence: evidence.into_projected(&[index]),
+        }))
     })
 }
 
