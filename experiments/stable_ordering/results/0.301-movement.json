@@ -1,0 +1,8 @@
+{
+  "comparisons": 8913,
+  "merge_suffix_slots": 499,
+  "singleton_suffix_slots": 0,
+  "run_header_suffix_slots": 698027,
+  "suffix_bytes_at_136_per_slot": 94999536,
+  "scope": "Modeled suffix shifts, excluding input/output transfers, buffer growth, record field storage and other transport."
+}

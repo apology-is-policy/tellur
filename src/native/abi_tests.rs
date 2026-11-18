@@ -3216,3 +3216,75 @@ fn singleton_runs_transfer_resources_once_and_preserve_fallback_owners() {
     };
     assert_eq!(fields, vec![vector(vec![empty]); 3]);
 }
+
+#[test]
+fn singleton_runs_compact_fixed_fields_and_preserve_collection_reserve() {
+    use std::{cell::Cell, rc::Rc};
+    struct Owner(Rc<Cell<usize>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    for (ty, name, compact) in [
+        ("record", "record", true),
+        ("array<probe,1>", "array", true),
+        ("vector<probe>", "vector", false),
+        ("map<string,probe>", "map", false),
+    ] {
+        let drops = Rc::new(Cell::new(0));
+        let mut host = Host::new(json!({}), None, false, None);
+        let resource = host
+            .resources
+            .insert("probe", Owner(drops.clone()))
+            .unwrap();
+        let mut fields = Vec::with_capacity(8);
+        if name == "map" {
+            fields.push(V::String("key".into()));
+        }
+        fields.push(resource.clone());
+        let length = fields.len();
+        let reserve = fields.capacity();
+        let mut c = context(&mut host);
+        let source_ty = format!("vector<{ty}>");
+        let source = c.put(V::Construct {
+            ty: source_ty.clone(),
+            name: "vector".into(),
+            fields: vec![V::Construct {
+                ty: ty.into(),
+                name: name.into(),
+                fields,
+            }],
+        });
+        let destination = c.put(V::Construct {
+            ty: format!("vector<{source_ty}>"),
+            name: "vector".into(),
+            fields: vec![],
+        });
+        unsafe {
+            tellur_rt_v1_singletons(
+                &mut c,
+                source,
+                destination,
+                source_ty.as_ptr(),
+                source_ty.len(),
+            );
+        }
+        assert!(c.error.is_none());
+        assert_eq!(drops.get(), 0);
+        let V::Construct { fields: runs, .. } = c.take(destination).unwrap() else {
+            panic!()
+        };
+        let V::Construct { fields: run, .. } = &runs[0] else {
+            panic!()
+        };
+        let V::Construct { fields, .. } = &run[0] else {
+            panic!()
+        };
+        assert_eq!(fields.len(), length);
+        assert_eq!(fields.capacity(), if compact { length } else { reserve });
+        assert_eq!(fields.last(), Some(&resource));
+        drop(c.host.resources.take::<Owner>(&resource, "probe").unwrap());
+        assert_eq!(drops.get(), 1);
+    }
+}

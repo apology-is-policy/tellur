@@ -1,0 +1,263 @@
+{
+  "layout": {
+    "copied": {
+      "children": [
+        null,
+        null
+      ],
+      "fields_capacity": 2,
+      "fields_len": 2,
+      "fields_usable": 320,
+      "name_capacity": 6,
+      "name_len": 6,
+      "name_usable": 16,
+      "type_capacity": 6,
+      "type_len": 6,
+      "type_usable": 16
+    },
+    "decoded": {
+      "children": [
+        null,
+        null
+      ],
+      "fields_capacity": 4,
+      "fields_len": 2,
+      "fields_usable": 640,
+      "name_capacity": 6,
+      "name_len": 6,
+      "name_usable": 16,
+      "type_capacity": 6,
+      "type_len": 6,
+      "type_usable": 16
+    },
+    "value_bytes": 136
+  },
+  "explanation": "Decoded records have4field slots but2live fields. The checked0.299 Copy operation clones to2slots;0.300 bulk ownership transfer keeps the original4slots.640\u2212320=320allocator-usable bytes per record, exactly327680bytes for1024records.",
+  "paired_scope_results": [
+    {
+      "kind": "previous",
+      "control": "singletons<record>",
+      "items": 128,
+      "invocations": 1,
+      "totals": {
+        "calls": 7207,
+        "allocations": 3344,
+        "reallocations": 6,
+        "requested_bytes": 256756
+      },
+      "peak_max": 15792,
+      "end_delta_sum": -14720
+    },
+    {
+      "kind": "previous",
+      "control": "singletons<record>",
+      "items": 1024,
+      "invocations": 1,
+      "totals": {
+        "calls": 57383,
+        "allocations": 26640,
+        "reallocations": 9,
+        "requested_bytes": 2029940
+      },
+      "peak_max": 85424,
+      "end_delta_sum": -129408
+    },
+    {
+      "kind": "previous",
+      "control": "merge_pass<key_order>",
+      "items": 128,
+      "invocations": 7,
+      "totals": {
+        "calls": 35085,
+        "allocations": 8125,
+        "reallocations": 91,
+        "requested_bytes": 1225691
+      },
+      "peak_max": 41520,
+      "end_delta_sum": 13440
+    },
+    {
+      "kind": "previous",
+      "control": "merge_pass<key_order>",
+      "items": 1024,
+      "invocations": 10,
+      "totals": {
+        "calls": 280860,
+        "allocations": 65030,
+        "reallocations": 646,
+        "requested_bytes": 10890091
+      },
+      "peak_max": 242224,
+      "end_delta_sum": -55904
+    },
+    {
+      "kind": "previous",
+      "control": "merge<key_order>",
+      "items": 128,
+      "invocations": 127,
+      "totals": {
+        "calls": 24229,
+        "allocations": 5226,
+        "reallocations": 74,
+        "requested_bytes": 957956
+      },
+      "peak_max": 31184,
+      "end_delta_sum": 44800
+    },
+    {
+      "kind": "previous",
+      "control": "merge<key_order>",
+      "items": 1024,
+      "invocations": 1023,
+      "totals": {
+        "calls": 195501,
+        "allocations": 42374,
+        "reallocations": 608,
+        "requested_bytes": 8837676
+      },
+      "peak_max": 150000,
+      "end_delta_sum": 188160
+    },
+    {
+      "kind": "previous",
+      "control": "flatten<record>",
+      "items": 128,
+      "invocations": 1,
+      "totals": {
+        "calls": 127,
+        "allocations": 31,
+        "reallocations": 0,
+        "requested_bytes": 3229
+      },
+      "peak_max": 2352,
+      "end_delta_sum": -512
+    },
+    {
+      "kind": "previous",
+      "control": "flatten<record>",
+      "items": 1024,
+      "invocations": 1,
+      "totals": {
+        "calls": 127,
+        "allocations": 31,
+        "reallocations": 0,
+        "requested_bytes": 3229
+      },
+      "peak_max": 2352,
+      "end_delta_sum": -512
+    },
+    {
+      "kind": "current",
+      "control": "singletons<record>",
+      "items": 128,
+      "invocations": 1,
+      "totals": {
+        "calls": 41,
+        "allocations": 400,
+        "reallocations": 1,
+        "requested_bytes": 41364
+      },
+      "peak_max": 47456,
+      "end_delta_sum": 26240
+    },
+    {
+      "kind": "current",
+      "control": "singletons<record>",
+      "items": 1024,
+      "invocations": 1,
+      "totals": {
+        "calls": 41,
+        "allocations": 3088,
+        "reallocations": 1,
+        "requested_bytes": 302996
+      },
+      "peak_max": 346464,
+      "end_delta_sum": 198272
+    },
+    {
+      "kind": "current",
+      "control": "merge_pass<key_order>",
+      "items": 128,
+      "invocations": 7,
+      "totals": {
+        "calls": 35085,
+        "allocations": 8125,
+        "reallocations": 91,
+        "requested_bytes": 1225691
+      },
+      "peak_max": 41520,
+      "end_delta_sum": 13440
+    },
+    {
+      "kind": "current",
+      "control": "merge_pass<key_order>",
+      "items": 1024,
+      "invocations": 10,
+      "totals": {
+        "calls": 280860,
+        "allocations": 65030,
+        "reallocations": 646,
+        "requested_bytes": 10890091
+      },
+      "peak_max": 242224,
+      "end_delta_sum": -55904
+    },
+    {
+      "kind": "current",
+      "control": "merge<key_order>",
+      "items": 128,
+      "invocations": 127,
+      "totals": {
+        "calls": 24229,
+        "allocations": 5226,
+        "reallocations": 74,
+        "requested_bytes": 957956
+      },
+      "peak_max": 31184,
+      "end_delta_sum": 44800
+    },
+    {
+      "kind": "current",
+      "control": "merge<key_order>",
+      "items": 1024,
+      "invocations": 1023,
+      "totals": {
+        "calls": 195501,
+        "allocations": 42374,
+        "reallocations": 608,
+        "requested_bytes": 8837676
+      },
+      "peak_max": 150000,
+      "end_delta_sum": 188160
+    },
+    {
+      "kind": "current",
+      "control": "flatten<record>",
+      "items": 128,
+      "invocations": 1,
+      "totals": {
+        "calls": 127,
+        "allocations": 31,
+        "reallocations": 0,
+        "requested_bytes": 3229
+      },
+      "peak_max": 2352,
+      "end_delta_sum": -512
+    },
+    {
+      "kind": "current",
+      "control": "flatten<record>",
+      "items": 1024,
+      "invocations": 1,
+      "totals": {
+        "calls": 127,
+        "allocations": 31,
+        "reallocations": 0,
+        "requested_bytes": 3229
+      },
+      "peak_max": 2352,
+      "end_delta_sum": -512
+    }
+  ],
+  "choice": "Compact fixed-arity fields before reserving output. Keep vector/map reserve; transfer resources without cloning. Final packaged comparisons below supersede standalone-runtime timing probes."
+}

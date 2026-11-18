@@ -190,3 +190,57 @@ then qualify representations, applicable ordered bounds and supported-library ad
 [Raw timings](results/0.300-timings.csv) · [Allocations](results/0.300-allocations.csv) ·
 [ABI breakdown](results/0.300-operations.csv) · [CPU](results/0.300-cpu.json) ·
 [Movement](results/0.300-movement.json) · [Environment](results/0.300-environment.json)
+
+
+## Fixed payload compaction in 0.301
+
+The 0.300 peak increase has a concrete cause. JSON decoding gives a two-u32
+record four field slots (640 allocator-usable bytes). The former checked Copy
+operation cloned it into two slots (320 usable bytes). Bulk moving retained the
+original reserve. The 320-byte difference per record accounts for the entire
+327,680-byte end-of-singletons offset. Independent paired control scopes show
+identical downstream merge/pass/flatten allocations and memory deltas.
+[Layout and scoped evidence](results/0.301-capacity-root-cause.json)
+
+The runtime now compacts fixed-arity field buffers before reserving the output runs.
+It preserves the original owners and requires no clone capability. Resources are
+neither duplicated nor completed; growable vector and map payloads retain their
+useful reserve. Compacting inside the transfer loop was also measured, but retained
+a larger temporary overlap. Compacting before output reservation restores the prior
+peak while retaining bulk transfer. This is a memory improvement with a measured
+allocation and time tradeoff, not a speed improvement.
+
+| Input | 0.300 | 0.301 | Rust |
+| --- | ---: | ---: | ---: |
+| Empty | 23.29 µs | 23.00 µs | 42 ns |
+| Single | 26.83 µs | 27.58 µs | 42 ns |
+| 128 mixed | 1.178 ms | 1.168 ms | 3.000 µs |
+| 1,024 mixed | 10.95 ms | 11.44 ms | 10.54 µs |
+| 1,024 sorted | 10.53 ms | 10.68 ms | 2.458 µs |
+| 1,024 reversed | 11.42 ms | 11.96 ms | 15.92 µs |
+| 1,024 equal | 9.956 ms | 10.43 ms | 2.291 µs |
+
+These are final paired compiler packages, each with its matching IR/runtime, on the
+shared M2. The earlier runtime-only probe's large small-input timing regression did
+not reproduce in this comparison. The complete mixed call is about **4.5% slower**
+and still **1,085× Rust**. Median changes are observations, not significance claims.
+Peak extra usable memory falls **442,016 → 114,336 bytes (74%)**. Allocations stay
+at 68,197; reallocations rise from 648 to 1,672 and requested bytes from 11,202,411
+to 11,480,939. Shrinking still requests replacement space; total requested bytes and
+peak live storage measure different things. Rust uses one 8,192-byte allocation.
+The 128-record peak falls from 69,280 to 28,320 bytes.
+
+Source movement and comparison count are unchanged: 94,999,536 modeled suffix
+bytes and 8,913 comparisons. Of 580 in-sort CPU samples, 201 are in collection
+operations, 155 in vector transfer, 49 in control calls, 43 in merge and two in
+singleton construction. Next, address run-header draining and terminal transport,
+then representation qualification, applicable ordered bounds and supported modules.
+
+All 569 selected Rust regressions and 48 editor tests pass. New ABI cases cover
+resource-bearing fixed records and arrays, exact owner completion, and preserved
+vector/map reserves. Existing source-level effect, resource and observer tests pass.
+Packaged CLI/LSP, cold Hello and settings HTTP pass; both Linux targets cross-link
+with the helper and were not executed on this M2. Existing windows were not reloaded.
+[Timings](results/0.301-timings.csv) · [Allocations](results/0.301-allocations.csv) ·
+[Operations](results/0.301-operations.csv) · [CPU](results/0.301-cpu.json) ·
+[Environment](results/0.301-environment.json)

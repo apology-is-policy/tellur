@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Fixed payload capacity, 18 November 2026
+
+Compiler 0.301 compacts fixed-arity payload buffers before building singleton runs, preserving resource ownership and growable collection reserves. The 0.300 memory increase came from decoded records retaining capacity that the older implicit Copy operation had tightened. Paired M2 mixed-sort peak extra usable memory returns from 442,016 to 114,336 bytes, at 1,024 extra reallocations and about 4.5% slower execution (11.44 ms versus Rust 10.54 µs). Next: run-header draining and terminal transport, then representation qualification, ordered bounds and supported-library adoption. [Root cause and measured tradeoff](../experiments/stable_ordering/README.md#fixed-payload-compaction-in-0301)
+
 ### Singleton run construction, 18 November 2026
 
 Compiler 0.300 batches proven singleton-run construction without cloning elements or skipping user calls. Resource, terminal-effect and diagnostic behavior is preserved. The paired M2 mixed 1,024-record sort improves from 13.37 ms to 10.06 ms, versus Rust at 9.042 µs. Allocations fall from 91,749 to 68,197, but peak extra usable memory rises from 114,336 to 442,016 bytes. Next: investigate that peak regression and remaining run-header/terminal transport, then representation qualification, ordered bounds and supported-library adoption. [Measurements and limits](../experiments/stable_ordering/README.md#singleton-run-construction-in-0300)

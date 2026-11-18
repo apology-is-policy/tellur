@@ -1,8 +1,8 @@
 # Villanelle language reference
 
-<!-- villanelle-reference-version: 0.300.0 -->
+<!-- villanelle-reference-version: 0.301.0 -->
 
-This manual describes **compiler 0.300.0**, including the current ownership model,
+This manual describes **compiler 0.301.0**, including the current ownership model,
 control flow, data types and editor workflow. It is the reference for writing Villanelle
 today. The [roadmap](language-revision.md) and linked design notes also discuss
 proposals; those proposals are not executable language features unless this manual

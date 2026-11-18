@@ -44,6 +44,21 @@ The first invocation exits with status 0; the second selects `declined` and exit
 with status 7. Both report the declared outcome and its payload. Native `--json`,
 `--scenario`, `--entry`, `--help` and `--fuel` retain their existing behavior.
 
+## Fixed payload capacity (0.301)
+
+Before forming singleton runs, the runtime compacts spare field-buffer capacity
+in fixed-arity payloads. It does this before reserving the output run buffer to
+avoid overlapping both reserves. Records, variants and fixed arrays cannot use
+spare field slots; growable vectors and maps retain their reserve. Compaction
+moves storage without cloning elements, completing resources or changing their
+ordering and ownership obligations.
+
+This matters when decoded records arrive with spare capacity. The former checked
+Copy path incidentally tightened those buffers while cloning them; the bulk move
+in 0.300 retained the original capacity. Compaction avoids that retained storage
+while keeping the bulk ownership transfer. It may add reallocations, so both peak
+live storage and total allocation traffic must be measured.
+
 ## Singleton run construction (0.300)
 
 Optimized synchronous LLVM builds can batch a loop that takes each owned vector

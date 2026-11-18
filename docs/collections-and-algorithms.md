@@ -99,6 +99,8 @@ Compiler 0.299 lowers proven effect-free merge prefixes for records containing u
 
 Compiler 0.300 batches singleton-run formation while preserving generic element ownership, including resources. In the paired M2 run the complete mixed sort improves 1.33× to 10.06 ms, versus Rust at 9.042 µs; allocations fall to 68,197. Peak extra usable memory rises to 442,016 bytes, which remains an investigation target alongside run-header movement and terminal transport. [Paired evidence and memory limitation](../experiments/stable_ordering/README.md#singleton-run-construction-in-0300)
 
+Compiler 0.301 identifies the peak increase as retained spare capacity in decoded records. It compacts fixed-arity payload fields before reserving run output, retaining growable collection reserves and all resource owners. Mixed-sort peak extra usable memory returns to 114,336 bytes; this adds 1,024 reallocations and costs about 4.5% in the final paired run. Next, reduce run-header and terminal transport before representation qualification and supported-library adoption. [Root cause and tradeoff](../experiments/stable_ordering/README.md#fixed-payload-compaction-in-0301)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

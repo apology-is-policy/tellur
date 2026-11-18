@@ -1,0 +1,212 @@
+{
+  "empty": {
+    "previous": {
+      "median_ns": 23291,
+      "min_ns": 19375,
+      "max_ns": 25250,
+      "allocations": 37,
+      "reallocations": 2,
+      "requested_bytes": 7991,
+      "peak_extra_bytes": 4272
+    },
+    "vn": {
+      "median_ns": 23000,
+      "min_ns": 19041,
+      "max_ns": 33375,
+      "allocations": 37,
+      "reallocations": 2,
+      "requested_bytes": 7991,
+      "peak_extra_bytes": 4272
+    },
+    "rs": {
+      "median_ns": 42,
+      "min_ns": 0,
+      "max_ns": 167,
+      "allocations": 0,
+      "requested_bytes": 0,
+      "peak_extra_bytes": 0
+    },
+    "speedup": 1.0126521739130434,
+    "rust_ratio": 547.6190476190476
+  },
+  "equal": {
+    "previous": {
+      "median_ns": 9955666,
+      "min_ns": 9636875,
+      "max_ns": 12541250,
+      "allocations": 64697,
+      "reallocations": 298,
+      "requested_bytes": 9416251,
+      "peak_extra_bytes": 442016
+    },
+    "vn": {
+      "median_ns": 10429375,
+      "min_ns": 9704250,
+      "max_ns": 11299750,
+      "allocations": 64697,
+      "reallocations": 1322,
+      "requested_bytes": 9694779,
+      "peak_extra_bytes": 114336
+    },
+    "rs": {
+      "median_ns": 2291,
+      "min_ns": 1083,
+      "max_ns": 2791,
+      "allocations": 1,
+      "requested_bytes": 8192,
+      "peak_extra_bytes": 8192
+    },
+    "speedup": 0.9545793491939834,
+    "rust_ratio": 4552.324312527281
+  },
+  "mixed": {
+    "previous": {
+      "median_ns": 10945417,
+      "min_ns": 10362750,
+      "max_ns": 12571750,
+      "allocations": 68197,
+      "reallocations": 648,
+      "requested_bytes": 11202411,
+      "peak_extra_bytes": 442016
+    },
+    "vn": {
+      "median_ns": 11437083,
+      "min_ns": 10564166,
+      "max_ns": 13557959,
+      "allocations": 68197,
+      "reallocations": 1672,
+      "requested_bytes": 11480939,
+      "peak_extra_bytes": 114336
+    },
+    "rs": {
+      "median_ns": 10541,
+      "min_ns": 9166,
+      "max_ns": 13708,
+      "allocations": 1,
+      "requested_bytes": 8192,
+      "peak_extra_bytes": 8192
+    },
+    "speedup": 0.9570112414153155,
+    "rust_ratio": 1085.0092970306423
+  },
+  "reverse": {
+    "previous": {
+      "median_ns": 11424583,
+      "min_ns": 10764083,
+      "max_ns": 13701084,
+      "allocations": 70667,
+      "reallocations": 895,
+      "requested_bytes": 9995503,
+      "peak_extra_bytes": 442032
+    },
+    "vn": {
+      "median_ns": 11957584,
+      "min_ns": 10877375,
+      "max_ns": 13014875,
+      "allocations": 70667,
+      "reallocations": 1919,
+      "requested_bytes": 10274031,
+      "peak_extra_bytes": 114352
+    },
+    "rs": {
+      "median_ns": 15916,
+      "min_ns": 14375,
+      "max_ns": 23209,
+      "allocations": 1,
+      "requested_bytes": 8192,
+      "peak_extra_bytes": 8192
+    },
+    "speedup": 0.9554256946888268,
+    "rust_ratio": 751.2932897712993
+  },
+  "single": {
+    "previous": {
+      "median_ns": 26833,
+      "min_ns": 24458,
+      "max_ns": 30458,
+      "allocations": 58,
+      "reallocations": 3,
+      "requested_bytes": 15478,
+      "peak_extra_bytes": 8208
+    },
+    "vn": {
+      "median_ns": 27583,
+      "min_ns": 23916,
+      "max_ns": 55958,
+      "allocations": 58,
+      "reallocations": 4,
+      "requested_bytes": 15750,
+      "peak_extra_bytes": 7888
+    },
+    "rs": {
+      "median_ns": 42,
+      "min_ns": 0,
+      "max_ns": 125,
+      "allocations": 0,
+      "requested_bytes": 0,
+      "peak_extra_bytes": 0
+    },
+    "speedup": 0.9728093390856687,
+    "rust_ratio": 656.7380952380952
+  },
+  "small": {
+    "previous": {
+      "median_ns": 1177833,
+      "min_ns": 1139416,
+      "max_ns": 2043375,
+      "allocations": 8592,
+      "reallocations": 93,
+      "requested_bytes": 1275350,
+      "peak_extra_bytes": 69280
+    },
+    "vn": {
+      "median_ns": 1167834,
+      "min_ns": 1150417,
+      "max_ns": 1636042,
+      "allocations": 8592,
+      "reallocations": 221,
+      "requested_bytes": 1310166,
+      "peak_extra_bytes": 28320
+    },
+    "rs": {
+      "median_ns": 3000,
+      "min_ns": 2708,
+      "max_ns": 3333,
+      "allocations": 0,
+      "requested_bytes": 0,
+      "peak_extra_bytes": 0
+    },
+    "speedup": 1.008562004531466,
+    "rust_ratio": 389.278
+  },
+  "sorted": {
+    "previous": {
+      "median_ns": 10529708,
+      "min_ns": 10213667,
+      "max_ns": 11647917,
+      "allocations": 64697,
+      "reallocations": 298,
+      "requested_bytes": 9416251,
+      "peak_extra_bytes": 442016
+    },
+    "vn": {
+      "median_ns": 10680584,
+      "min_ns": 10299750,
+      "max_ns": 14614875,
+      "allocations": 64697,
+      "reallocations": 1322,
+      "requested_bytes": 9694779,
+      "peak_extra_bytes": 114336
+    },
+    "rs": {
+      "median_ns": 2458,
+      "min_ns": 1042,
+      "max_ns": 2792,
+      "allocations": 1,
+      "requested_bytes": 8192,
+      "peak_extra_bytes": 8192
+    },
+    "speedup": 0.985873806151424,
+    "rust_ratio": 4345.233523189585
+  }
+}

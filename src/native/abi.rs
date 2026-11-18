@@ -4348,6 +4348,18 @@ pub unsafe extern "C" fn tellur_rt_v1_singletons(
         {
             return Ok(());
         }
+        for owner in source.iter_mut() {
+            // Fixed-arity payloads cannot use spare field slots. Moving them
+            // avoids the checked path's implicit Copy clone, which incidentally
+            // tightened this buffer. Reclaim that capacity without cloning owners.
+            // Growable collections keep their useful reserve.
+            if let V::Construct { name, fields, .. } = owner
+                && name != "vector"
+                && name != "map"
+            {
+                fields.shrink_to_fit();
+            }
+        }
         destination.reserve(source.len());
         for owner in source.drain(..) {
             destination.push(V::Construct {
