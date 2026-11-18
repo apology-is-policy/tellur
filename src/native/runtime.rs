@@ -129,6 +129,44 @@ pub enum V {
         fields: Vec<V>,
     },
 }
+
+/// Move a prefix between distinct owners without cloning or dropping its items.
+/// `Vec::extend(Drain)` copies large enum values one at a time; the proved
+/// contiguous transfer can copy the whole prefix and compact the suffix once.
+pub fn append_vector_prefix<T>(source: &mut Vec<T>, destination: &mut Vec<T>, count: usize) {
+    assert!(count <= source.len());
+    if count == source.len() {
+        if destination.is_empty() {
+            std::mem::swap(source, destination);
+        } else {
+            destination.append(source);
+        }
+        return;
+    }
+    if count == 0 {
+        return;
+    }
+    destination.reserve(count);
+    let destination_len = destination.len();
+    let remaining = source.len() - count;
+    // SAFETY: reserve established room for the entire prefix, including checked
+    // length arithmetic. The exclusive Vec borrows own disjoint allocations.
+    // Both source ranges contain initialized T values. Copying the suffix may
+    // overlap, so it uses copy rather than copy_nonoverlapping. No operation in
+    // this block can panic or invoke user code. The final lengths leave each
+    // original item initialized in exactly one owner; stale bytes past the new
+    // source length are never dropped. This also supports zero-sized T.
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            source.as_ptr(),
+            destination.as_mut_ptr().add(destination_len),
+            count,
+        );
+        std::ptr::copy(source.as_ptr().add(count), source.as_mut_ptr(), remaining);
+        source.set_len(remaining);
+        destination.set_len(destination_len + count);
+    }
+}
 // Descriptive provenance must not change value comparisons.
 impl PartialEq for V {
     fn eq(&self, other: &Self) -> bool {

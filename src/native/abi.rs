@@ -4266,15 +4266,7 @@ pub unsafe extern "C" fn tellur_rt_v1_vector_transfer(
         {
             return Ok(());
         }
-        if steps == source.len() {
-            if destination.is_empty() {
-                std::mem::swap(source, destination);
-            } else {
-                destination.append(source);
-            }
-        } else {
-            destination.extend(source.drain(..steps));
-        }
+        append_vector_prefix(source, destination, steps);
         Ok(())
     })
 }

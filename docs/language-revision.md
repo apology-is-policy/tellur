@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Batch payload and transport profile, 18 November 2026
+
+The runtime stores a u32 in a 136-byte generic value. Equal-width plain records have similar transfer costs, and moving from O2 to O3 does not close that gap. Compiler 0.294 replaces the prefix extension loop with a contiguous ownership transfer. With identical LLVM IR, the complete 4,096-u32 rotation improves from 59.50 to 54.75 µs (8.0%), versus Rust flat at 4.63 µs. Allocation volume is unchanged; small batches show no improvement. Resource and zero-sized owners retain exactly one destination and destruction. The separate 0.293 control profile attributes about 24 µs to work outside the bulk transfers. Next, reduce temporary reference formation and control transport, then address live checked arithmetic before the agreed partition, stable ordering and library-adoption checkpoints. [Profile and measurements](../experiments/sequence_storage/README.md#where-the-remaining-batch-time-goes)
+
 ### Native consuming split and join, 18 November 2026
 
 Compiler 0.293 moves proven vector prefixes in bulk, preserving resource ownership and letting the checked graph route the terminal outcome. Iteration effects, tracing, scripts and fuel retain checked execution. On M2 a complete 4,096-u32 rotation improved from 17.17 ms to 62.6 µs, versus Rust flat at 4.79 µs. The operation makes 42 allocations and three reallocations. Next, profile generic value storage, payload movement and control-call transport to address the remaining 13.1× gap, alongside the existing checked-arithmetic target. Then complete the agreed consuming partition, ordering and library-adoption work. [Measured results](../experiments/sequence_storage/README.md#native-bulk-transfer-in-0293)

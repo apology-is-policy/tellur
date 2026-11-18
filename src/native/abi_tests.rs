@@ -2534,3 +2534,76 @@ fn bulk_vector_transfer_preserves_every_owned_element_and_bound() {
         assert_eq!(c.host.fuel, fuel);
     }
 }
+
+#[test]
+fn contiguous_prefix_transfer_moves_nonclone_owners_once() {
+    use std::{cell::RefCell, rc::Rc};
+    #[repr(align(128))]
+    struct Owner(usize, Rc<RefCell<Vec<usize>>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.1.borrow_mut().push(self.0);
+        }
+    }
+    for length in 0..33 {
+        for count in 0..=length {
+            for destination_length in [0, 1, 7] {
+                for spare in [0, 64] {
+                    let drops = Rc::new(RefCell::new(Vec::new()));
+                    let mut source = Vec::with_capacity(length + spare);
+                    source.extend((0..length).map(|id| Owner(id, drops.clone())));
+                    let mut destination = Vec::with_capacity(destination_length + spare);
+                    destination.extend(
+                        (length..length + destination_length).map(|id| Owner(id, drops.clone())),
+                    );
+                    append_vector_prefix(&mut source, &mut destination, count);
+                    assert_eq!(
+                        source.iter().map(|v| v.0).collect::<Vec<_>>(),
+                        (count..length).collect::<Vec<_>>()
+                    );
+                    assert_eq!(
+                        destination.iter().map(|v| v.0).collect::<Vec<_>>(),
+                        (length..length + destination_length)
+                            .chain(0..count)
+                            .collect::<Vec<_>>()
+                    );
+                    assert!(drops.borrow().is_empty());
+                    drop(source);
+                    drop(destination);
+                    drops.borrow_mut().sort_unstable();
+                    assert_eq!(
+                        *drops.borrow(),
+                        (0..length + destination_length).collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn contiguous_prefix_transfer_handles_zero_size_and_invalid_count() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static DROPS: AtomicUsize = AtomicUsize::new(0);
+    struct Empty;
+    impl Drop for Empty {
+        fn drop(&mut self) {
+            DROPS.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    let mut source: Vec<_> = (0..9).map(|_| Empty).collect();
+    let mut destination: Vec<_> = (0..3).map(|_| Empty).collect();
+    append_vector_prefix(&mut source, &mut destination, 4);
+    assert_eq!((source.len(), destination.len()), (5, 7));
+    assert_eq!(DROPS.load(Ordering::Relaxed), 0);
+    let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        append_vector_prefix(&mut source, &mut destination, 6);
+    }));
+    assert!(rejected.is_err());
+    assert_eq!((source.len(), destination.len()), (5, 7));
+    append_vector_prefix(&mut source, &mut destination, 5);
+    assert_eq!((source.len(), destination.len()), (0, 12));
+    drop(source);
+    drop(destination);
+    assert_eq!(DROPS.load(Ordering::Relaxed), 12);
+}

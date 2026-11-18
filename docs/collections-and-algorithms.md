@@ -98,6 +98,8 @@ The M2 storage prototype uses a uniquely owned 32-way relaxed radix tree with si
 
 Compiler 0.293 lowers proven consuming split/join iterations to bulk transfers. In a fresh M2 comparison, the complete 4,096-u32 rotation fell from 17.17 ms to 62.6 µs, while Rust flat storage took 4.79 µs. Allocation count fell from 43,722 to 42, with three remaining reallocations. The 13.1× gap now calls for profiling generic value storage, payload movement and control-call transport before selecting a backing representation. [Workloads, memory and measurements](../experiments/sequence_storage/README.md)
 
+The follow-up profile confirms 136 bytes per runtime value against four bytes per Rust u32. Compiler 0.294 copies the proven prefix contiguously and compacts its suffix once. This improves the isolated large-value kernel while keeping its allocation volume and ownership unchanged. Generic payload width, temporary reference formation and control transport remain performance targets. [Payload and call-cost evidence](../experiments/sequence_storage/README.md#where-the-remaining-batch-time-goes)
+
 ## Path to a supported library
 
 1. Exercise the existing public-outcome change on both JSON callers and use it to document failure routing and provenance. The results are in the [language roadmap](language-revision.md#active-checkpoint-queue).

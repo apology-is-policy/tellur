@@ -69,6 +69,82 @@ The 4,096-item rotation improved **274×**. It still takes **13.1×** the Rust f
 
 The LLVM regression compares original and expanded programs with and without iteration effects, empty and nonempty inputs, valid boundaries and invalid positions, live and scripted execution, and 65 fuel limits. The ABI regression covers resource tokens and bounds both below and above the initial destination length. The existing collection ownership and module conformance tests also pass. [0.292 timings](results/native-0292-paired.csv) · [0.292 allocations](results/native-0292-paired-alloc.csv) · [0.293 timings](results/native-0293.csv) · [0.293 allocations](results/native-0293-alloc.csv)
 
+## Where the remaining batch time goes
+
+The next profile confirms `size_of::<V>() == 136` on this arm64 host, compared
+with four bytes for `u32`. A plain 136-byte record performs similarly to the
+runtime enum. The split allocates 1,365 values at 4,096 inputs: **185,640 bytes**,
+or 94.1% of the complete operation's 197,302 requested bytes. Join reuses the
+original buffer's capacity. The other ABI requests total 11,662 bytes at both
+128 and 4,096 inputs.
+
+Timing the bulk calls separately in 0.293 attributes about 31 µs to transfers
+and 24 µs to the remaining control work at 4,096 inputs. This instrumentation
+adds clock reads, so its totals are not substituted for the uninstrumented
+comparison above. A separate repeated-call CPU sample found 378 of 470 samples
+inside bulk transfer: 252 in `memmove` and 124 in Rust's `extend_trusted` loop.
+The caller's checked loop is excluded from these sampled stacks. Small batches
+spread their remaining cost across call transport, allocation, locals, length,
+comparison, reference evidence and terminal outcomes.
+
+The isolated kernel comparison uses the actual runtime enum, a fully checked
+136-byte plain record, and Rust `u32`. Inputs are created before timing and every
+output element is checked afterwards. Each result is a median of 13 shuffled
+trials after one discarded trial. “Repeated” averages 256 operations in one
+process, with fresh input storage for each operation. Runtime-matching O2,
+debug assertions and overflow checks are enabled. An O3 build gives similar
+results. Allocation instrumentation runs separately.
+
+| 4,096 runtime values | One operation | Repeated, per operation | Requested bytes |
+| --- | ---: | ---: | ---: |
+| Existing prefix drain/extend, then append | 31.0 µs | 19.3 µs | 185,640 |
+| Contiguous prefix copy, then append | 25.4 µs | 14.5 µs | 185,640 |
+| Split off suffix, then extend | 41.9 µs | 9.61 µs | 1,114,248 |
+| In-place rotation | 27.0 µs | 27.7 µs | 0 |
+
+The scalar prefix kernel takes 1.42 µs once and 0.335 µs in the repeated process.
+The backing payload width remains a substantial gap. The suffix strategy wins
+in the repeated process but requests six times the memory and loses on a single
+operation. In-place rotation is a diagnostic comparison: it does not implement
+the two independent split and join calls.
+
+Generated arm64 assembly shows the old large-value extension looping over
+136-byte loads and stores. The contiguous candidate uses one prefix `memcpy`
+and one suffix `memmove`, followed by the existing append. Both prefix kernels
+explicitly transfer 5,461 elements, or 742,696 payload bytes, at this size; the
+candidate changes how the prefix is copied, not its ownership or volume.
+Regression checks cover non-Clone owners with 128-byte alignment, every split
+position up to length 32, populated and empty destinations, spare capacity,
+zero-sized destructors, invalid bounds, and exactly one destruction per owner.
+
+The released 0.294 runtime was then compared with 0.293 using **identical LLVM
+IR and the same timed object**, linked separately to each runtime archive.
+Both executables and the Rust baselines were shuffled together for 13 measured
+trials after one discarded trial. This controls for the differences between
+separate benchmark batches.
+
+| Complete rotation | Runtime 0.293 | Runtime 0.294 | Rust flat |
+| --- | ---: | ---: | ---: |
+| 128 u32 items | 29.92 µs | 30.42 µs | 2.25 µs |
+| 4,096 u32 items | 59.50 µs | 54.75 µs | 4.63 µs |
+
+The large operation improves **8.0%**. There is no small-batch improvement in
+this run. Both versions still request 42 allocations and three reallocations;
+the large request volume remains 197,302 bytes. The remaining large-case gap
+is **11.8×** against Rust flat storage. The next targets are temporary reference
+formation and control transport, alongside the established checked-arithmetic
+fold gap. Payload width remains open before selecting a tree representation.
+In the follow-up 0.294 CPU sample, 292 of 366 large-batch samples remain inside
+bulk transfer. The old extension loop disappears from the sampled leaves;
+the platform memory-copy routine now dominates the remaining payload work.
+
+[Isolated timings](results/layout.csv) · [Allocation and peak memory](results/layout-alloc.csv) ·
+[Compiler settings](results/layout-environment.json) · [0.293 transfer timing](results/transfer-time-0293.csv) ·
+[0.293 CPU sample counts](results/batch-cpu-0293.json) ·
+[0.294 CPU sample counts](results/batch-cpu-0294.json) ·
+[Identical-IR runtime comparison](results/native-0294-paired.csv) ·
+[Paired allocation counts](results/native-0294-paired-alloc.csv)
+
 ## Reproduce
 
 From the repository root:
@@ -77,8 +153,18 @@ From the repository root:
 python3 -B experiments/sequence_storage/run.py /tmp/sequence-results
 python3 -B experiments/sequence_storage/native.py ./bin/vnc \
   "$LLVM_SYS_221_PREFIX/bin" /tmp/sequence-results
+python3 -B experiments/sequence_storage/layout.py /tmp/sequence-layout
+python3 -B experiments/sequence_storage/transfer_time.py ./bin/vnc \
+  "$LLVM_SYS_221_PREFIX/bin" /tmp/sequence-profile
+python3 -B experiments/sequence_storage/sample.py ./bin/vnc \
+  "$LLVM_SYS_221_PREFIX/bin" /tmp/sequence-profile
 ./bin/vnc exec examples/rotate_batch/main.vn -- \
   --scenario examples/rotate_batch/main.scenario.json
 ```
 
 The scripts use temporary build directories and remove their binaries after completion. Timings use an uninstrumented Rust binary. Allocation builds share the existing ordered-map allocator probe. The native probe uses the current compiler's embedded runtime archive, with LLVM 22.1.8 O3 passes and object emission.
+
+An optional fourth argument to `native.py` supplies a previous compiler. The
+script requires both compilers to emit identical IR, links the same timed
+object against each embedded runtime, and interleaves both binaries in its
+trial schedule. Run timings without concurrent compiler or packaging jobs.

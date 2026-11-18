@@ -1,0 +1,26 @@
+import "../../library/sequence_batches.vn" as batches;
+
+// Keep checked loop bookkeeping outside the sampled split/join control stack.
+control main(vector<u32> pending, u32 count, u32 rounds)
+    exits ready { vector<u32> pending },
+    invalid { vector<u32> original }
+{
+    loop repeat(vector<u32> values = pending, u32 round = 0) {
+        delta (round >= rounds) {
+            true => exit ready { values },
+            false => split
+        }
+        [split]: delta batches.split_at<u32>(values, count) {
+            split { auto first, auto remaining } => rotate,
+            out_of_bounds { auto original } => exit invalid { original }
+        }
+        [rotate]: delta batches.join<u32>(remaining, first) {
+            joined { auto rotated } => advance
+        }
+        [advance]: delta checked_add(round, 1) {
+            sum { u32 next } => advanced,
+            overflow => exit invalid { rotated }
+        }
+        [advanced]: again repeat(rotated, next);
+    }
+}
