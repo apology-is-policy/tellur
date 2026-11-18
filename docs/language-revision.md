@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Scalar ordered-search advances, 18 November 2026
+
+Compiler 0.306 proves every effect-free advancing binary-search path and scalar comparison, retaining checked terminals, borrowed result origins and observed/resource fallback. The complete 4,096-middle lower bound improves 123.834 → 25.666 µs (4.82×), with allocations 403 → 25 and peak extra memory 11,872 → 6,096 bytes. Rust takes 167 ns; empty-case medians are slightly slower with unchanged allocations, so parity is not claimed. First-equivalent hits improve 2.75×. Next: fresh-project adoption and the first supported collection/algorithm modules, carrying the measured transport/payload limitations forward. [Final paired evidence](../experiments/ordered_bounds/README.md#scalar-binary-search-advances-in-0306)
+
 ### Ordered bounds and first-equivalent search, 18 November 2026
 
 The source library now provides lower/upper bounds and a first-equivalent result borrowed from the source. It uses the existing comparator and caller-supplied sorted-input obligations; the checker does not certify ordering laws. Empty, duplicate, descending and resource-bearing cases preserve comparison effects and owners across expansion and both native backends. The M2 baseline exposes generic transport: a complete 4,096-item middle lower bound takes 114.125 µs versus Rust 208 ns, with 403 allocations and 29 reallocations despite zero element movement. Next: prove and lower effect-free scalar binary-search steps, preserving checked fallback; then fresh-project adoption and supported modules. Compiler/LSP/editor remain 0.305. [Contract](collections-and-algorithms.md#ordered-bounds-and-first-equivalent-search) · [Runnable example](../examples/ordered_search/README.md) · [Performance evidence](../experiments/ordered_bounds/README.md)

@@ -1,0 +1,11 @@
+{
+  "previous_compiler": "vnc 0.305.0 (v0.1 core, v0.2 syntax preview)",
+  "compiler": "vnc 0.306.0 (v0.1 core, v0.2 syntax preview)",
+  "rust": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: aarch64-apple-darwin\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+  "llvm": "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.\n  Default target: arm64-apple-darwin27.2.0\n  Host CPU: apple-m2\n",
+  "hardware": "Apple M2 (maintained host evidence; sysctl unavailable in sandbox)",
+  "optimization": "LLVM opt default<O3> and llc -O3; rustc opt-level=3",
+  "method": "13 retained shuffled trials after one discarded trial; single query per process, input/output excluded; short timings include clock/cold-call noise",
+  "movement": "Zero source element movement or copies in both queries; generic reference/control metadata transport remains in Villanelle",
+  "inputs": "Already sorted u32 vector with values i/3; source and needle constructed before timing"
+}

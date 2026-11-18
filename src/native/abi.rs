@@ -4002,6 +4002,135 @@ fn search_prefix(
     Ok(candidate)
 }
 
+/// Collapse only compiler-proven binary-search advances. Keep the terminal
+/// iteration checked, and stop before an unsupported value or arithmetic step.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_bounds_prefix(
+    ctx: *mut Context<'_>,
+    vector: usize,
+    rule: usize,
+    needle: usize,
+    upper: usize,
+    position: u64,
+    remaining: u64,
+    descending: u32,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace
+            || c.host.script.is_some()
+            || c.host.fuel.is_some()
+            || position == remaining
+            || descending > 1
+        {
+            return Ok(());
+        }
+        let (Ok(pos), Ok(rem)) = (c.value_index(position), c.value_index(remaining)) else {
+            return Ok(());
+        };
+        let (Some(V::U32(start)), Some(V::U32(count))) = (&c.values[pos], &c.values[rem]) else {
+            return Ok(());
+        };
+        let (mut start, mut count) = (*start, *count);
+        if count == 0 {
+            return Ok(());
+        }
+        let borrowed = |slot| {
+            let storage = c.storage.values();
+            let V::Reference {
+                root,
+                fields,
+                evidence,
+                ..
+            } = super::slot(storage, c.local(slot).ok()?).ok()?
+            else {
+                return None;
+            };
+            let target = evidence.target.as_ref()?;
+            if target.fields != *fields || storage.require_storage(&target.storage).ok()? != *root {
+                return None;
+            }
+            super::project_ref(super::slot(storage, *root).ok()?, fields).ok()
+        };
+        let Some(V::Construct { ty, name, fields }) = borrowed(vector) else {
+            return Ok(());
+        };
+        if ty != "vector<U32>"
+            || name != "vector"
+            || start
+                .checked_add(count)
+                .is_none_or(|end| end as usize > fields.len())
+        {
+            return Ok(());
+        }
+        if borrowed(rule).is_none() {
+            return Ok(());
+        }
+        let Some(V::U32(needle)) = borrowed(needle) else {
+            return Ok(());
+        };
+        let Ok(upper) = c
+            .local(upper)
+            .and_then(|slot| super::slot(c.storage.values(), slot))
+        else {
+            return Ok(());
+        };
+        let V::Bool(upper) = upper else { return Ok(()) };
+        for name in ["checked_add", "checked_sub", "checked_div"] {
+            let Ok(primitive) = declared_primitive(&c.host.manifest, name) else {
+                return Ok(());
+            };
+            if primitive["rust"].is_object()
+                || primitive["pure"] == true
+                || primitive["async"] == true
+                || primitive["returns"] != true
+                || c.host.check_contract(name, primitive) != Ok(true)
+            {
+                return Ok(());
+            }
+        }
+        let mut steps = 0;
+        while count != 0 {
+            let half = count / 2;
+            let Some(middle) = start.checked_add(half) else {
+                break;
+            };
+            let Some(V::U32(value)) = fields.get(middle as usize) else {
+                break;
+            };
+            let before = if descending == 1 {
+                value > needle
+            } else {
+                value < needle
+            };
+            if before || (*upper && value == needle) {
+                let Some(next) = middle.checked_add(1) else {
+                    break;
+                };
+                let Some(rest) = count.checked_sub(half).and_then(|tail| tail.checked_sub(1))
+                else {
+                    break;
+                };
+                start = next;
+                count = rest;
+            } else {
+                count = half;
+            }
+            steps += 1;
+        }
+        // Each skipped advance called exactly one proven comparator. Preserve
+        // frame/activation numbering before any later checked diagnostic.
+        if steps != 0
+            && c.storage
+                .values_mut()
+                .skip_completed(steps, &c.host.activations)
+        {
+            c.values[pos] = Some(V::U32(start));
+            c.values[rem] = Some(V::U32(count));
+        }
+        Ok(())
+    })
+}
+
 /// Skip only fully advancing scalar reducer calls. Stop before the first
 /// sentinel, arithmetic failure or threshold hit so its authored path executes.
 #[unsafe(no_mangle)]

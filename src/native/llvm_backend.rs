@@ -5,6 +5,8 @@ use super::*;
 
 #[path = "llvm_adapter.rs"]
 mod adapters;
+#[path = "llvm_bounds.rs"]
+mod bounds;
 #[path = "llvm_fold.rs"]
 mod fold;
 #[path = "llvm_join.rs"]
@@ -99,6 +101,7 @@ declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
 declare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)
 declare { i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_bounds_prefix(ptr, i64, i64, i64, i64, i64, i64, i32)
 declare void @tellur_rt_v1_fold_prefix(ptr, i64, i64, i64, i64, i64, i64)
 declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
@@ -620,6 +623,7 @@ struct Emitter {
     joins: BTreeMap<String, join::Join>,
     predicates: BTreeMap<String, search::Predicate>,
     reducers: BTreeMap<String, fold::Reducer>,
+    scalar_comparators: BTreeMap<String, bool>,
     classifiers: BTreeMap<String, partition::Classifier>,
     comparators: BTreeMap<String, merge::Comparator>,
     map_wrappers: BTreeMap<String, map_scan::Wrapper>,
@@ -2128,6 +2132,13 @@ impl Emitter {
                     }
                     if self.optimize_loops
                         && !self.retained
+                        && let Some(bound) = bounds::analyze(i, &self.scalar_comparators)
+                    {
+                        self.effect(format!("call void @tellur_rt_v1_bounds_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {}, i64 {}, i64 {}, i32 {})",
+                            self.layout.slots[&bound.vector], self.layout.slots[&bound.rule], self.layout.slots[&bound.needle], self.layout.slots[&bound.upper], values[0], values[1], u32::from(bound.descending)));
+                    }
+                    if self.optimize_loops
+                        && !self.retained
                         && let Some(fold) = fold::analyze(i, &self.reducers)
                     {
                         self.effect(format!("call void @tellur_rt_v1_fold_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {}, i64 {}, i64 {})",
@@ -2393,6 +2404,10 @@ impl CheckedProgram {
             predicates: self
                 .regions()
                 .filter_map(|r| Some((r.name.clone(), search::predicate(r)?)))
+                .collect(),
+            scalar_comparators: self
+                .regions()
+                .filter_map(|r| Some((r.name.clone(), bounds::comparator(r)?)))
                 .collect(),
             reducers: self
                 .regions()

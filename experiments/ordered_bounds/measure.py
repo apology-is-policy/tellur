@@ -17,6 +17,7 @@ from abi_probe import build_allocation_probe, wrap_calls
 parser = argparse.ArgumentParser(description=__doc__)
 for name in ("vnc", "llvm", "results"):
     parser.add_argument(name, type=Path)
+parser.add_argument("--previous-vnc", type=Path, help="interleave baseline compiler with its own IR and runtime")
 parser.add_argument("--trials", type=int, default=13)
 args = parser.parse_args()
 assert args.trials > 0
@@ -44,25 +45,30 @@ def rows(path, header, values):
 with tempfile.TemporaryDirectory(prefix="vn-bounds-") as directory:
     tmp = Path(directory)
     probes, buckets = {}, {}
-    for operation in OPERATIONS:
-        build = tmp / operation
-        build.mkdir()
-        run(vnc, "build", HERE / (operation + ".vn"), "--release", "--out", build / "source",
-            env={**os.environ, "CARGO_INCREMENTAL": "0", "TELLUR_NATIVE_TARGET_DIR": str(build)})
-        archive, = (build / "tellur-runtime-pack").glob("*.a")
-        ir = (build / "source.ll").read_text()
-        (results / (operation + ".ll")).write_text(ir)
-        controls = ((operation + "<ascending>").encode(),)
-        (build / "timed.ll").write_text(wrap_calls(ir, controls, "time_first"))
-        run(llvm / "opt", "-passes=default<O3>", build / "timed.ll", "-o", build / "timed.bc")
-        run(llvm / "llc", "-O3", "-filetype=obj", build / "timed.bc", "-o", build / "timed.o")
-        run("cc", "-O3", "-mmacosx-version-min=13.0", build / "timed.o",
-            HERE.parent / "first_match/timer.c", archive, "-o", build / "timed")
-        probes[operation], buckets[operation] = build_allocation_probe(ir, controls, build, llvm, archive)
+    compilers = {"vn": vnc}
+    if args.previous_vnc:
+        compilers["previous"] = args.previous_vnc.resolve()
+    for kind, compiler in compilers.items():
+        for operation in OPERATIONS:
+            build = tmp / (kind + "-" + operation)
+            build.mkdir()
+            run(compiler, "build", HERE / (operation + ".vn"), "--release", "--out", build / "source",
+                env={**os.environ, "CARGO_INCREMENTAL": "0", "TELLUR_NATIVE_TARGET_DIR": str(build)})
+            archive, = (build / "tellur-runtime-pack").glob("*.a")
+            ir = (build / "source.ll").read_text()
+            (results / (kind + "-" + operation + ".ll")).write_text(ir)
+            controls = ((operation + "<ascending>").encode(),)
+            (build / "timed.ll").write_text(wrap_calls(ir, controls, "time_first"))
+            run(llvm / "opt", "-passes=default<O3>", build / "timed.ll", "-o", build / "timed.bc")
+            run(llvm / "llc", "-O3", "-filetype=obj", build / "timed.bc", "-o", build / "timed.o")
+            run("cc", "-O3", "-mmacosx-version-min=13.0", build / "timed.o",
+                HERE.parent / "first_match/timer.c", archive, "-o", build / "timed")
+            probes[kind, operation], buckets[kind, operation] = build_allocation_probe(ir, controls, build, llvm, archive)
     for suffix, flags in (("", []), ("-count", ["--cfg", "allocation_counts"])):
         run("rustc", "--edition", "2024", "-C", "opt-level=3", *flags,
             HERE / "bounds.rs", "-o", tmp / ("rs" + suffix))
     (results / "environment.json").write_text(json.dumps({
+        "previous_compiler": run(compilers["previous"], "--version", capture_output=True).stdout.strip() if "previous" in compilers else None,
         "compiler": run(vnc, "--version", capture_output=True).stdout.strip(),
         "rust": run("rustc", "-vV", capture_output=True).stdout,
         "llvm": run(llvm / "opt", "--version", capture_output=True).stdout,
@@ -86,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix="vn-bounds-") as directory:
             return row
         argument = json.dumps({"kind": "construct", "value": {"name": "vector", "ty": "vector<U32>",
             "fields": [{"kind": "u32", "value": x} for x in values]}}, separators=(",", ":"))
-        result = run(probes[operation] if allocations else tmp / operation / "timed", argument, str(needle),
+        result = run(probes[kind, operation] if allocations else tmp / (kind + "-" + operation) / "timed", argument, str(needle),
             capture_output=True, env={**os.environ, **({"VN_ALLOC_PEAK": "1"} if peak else {})})
         label, payload = result.stdout.strip().split(" ", 1)
         assert label == ("found" if found else "missing") if operation == "first_equal" else label == "position"
@@ -95,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix="vn-bounds-") as directory:
         return result.stderr.splitlines()
 
     rng = random.Random(305)
-    schedule = [(kind, operation, case) for kind in ("vn", "rs") for operation in OPERATIONS for case in cases]
+    schedule = [(kind, operation, case) for kind in (*compilers, "rs") for operation in OPERATIONS for case in cases]
     with (results / "timings.csv").open("w") as output:
         writer = csv.writer(output, lineterminator="\n")
         writer.writerow(("trial", "kind", "operation", "case", "ns"))
@@ -117,6 +123,6 @@ with tempfile.TemporaryDirectory(prefix="vn-bounds-") as directory:
         counts = [list(map(int, x.split())) for x in row if x != "query"]
         peak, = [int(x.split()[1]) for x in measured if x.startswith("peak ")]
         totals.append((kind, operation, case, *[sum(x[i] for x in counts) for i in (2, 3, 4)], peak))
-        detail.extend((operation, case, buckets[operation][x[0]], *x[1:]) for x in counts)
+        detail.extend((kind, operation, case, buckets[kind, operation][x[0]], *x[1:]) for x in counts)
     rows(results / "allocations.csv", ("kind", "operation", "case", "allocations", "reallocations", "requested_bytes", "peak_extra_bytes"), totals)
-    rows(results / "operations.csv", ("operation", "case", "abi", "calls", "allocations", "reallocations", "requested_bytes"), detail)
+    rows(results / "operations.csv", ("kind", "operation", "case", "abi", "calls", "allocations", "reallocations", "requested_bytes"), detail)

@@ -3850,3 +3850,149 @@ fn borrowed_vector_pop_preserves_projected_resources_and_checked_errors() {
         }
     }
 }
+
+#[test]
+fn scalar_bounds_prefix_keeps_owners_observers_and_invalid_states_checked() {
+    for descending in [false, true] {
+        for upper in [false, true] {
+            for key in [0, 1, 2, 3, 9, u32::MAX] {
+                for mode in [
+                    "live",
+                    "trace",
+                    "script",
+                    "fuel",
+                    "contract",
+                    "invalid_count",
+                    "alias",
+                    "bad_needle",
+                    "bad_evidence",
+                ] {
+                    let mut manifest = primitive_manifest();
+                    let add = manifest["primitives"][0].clone();
+                    for (name, success, failure) in [
+                        ("checked_sub", "difference", "underflow"),
+                        ("checked_div", "quotient", "zero_divisor"),
+                    ] {
+                        let mut p = add.clone();
+                        p["name"] = json!(name);
+                        p["outcomes"][0]["name"] = json!(success);
+                        p["outcomes"][1]["name"] = json!(failure);
+                        manifest["primitives"].as_array_mut().unwrap().push(p);
+                    }
+                    if mode == "contract" {
+                        manifest["primitives"][2]["effects"] = json!(["changed"]);
+                    }
+                    let mut host = Host::new(
+                        manifest,
+                        None,
+                        mode == "trace",
+                        if mode == "fuel" { Some(100) } else { None },
+                    );
+                    if mode == "script" {
+                        host.script = Some(vec![]);
+                    }
+                    let mut c = context(&mut host);
+                    let mut keys = vec![0, 1, 2, 2, 2, 9];
+                    if descending {
+                        keys.reverse();
+                    }
+                    let expected = keys.partition_point(|&v| {
+                        if descending {
+                            if upper { v >= key } else { v > key }
+                        } else if upper {
+                            v <= key
+                        } else {
+                            v < key
+                        }
+                    });
+                    let owner = V::Construct {
+                        ty: "vector<U32>".into(),
+                        name: "vector".into(),
+                        fields: keys.iter().copied().map(V::U32).collect(),
+                    };
+                    unsafe {
+                        tellur_rt_v1_frame(&mut c, 7);
+                        for (slot, value) in [
+                            owner.clone(),
+                            V::Construct {
+                                ty: "rule".into(),
+                                name: "rule".into(),
+                                fields: vec![],
+                            },
+                            if mode == "bad_needle" {
+                                V::Bool(true)
+                            } else {
+                                V::U32(key)
+                            },
+                        ]
+                        .into_iter()
+                        .enumerate()
+                        {
+                            let handle = c.put(value);
+                            tellur_rt_v1_store(&mut c, slot, std::ptr::null(), 0, handle);
+                        }
+                        for (slot, ty) in [(0, "&vector<U32>"), (1, "&rule"), (2, "&U32")] {
+                            let handle = tellur_rt_v1_reference(
+                                &mut c,
+                                slot,
+                                std::ptr::null(),
+                                0,
+                                0,
+                                ty.as_ptr(),
+                                ty.len(),
+                            );
+                            tellur_rt_v1_store(&mut c, slot + 3, std::ptr::null(), 0, handle);
+                        }
+                        if mode == "bad_evidence" {
+                            let slot = c.local(3).unwrap();
+                            let Some(V::Reference { evidence, .. }) =
+                                &mut c.storage.values_mut()[slot]
+                            else {
+                                panic!("reference")
+                            };
+                            evidence.target.as_mut().unwrap().fields.push(0);
+                        }
+                        let flag = c.put(V::Bool(upper));
+                        tellur_rt_v1_store(&mut c, 6, std::ptr::null(), 0, flag);
+                        let start = c.put(V::U32(0));
+                        let count =
+                            c.put(V::U32(if mode == "invalid_count" { u32::MAX } else { 6 }));
+                        tellur_rt_v1_bounds_prefix(
+                            &mut c,
+                            3,
+                            4,
+                            5,
+                            6,
+                            start,
+                            if mode == "alias" { start } else { count },
+                            u32::from(descending),
+                        );
+                        assert!(c.error.is_none(), "{mode}");
+                        assert_eq!(
+                            c.get(start).unwrap(),
+                            &V::U32(if mode == "live" { expected as u32 } else { 0 }),
+                            "{mode}/{descending}/{upper}/{key}"
+                        );
+                        assert_eq!(
+                            c.get(count).unwrap(),
+                            &V::U32(if mode == "live" {
+                                0
+                            } else if mode == "invalid_count" {
+                                u32::MAX
+                            } else {
+                                6
+                            })
+                        );
+                        assert_eq!(
+                            super::super::slot(c.storage.values(), c.local(0).unwrap()).unwrap(),
+                            &owner
+                        );
+                        // Invalid runtime locations are speculative and must not take over diagnostics.
+                        tellur_rt_v1_bounds_prefix(&mut c, 99, 4, 5, 6, start, count, 0);
+                        assert!(c.error.is_none());
+                    }
+                }
+            }
+        }
+    }
+}

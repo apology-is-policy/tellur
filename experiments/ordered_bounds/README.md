@@ -66,3 +66,58 @@ Raw timings, allocations, ABI attribution and environment are in [results](resul
 Emitted IR is retained in the maintained work evidence directory. Temporary native
 binaries/runtime extraction are removed by the harness. The source library remains
 experimental; this checkpoint makes no parity claim and does not change the compiler.
+
+## Scalar binary-search advances in 0.306
+
+The compiler proves the scalar comparator's three outcomes, then all six advancing
+paths (before/equal/after × lower/upper). It does not recognize a library/control
+name or assume sortedness. A guarded runtime helper keeps start/count and the u32
+comparands native, preserving one completed comparator activation/frame identity
+per skipped advance. The terminal iteration remains authored code. Reference
+root/projection evidence, actual value shape, interval bounds and canonical live
+arithmetic are validated before updating state. Unsupported values, resource-bearing
+elements, effects, scripts, tracing and fuel retain checked execution. An unsorted
+input still follows the original algorithm; optimization does not add an ordering
+assumption or promise a valid bound for such an input.
+
+Final paired packaged compilers use their own IR/runtime, with the same source,
+inputs, optimization settings and measurement boundary as the baseline:
+
+| Operation / case | 0.305 | 0.306 | Rust | Speedup |
+| --- | ---: | ---: | ---: | ---: |
+| Lower / 128 middle | 83.291 µs | 21.125 µs | 83 ns | 3.94× |
+| Lower / 4,096 middle | 123.834 µs | 25.666 µs | 167 ns | 4.82× |
+| Upper / 4,096 middle | 106.334 µs | 23.667 µs | 209 ns | 4.49× |
+| First equal / 4,096 middle | 134.250 µs | 48.834 µs | 209 ns | 2.75× |
+| First equal / 4,096 miss | 140.833 µs | 30.125 µs | 292 ns | 4.67× |
+
+The 4,096-middle lower bound falls from 403 to 25 allocations and 29 to 3
+reallocations. Requested bytes fall 54,028 → 8,584; peak extra usable storage falls
+11,872 → 6,096. Lower and upper bounds now have the same allocation counts as their
+empty case. A first-equivalent hit falls 454 → 76 allocations, 34 → 8 reallocations,
+63,481 → 22,837 requested bytes and 14,960 → 11,936 peak bytes. Rust remains at zero
+allocations. Neither implementation moves source elements; generic resident payload
+width is unchanged. Remaining costs are fixed call/frame transport and checked
+confirmation/loan creation, with a 154× lower-bound and 234× first-hit timing gap in
+these cold single-query measurements. Very short Rust samples can be zero at clock
+resolution; ratios use medians and should not be read as steady-state throughput.
+
+Empty lower-bound median increases 17.333 → 18.625 µs (7.5%) and empty upper increases
+17.750 → 18.625 µs (4.9%), with unchanged allocation counts. Their timing ranges
+substantially overlap; this experiment does not establish the cause or significance
+of those small-case differences. There is no across-the-board parity claim.
+
+Validation includes renamed controls, both comparison directions, rejected effects
+on either advancing path, wrong-step rejection, invalid reference evidence and
+intervals, original/expanded LLVM O2/O0 versus Rust, projected source owners,
+terminal effects, unsorted inputs, scripts, fuel cutoffs and later fault identities.
+The final selected suite passes 580 cases plus the structural proof test, with
+focused rechecks after the provenance guard was tightened. Package CLI/LSP/cold
+Hello/HTTP and 48 editor checks pass. Both Linux musl targets cross-link the new
+helper; Linux executables were not run on this M2.
+
+[Final raw evidence and per-case summary](results/0.306/).
+Reproduce a paired run with `--previous-vnc /path/to/vnc-0.305` added to the command
+above. Keep timing runs separate from compiler/test jobs. The remaining transport
+and wide-payload gaps stay documented as the supported source-library adoption
+checkpoint proceeds.

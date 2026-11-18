@@ -1645,6 +1645,145 @@ control backward(vector<u32> source, vector<u32> prefix)
     }
 
     #[test]
+    fn scalar_ordered_bounds_preserve_effects_observers_and_later_faults() {
+        for (operation, mode) in [
+            ("lower_bound", "plain"),
+            ("upper_bound", "plain"),
+            ("first_equal", "plain"),
+            ("lower_bound", "effect"),
+            ("lower_bound", "fault"),
+            ("lower_bound", "descending"),
+            ("lower_bound", "projected"),
+            ("lower_bound", "terminal"),
+        ] {
+            let mut source = match operation {
+                "lower_bound" => include_str!("../experiments/ordered_bounds/lower_bound.vn"),
+                "upper_bound" => include_str!("../experiments/ordered_bounds/upper_bound.vn"),
+                _ => include_str!("../experiments/ordered_bounds/first_equal.vn"),
+            }
+            .replace("../../library/", "");
+            if mode == "effect" {
+                source = source.replace(
+                    "delta (* a < * b)",
+                    "emit(\"comparison\"); delta (* a < * b)",
+                );
+            }
+            if mode == "descending" {
+                source = source.replace("* a < * b", "* a > * b").replace(
+                    "* a > * b) {\n            true => after",
+                    "* a < * b) {\n            true => after",
+                );
+            }
+            if mode == "fault" {
+                source=source.replace("exits result {","exits result faults {").replace("forward search.lower_bound<ascending>(borrow values, borrow rule, borrow needle);","delta search.lower_bound<ascending>(borrow values, borrow rule, borrow needle) { position {u32 index} => later } [later]: fault \"after query\";");
+            }
+            if mode == "projected" {
+                source = source
+                    .replace(
+                        "ascending rule =",
+                        "batch owner = batch { values }; ascending rule =",
+                    )
+                    .replace("borrow values", "borrow owner.items")
+                    + "\nstruct batch { vector<u32> items; }\n";
+            }
+            let f = Fixture::new(&source);
+            for (name, text) in [
+                ("ordering.vn", include_str!("../library/ordering.vn")),
+                (
+                    "ordered_search.vn",
+                    include_str!("../library/ordered_search.vn"),
+                ),
+                (
+                    "sequence_batches.vn",
+                    include_str!("../library/sequence_batches.vn"),
+                ),
+            ] {
+                let text = if mode == "terminal" && name == "ordered_search.vn" {
+                    text.replace("true => exit position { start }", "true => terminal")
+                        .replace(
+                            "[halve]:",
+                            "[terminal]: emit(\"bound complete\"); exit position {start}; [halve]:",
+                        )
+                } else {
+                    text.to_owned()
+                };
+                fs::write(f.root.join(name), text).unwrap();
+            }
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                assert_eq!(
+                    ir.matches("call void @tellur_rt_v1_bounds_prefix").count(),
+                    usize::from(mode != "effect"),
+                    "{operation}/{mode}/{expanded}"
+                );
+                let compare = |args: &[String]| {
+                    let fast = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let other = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (fast.status.code(), &fast.stdout, &fast.stderr),
+                            (other.status.code(), &other.stdout, &other.stderr),
+                            "{operation}/{mode}/{expanded}/{args:?}"
+                        );
+                    }
+                    fast
+                };
+                let vector = |values: &[u32]| json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}});
+                for mut values in [
+                    vec![],
+                    vec![2],
+                    vec![0, 1, 2, 2, 2, 9, u32::MAX],
+                    vec![4, 1, 9, 2],
+                ] {
+                    if mode == "descending" {
+                        values.reverse();
+                    }
+                    for needle in [0, 2, 3, 9, u32::MAX] {
+                        let args = vec![vector(&values).to_string(), needle.to_string()];
+                        assert_eq!(compare(&args).status.success(), mode != "fault");
+                        assert_eq!(
+                            compare(&[vec!["--json".into()], args].concat())
+                                .status
+                                .success(),
+                            mode != "fault"
+                        );
+                    }
+                }
+                for fuel in 0..30 {
+                    compare(&[
+                        "--fuel".into(),
+                        fuel.to_string(),
+                        vector(&[1, 2, 2, 9]).to_string(),
+                        "2".into(),
+                    ]);
+                }
+                let path = f.root.join("script.json");
+                fs::write(&path,json!({"entry":"main","arguments":[vector(&[1,2,2,9]),{"kind":"u32","value":2}],"calls":[{"operation":"checked_div","outcome":"quotient","fields":[{"kind":"u32","value":0}]}]}).to_string()).unwrap();
+                compare(&[
+                    "--scenario".into(),
+                    path.to_str().unwrap().into(),
+                    "--json".into(),
+                ]);
+            }
+        }
+    }
+
+    #[test]
     fn scalar_fold_prefix_preserves_terminal_steps_effects_and_observers() {
         let source = include_str!("../examples/batch_fold/main.vn")
             .replace("../../library/reduction.vn", "reduction.vn")

@@ -160,6 +160,8 @@ backends. [Performance and ABI transport evidence](../experiments/ordered_bounds
 separates complete query costs from construction and output; logarithmic comparison
 count is not a native-performance parity claim.
 
+Compiler 0.306 summarizes proven effect-free scalar binary-search advances while leaving the terminal iteration and returned loan checked. The 4,096-middle lower bound improves 4.82× to 25.666 µs versus Rust at 167 ns; allocations fall 403 → 25. First-equivalent hits improve 2.75×. Empty-case medians regress slightly at unchanged allocation counts, and fixed transport remains a large gap. These are measured performance limits for the upcoming supported-source slice. [Paired measurements and checks](../experiments/ordered_bounds/README.md#scalar-binary-search-advances-in-0306)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |
