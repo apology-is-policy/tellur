@@ -1,0 +1,105 @@
+{
+  "sort": {
+    "median_ns": {
+      "mixed/previous": 8905500.0,
+      "mixed/rs": 11833.0,
+      "sorted/previous": 7464667.0,
+      "reverse/vn": 8224125.0,
+      "sorted/rs": 2833.0,
+      "equal/vn": 8153708.0,
+      "empty/rs": 42.0,
+      "equal/rs": 3000.0,
+      "reverse/previous": 9119875.0,
+      "small/vn": 1213041.0,
+      "empty/previous": 25458.0,
+      "sorted/vn": 6936709.0,
+      "mixed/vn": 7963500.0,
+      "single/previous": 29417.0,
+      "single/rs": 42.0,
+      "small/previous": 1226084.0,
+      "reverse/rs": 19000.0,
+      "equal/previous": 7220167.0,
+      "small/rs": 3750.0,
+      "empty/vn": 26084.0,
+      "single/vn": 30750.0
+    }
+  },
+  "rotation": {
+    "median_ns": {
+      "4096/relaxed": 6625.0,
+      "128/vn": 34666.0,
+      "128/vn-previous": 31333.0,
+      "4096/vn-previous": 82959.0,
+      "4096/flat": 9750.0,
+      "128/flat": 4708.0,
+      "128/relaxed": 3500.0,
+      "4096/vn": 76167.0
+    }
+  },
+  "search": {
+    "repeated_median_ns": {
+      "failure/vn_previous": 7271.0,
+      "failure/vn": 7521.0,
+      "last/rs": 208.0,
+      "last/rs_batched": 151.509765625,
+      "early/vn_previous": 2854.0,
+      "miss/rs": 208.0,
+      "miss/vn_previous": 3416.5,
+      "failure/rs_batched": 110.7177734375,
+      "early/rs_batched": 1.3427734375,
+      "early/rs": 41.0,
+      "miss/rs_batched": 152.20166015625,
+      "failure/rs": 125.0,
+      "early/vn": 2750.0,
+      "last/vn": 3895.5,
+      "last/vn_previous": 3875.0,
+      "miss/vn": 3167.0
+    },
+    "candidate_repeated_allocations": {
+      "early": {
+        "allocations": 13,
+        "reallocations": 2,
+        "bytes": 2483
+      },
+      "last": {
+        "allocations": 13,
+        "reallocations": 2,
+        "bytes": 2483
+      },
+      "miss": {
+        "allocations": 11,
+        "reallocations": 0,
+        "bytes": 1377
+      },
+      "failure": {
+        "allocations": 34,
+        "reallocations": 3,
+        "bytes": 4659
+      }
+    },
+    "baseline_repeated_allocations": {
+      "early": {
+        "allocations": 13,
+        "reallocations": 2,
+        "bytes": 2731
+      },
+      "last": {
+        "allocations": 13,
+        "reallocations": 2,
+        "bytes": 2731
+      },
+      "miss": {
+        "allocations": 11,
+        "reallocations": 0,
+        "bytes": 1449
+      },
+      "failure": {
+        "allocations": 34,
+        "reallocations": 3,
+        "bytes": 5019
+      }
+    }
+  },
+  "note": "Compact boxed projection candidate, same0.305 IR with isolated runtime. Decision pending.",
+  "decision": "Not adopted: smaller representation recovers memory only after exact payload moves, but full-path timing has unresolved equal-sort and small-rotation regressions. Keep0.305 runtime; preserve evidence for later specialized representation work."
+}

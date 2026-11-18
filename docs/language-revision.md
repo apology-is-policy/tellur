@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Compact projection qualification, 18 November 2026
+
+An inline boxed-path candidate reduces generic values to 128 bytes without adding borrowed-search allocations. It exposed macOS retaining 512 bytes after a nominal 512 → 256-byte shrink; an exact-capacity ownership transfer restores the expected memory reduction. The complete workload still shows equal-sort and small-rotation regressions, so the candidate is not adopted. Compiler 0.305 remains current. Next: ordered bounds under the existing infallible comparator/sorted-input contract, then fresh-project supported-library adoption; generic transport and storage gaps remain documented performance work. [Results and allocator root cause](../experiments/reference_layout/README.md#inline-target-with-compact-projection-storage)
+
 ### Reference layout qualification, 18 November 2026
 
 An isolated candidate shrinks generic values from 136 to 104 bytes by sharing immutable reference-target metadata. It reduces mixed-sort peak extra memory 108,128 → 89,696 bytes, but adds 4,462 allocations and regresses small sorting and repeated search in the paired run. All 364 isolated runtime tests pass; the candidate is not adopted and compiler 0.305 remains current. Next: compact projection storage without a per-borrow allocation, then applicable ordered bounds and fresh-project supported-library adoption. [Reproduction, results and limits](../experiments/reference_layout/README.md)

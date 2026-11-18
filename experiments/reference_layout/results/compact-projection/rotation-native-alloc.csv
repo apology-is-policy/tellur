@@ -1,0 +1,9 @@
+kind,n,allocations,reallocations,requested_bytes
+relaxed,4096,17,,4320
+vn,4096,26,2,182991
+flat,4096,2,,32772
+vn-previous,128,26,2,14455
+relaxed,128,9,,976
+flat,128,2,,1032
+vn,128,26,2,13647
+vn-previous,4096,26,2,194383

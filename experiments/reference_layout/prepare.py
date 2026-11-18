@@ -6,6 +6,8 @@ import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('output', type=Path, help='new directory for the isolated runtime sources')
+parser.add_argument('--patch', type=Path, default=Path(__file__).with_name('candidate.patch'),
+                    help='candidate patch; defaults to the Arc target experiment')
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[2]
 output = args.output.resolve()
@@ -18,6 +20,6 @@ paths += [p.relative_to(repo) for p in (repo / 'src/native').glob('*.rs')]
 paths += [Path('src') / name for name in ('collection_support.rs', 'fault.rs', 'task_support.rs')]
 for path in paths:
     shutil.copy2(repo / path, output / path)
-subprocess.run(['patch', '-p1', '-i', str(Path(__file__).with_name('candidate.patch'))],
+subprocess.run(['patch', '-p1', '-i', str(args.patch.resolve())],
                cwd=output, check=True)
 print(output / 'runtime/Cargo.toml')

@@ -1,0 +1,167 @@
+--- a/src/native/abi.rs
++++ b/src/native/abi.rs
+@@ -4124 +4124 @@
+-            || target.fields != fields
++            || target.fields.as_ref() != fields.as_slice()
+@@ -4360 +4360,5 @@
+-                fields.shrink_to_fit();
++                if fields.capacity() > fields.len() {
++                    let mut compact = Vec::with_capacity(fields.len());
++                    compact.append(fields);
++                    *fields = compact;
++                }
+--- a/src/native/access_resolution.rs
++++ b/src/native/access_resolution.rs
+@@ -8 +8 @@
+-    pub fields: Vec<usize>,
++    pub fields: Box<[usize]>,
+@@ -23,0 +24,8 @@
++    pub(super) fn extend_fields(&mut self, suffix: &[usize]) {
++        if suffix.is_empty() { return; }
++        let mut fields = std::mem::take(&mut self.fields).into_vec();
++        fields.reserve_exact(suffix.len());
++        fields.extend_from_slice(suffix);
++        self.fields = fields.into_boxed_slice();
++    }
++
+@@ -79 +87 @@
+-                fields: vec![],
++                fields: Box::default(),
+@@ -95 +103 @@
+-                        && target.fields == *fields
++                        && target.fields.as_ref() == fields.as_slice()
+@@ -137 +145 @@
+-                fields: path,
++                fields: path.into_boxed_slice(),
+@@ -147 +155 @@
+-                fields: access.fields.to_vec(),
++                fields: access.fields.into(),
+--- a/src/native/access_resolution_tests.rs
++++ b/src/native/access_resolution_tests.rs
+@@ -74 +74 @@
+-    assert_eq!(resolved.accesses[0].place.fields, [0, 0]);
++    assert_eq!(resolved.accesses[0].place.fields.as_ref(), &[0, 0]);
+@@ -144 +144 @@
+-            assert_eq!(result[1].place.fields, [0, 1]);
++            assert_eq!(result[1].place.fields.as_ref(), &[0, 1]);
+@@ -176 +176 @@
+-    assert_eq!(result[1].place.fields, [0]);
++    assert_eq!(result[1].place.fields.as_ref(), &[0]);
+--- a/src/native/borrower_coverage_tests.rs
++++ b/src/native/borrower_coverage_tests.rs
+@@ -454 +454 @@
+-            fields: vec![1],
++            fields: vec![1].into_boxed_slice(),
+--- a/src/native/carrier_alias_admission_tests.rs
++++ b/src/native/carrier_alias_admission_tests.rs
+@@ -306 +306 @@
+-                        fields: vec![]
++                        fields: vec![].into_boxed_slice()
+--- a/src/native/dependencies.rs
++++ b/src/native/dependencies.rs
+@@ -223 +223 @@
+-        || target.fields != *fields
++        || target.fields.as_ref() != fields.as_slice()
+@@ -313 +313 @@
+-                    if values.require_storage(&target.storage)? != *root || target.fields != *fields
++                    if values.require_storage(&target.storage)? != *root || target.fields.as_ref() != fields.as_slice()
+@@ -323 +323 @@
+-                        fields: fields.clone(),
++                        fields: fields.clone().into_boxed_slice(),
+--- a/src/native/dependencies_tests.rs
++++ b/src/native/dependencies_tests.rs
+@@ -77 +77 @@
+-    assert_eq!(entries(&projected)[0].place.fields, [1]);
++    assert_eq!(entries(&projected)[0].place.fields.as_ref(), &[1]);
+--- a/src/native/holder_origins_tests.rs
++++ b/src/native/holder_origins_tests.rs
+@@ -43 +43 @@
+-            fields: vec![999],
++            fields: vec![999].into_boxed_slice(),
+@@ -71 +71 @@
+-    assert!(entries.iter().any(|o| o.place.fields == [999] && o.guard));
++    assert!(entries.iter().any(|o| o.place.fields.as_ref() == &[999] && o.guard));
+@@ -192 +192 @@
+-            fields: vec![0; LIMIT],
++            fields: vec![0; LIMIT].into_boxed_slice(),
+--- a/src/native/interference_tests.rs
++++ b/src/native/interference_tests.rs
+@@ -365 +365 @@
+-        fields: vec![0],
++        fields: vec![0].into_boxed_slice(),
+@@ -460 +460 @@
+-                    fields: vec![],
++                    fields: vec![].into_boxed_slice(),
+@@ -485 +485 @@
+-                fields: vec![]
++                fields: vec![].into_boxed_slice()
+--- a/src/native/reference_evidence.rs
++++ b/src/native/reference_evidence.rs
+@@ -102 +102 @@
+-                target.fields.extend_from_slice(fields);
++                target.extend_fields(fields);
+@@ -118 +118 @@
+-                        && target.fields == *path
++                        && target.fields.as_ref() == path.as_slice()
+@@ -132 +132 @@
+-                    fields: vec![],
++                    fields: Box::default(),
+@@ -171 +171 @@
+-                && target.fields == *fields
++                && target.fields.as_ref() == fields.as_slice()
+@@ -242 +242 @@
+-    if target.fields != *fields
++    if target.fields.as_ref() != fields.as_slice()
+@@ -338 +338 @@
+-        field.fields.extend_from_slice(input.fields);
++        field.extend_fields(input.fields);
+@@ -424 +424 @@
+-        || target.fields != *fields
++        || target.fields.as_ref() != fields.as_slice()
+@@ -461 +461 @@
+-    field.fields.extend_from_slice(fields);
++    field.extend_fields(fields);
+--- a/src/native/reference_evidence_tests.rs
++++ b/src/native/reference_evidence_tests.rs
+@@ -90 +90 @@
+-        fields: vec![],
++        fields: Box::default(),
+@@ -173 +173 @@
+-    assert_eq!(checked[0].place.fields, [999, 123]);
++    assert_eq!(checked[0].place.fields.as_ref(), &[999, 123]);
+@@ -240 +240 @@
+-    assert_eq!(evidence(&payloads[1]).target.as_ref().unwrap().fields, [1]);
++    assert_eq!(evidence(&payloads[1]).target.as_ref().unwrap().fields.as_ref(), &[1]);
+@@ -249 +249 @@
+-    assert_eq!(evidence(&item[0]).target.as_ref().unwrap().fields, [0]);
++    assert_eq!(evidence(&item[0]).target.as_ref().unwrap().fields.as_ref(), &[0]);
+@@ -510 +510 @@
+-            2 => proof.target.as_mut().unwrap().fields.push(0),
++            2 => proof.target.as_mut().unwrap().extend_fields(&[0]),
+@@ -523 +523 @@
+-                entries[0].place.fields = vec![0; LIMIT];
++                entries[0].place.fields = vec![0; LIMIT].into_boxed_slice();
+@@ -677 +677 @@
+-                        fields: vec![],
++                        fields: Box::default(),
+@@ -908,0 +909,20 @@
++
++#[test]
++fn compact_projection_preserves_snapshots_and_path_limit() {
++    let mut values = Frames::default();
++    let frame = values.enter(1).unwrap();
++    for count in [0, 1, 4, LIMIT - 1] {
++        let path = vec![0; count];
++        let original = ReferenceEvidence::from_place(&values, frame.base(), &path, false);
++        let empty = original.clone().into_projected(&[]);
++        assert_eq!(original, empty);
++        let extended = original.clone().into_projected(&[2]);
++        assert_eq!(original.target.as_ref().unwrap().fields.as_ref(), path.as_slice());
++        let mut expected = path.clone(); expected.push(2);
++        assert_eq!(extended.target.as_ref().unwrap().fields.as_ref(), expected.as_slice());
++        let overflow = extended.into_projected(&vec![0; LIMIT]);
++        assert!(overflow.target.is_none());
++        assert!(matches!(overflow.origins, Origins::Unavailable(_)));
++        assert_eq!(original.target.as_ref().unwrap().fields.as_ref(), path.as_slice());
++    }
++}

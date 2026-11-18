@@ -1,0 +1,4 @@
+value_bytes,before_bytes,length,capacity,after_shrink_bytes,exact_copy_bytes
+136,640,2,2,320,320
+128,512,2,2,512,256
+104,448,2,2,224,224
