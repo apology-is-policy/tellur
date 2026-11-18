@@ -29,3 +29,28 @@ python3 -B experiments/partition/measure.py ./bin/vnc \
 ```
 
 Use `--alloc-only` to reuse the timing table while collecting per-operation allocation and peak evidence. Temporary executables and runtime extraction are removed on exit. Compiler/LSP/editor inputs are unchanged by this source-library checkpoint.
+
+## Bulk scalar partition in 0.298
+
+Optimized LLVM now proves both advancing branches of an effect-free u32 classifier and the consuming source loop. One runtime call scans the prefix up to the first sentinel, reserves each destination once, and moves that prefix into the two outputs in stable order. The first stopped element still executes the authored classifier, including terminal effects or a fault. A single prefix drain replaces repeated front drains. The ordinary terminal take can still shift its remaining suffix once. A resource element, an effect on either advancing branch, tracing, scripts or a fuel limit retains checked execution.
+
+| Workload | 0.297, paired | 0.298 | Rust |
+| --- | ---: | ---: | ---: |
+| Empty | 21.46 µs | 21.54 µs | 83 ns |
+| Full, 128 | 857 µs | 32.33 µs | 4.92 µs |
+| Full, 4,096 | 75.76 ms | 174.25 µs | 24.92 µs |
+| Stop on first | 70.83 µs | 55.08 µs | 833 ns |
+| Stop at index 2,048 | 56.15 ms | 141.83 µs | 11.04 µs |
+| Stop on last | 89.16 ms | 172.21 µs | 25.54 µs |
+
+The complete large partition improves **435×** and remains **7.0× slower than Rust**. The small partition improves 26.5×. Empty input has no improvement. First-stop execution batches no elements and its heap counts are unchanged; do not attribute its timing difference to bulk work. Both 0.297 and Rust were slower than in the preceding baseline run, and the shared machine was under load. Compare variants within this paired run. The same 13 retained shuffled trials and checked outputs are used, with each compiler's own IR and matching runtime. Local tests, release construction and package qualification finished before measurement. [Paired timings](results/0.298-timings.csv) · [Environment](results/0.298-environment.json)
+
+The complete large partition falls from **106,517 allocations and 19 reallocations to 21 allocations and one reallocation**. Requested bytes fall from 13,270,445 to 561,645. The prefix helper allocates two output buffers containing 557,056 bytes of generic values. Peak extra allocator-usable storage changes only slightly, from 561,648 to 559,872 bytes: this pass eliminates repeated shifts and transport, not the output storage. Rust requests 32,736 bytes and has 16,384 extra requested live bytes; its element representation is four bytes versus Villanelle's 136-byte generic value. The peak probes use the same baseline and rounding limits documented above and reproduce ordinary counts and outputs. [Allocation and peak totals](results/0.298-allocations.csv) · [Per-operation costs](results/0.298-operations.csv)
+
+A full advancing prefix no longer shifts any source suffix: it transfers 4,096 generic values once to the outputs, representing 557,056 payload bytes, excluding allocator bookkeeping and loop-terminal transport. This removes the previous 1.14 GB of repeated suffix relocation. This is an algorithmic movement count, not measured hardware traffic. Early stopping retains a checked terminal take and its wide suffix movement. Generic value width, fixed call/outcome transport and that terminal path are the remaining costs.
+
+A separate 6,000-partition CPU profile captures 470 stacks inside the partition. The prefix helper appears in 376, collection dispatch in ten. Joining the two outputs and repeating the operation runs outside the sampled partition. The old collection-dispatch hot loop has been replaced; native payload traversal and output writes now dominate the sampled helper. [CPU counts](results/0.298-cpu.json)
+
+Regression coverage compares original/expanded optimized LLVM with unoptimized LLVM and Rust for stable ordering, sentinel positions, u32 limits, effects on all or only one advancing branch, terminal effects and terminal faults. Sixty fuel budgets and scripted/JSON execution agree byte for byte. A concrete u32 fault fixture preserves activation identities; the generic library itself cannot fault while arbitrary resource owners remain live. ABI cases verify preexisting outputs, aliased/invalid operands and observed-mode fallback. Resource ownership retains the existing ordinary path. Both Linux target packs link the actual new helper to ELF; those binaries were not executed on the M2.
+
+The next library step is the prepared nonrecursive stable merge-sort prototype, followed by representation qualification and fresh-project adoption. The measured remaining gaps stay open during those passes. Repeat this comparison by adding `--previous-vnc /path/to/0.297/vnc` to the command above.

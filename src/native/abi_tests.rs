@@ -2863,3 +2863,108 @@ fn scalar_fold_prefix_updates_only_complete_advances_and_preserves_owners() {
         }
     }
 }
+
+#[test]
+fn scalar_partition_prefix_moves_stably_and_preserves_fallback_owners() {
+    let vector = |fields| V::Construct {
+        ty: "vector<U32>".into(),
+        name: "vector".into(),
+        fields,
+    };
+    for input in [
+        vec![],
+        vec![1, 4, 2, 3],
+        vec![0, 2],
+        vec![4, 1, 0, 2],
+        vec![u32::MAX, 1],
+    ] {
+        for mode in [
+            "live",
+            "trace",
+            "script",
+            "fuel",
+            "alias",
+            "projection",
+            "type",
+        ] {
+            let mut host = Host::new(
+                json!({"primitives":[]}),
+                None,
+                mode == "trace",
+                (mode == "fuel").then_some(100),
+            );
+            if mode == "script" {
+                host.script = Some(vec![]);
+            }
+            let mut c = context(&mut host);
+            unsafe {
+                tellur_rt_v1_frame(&mut c, 2);
+                let rule = c.put(V::Construct {
+                    ty: "pivot".into(),
+                    name: "pivot".into(),
+                    fields: vec![V::U32(3)],
+                });
+                tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, rule);
+                let ty = "&pivot";
+                let reference = tellur_rt_v1_reference(
+                    &mut c,
+                    0,
+                    std::ptr::null(),
+                    0,
+                    0,
+                    ty.as_ptr(),
+                    ty.len(),
+                );
+                tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, reference);
+                let original = vector(input.iter().copied().map(V::U32).collect());
+                let source = c.put(original.clone());
+                let left = c.put(vector(vec![V::U32(8)]));
+                let right_value = if mode == "type" {
+                    V::U32(7)
+                } else {
+                    vector(vec![V::U32(9)])
+                };
+                let right = c.put(right_value.clone());
+                tellur_rt_v1_partition_prefix(
+                    &mut c,
+                    source,
+                    left,
+                    if mode == "alias" { left } else { right },
+                    1,
+                    if mode == "projection" { 9 } else { 0 },
+                    0,
+                );
+                if mode == "live" {
+                    let end = input.iter().position(|&n| n == 0).unwrap_or(input.len());
+                    assert_eq!(
+                        c.get(source).unwrap(),
+                        &vector(input[end..].iter().copied().map(V::U32).collect())
+                    );
+                    assert_eq!(
+                        c.get(left).unwrap(),
+                        &vector(
+                            std::iter::once(8)
+                                .chain(input[..end].iter().copied().filter(|&n| n < 3))
+                                .map(V::U32)
+                                .collect()
+                        )
+                    );
+                    assert_eq!(
+                        c.get(right).unwrap(),
+                        &vector(
+                            std::iter::once(9)
+                                .chain(input[..end].iter().copied().filter(|&n| n >= 3))
+                                .map(V::U32)
+                                .collect()
+                        )
+                    );
+                } else {
+                    assert_eq!(c.get(source).unwrap(), &original);
+                    assert_eq!(c.get(left).unwrap(), &vector(vec![V::U32(8)]));
+                    assert_eq!(c.get(right).unwrap(), &right_value);
+                }
+                assert!(c.error.is_none());
+            }
+        }
+    }
+}

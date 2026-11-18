@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Bulk scalar partition, 18 November 2026
+
+Compiler 0.298 proves both advancing branches of a u32 classifier and moves their prefix into stable output vectors in one runtime call. The first stopped element and observed/effectful/resource-bearing paths retain checked execution. In the paired M2 run the complete 4,096-item partition improves from 75.76 ms to 174.25 µs, versus Rust at 24.92 µs; allocations fall from 106,517 to 21. The remaining 7.0× gap includes generic value width and fixed transport. Next: stable ordering, then representation qualification, fresh-project adoption and supported collection/algorithm modules. [Measured results and limits](../experiments/partition/README.md#bulk-scalar-partition-in-0298)
+
 ### Consuming stable partition, 18 November 2026
 
 The experimental classifier-based partition preserves stable output order and returns both prefixes, the current item and the untouched remainder when classification stops. A must-complete ticket fixture verifies exact owner return and one close per resource, with effects in input order. Original/expanded interpreter and both native backends agree. The complete 4,096-item source partition on 0.297 takes 30.41 ms versus Rust at 11.79 µs; collection dispatch dominates the CPU sample. Next: bulk native transfer for a proven scalar classifier, then stable ordering, representation qualification and supported-library adoption. [Contract](collections-and-algorithms.md#consuming-stable-partition) · [Measured limits](../experiments/partition/README.md)

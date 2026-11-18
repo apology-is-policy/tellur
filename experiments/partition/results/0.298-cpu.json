@@ -1,0 +1,17 @@
+{
+  "in_partition": 470,
+  "innermost_abi": {
+    "tellur_rt_v1_partition_prefix": 376,
+    "generated_or_other": 76,
+    "tellur_rt_v1_collection": 10,
+    "tellur_rt_v1_construct": 4,
+    "tellur_rt_v1_release_local": 1,
+    "tellur_rt_v1_route": 1,
+    "tellur_rt_v1_store": 1,
+    "tellur_rt_v1_complete": 1
+  },
+  "partition_symbol": "control_2",
+  "partitions": 6000,
+  "items_per_partition": 4096,
+  "method": "500-us CPU samples; whole stacks retained; counts include ABI callees"
+}

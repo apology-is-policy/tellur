@@ -1011,6 +1011,142 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn scalar_partition_prefix_preserves_order_stops_effects_and_faults() {
+        for mode in [
+            "plain",
+            "effect",
+            "left_effect",
+            "terminal_effect",
+            "terminal_fault",
+        ] {
+            let mut source = include_str!("../examples/partition_batch/main.vn")
+                .replace("../../library/partition.vn", "partition.vn");
+            let mut library = include_str!("../library/partition.vn").to_owned();
+            if mode == "effect" {
+                source = source.replace(
+                    "        delta (deref value == 0)",
+                    "        emit(\"classify\"); delta (deref value == 0)",
+                );
+            } else if mode == "left_effect" {
+                source = source.replace("[compare]: exit delta (deref value < rule.limit) {\n            true => left {},\n            false => right {}\n        };", "[compare]: delta (deref value < rule.limit) {true => yes, false => exit right}\n        [yes]: emit(\"left\"); exit left;");
+            } else if mode == "terminal_effect" {
+                source = source.replace("true => exit stopped { \"unclassified\" }", "true => stop")
+                    .replace("        [compare]:", "        [stop]: emit(\"stop\"); exit stopped {\"unclassified\"};\n        [compare]:");
+            } else if mode == "terminal_fault" {
+                source = source
+                    .replace(
+                        "true => exit stopped { \"unclassified\" }",
+                        "true => fault \"stop\"",
+                    )
+                    .replace("    {\n", "    faults {\n")
+                    .replace("\n{\n", "\nfaults {\n");
+                library = library
+                    .replace(
+                        "stopped { error reason };",
+                        "stopped { error reason } faults;",
+                    )
+                    .replace("\n{\n", "\nfaults {\n");
+                // A generic owning partition cannot fault while retaining arbitrary
+                // resource elements. Use the same concrete u32 loop for this probe.
+                let (trait_source, body) = library
+                    .split_once("pub control partition<rule_type: classifier>")
+                    .unwrap();
+                let concrete = format!("control partition_scalar{body}")
+                    .replace("classifier<rule_type>.item", "u32")
+                    .replace("classifier<rule_type>.error", "string")
+                    .replace("ref rule_type rule", "ref pivot rule")
+                    .replace(
+                        "classifier<rule_type>.classify",
+                        "partition.classifier<pivot>.classify",
+                    );
+                source =
+                    source.replace("partition.partition<pivot>", "partition_scalar") + &concrete;
+                library = trait_source.to_owned();
+            }
+            let f = Fixture::new(&source);
+            fs::write(f.root.join("partition.vn"), library).unwrap();
+            fs::write(
+                &f.manifest,
+                include_str!("../examples/partition_batch/manifest.json"),
+            )
+            .unwrap();
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                assert_eq!(
+                    ir.matches("call void @tellur_rt_v1_partition_prefix")
+                        .count(),
+                    usize::from(!matches!(mode, "effect" | "left_effect")),
+                    "{mode} {expanded}"
+                );
+                let compare = |args: &[String]| {
+                    let a = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let b = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (a.status.code(), &a.stdout, &a.stderr),
+                            (b.status.code(), &b.stdout, &b.stderr),
+                            "{mode} {expanded} {args:?}"
+                        );
+                    }
+                    a
+                };
+                let vector = |values: &[u32]| json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}});
+                for values in [
+                    vec![],
+                    vec![1, 4, 2, 3],
+                    vec![1, 2, 1],
+                    vec![4, 3, 4],
+                    vec![0, 2],
+                    vec![4, 1, 0, 2],
+                    vec![1, 3, 0],
+                    vec![u32::MAX, 1],
+                ] {
+                    let args = vec![vector(&values).to_string(), "3".into()];
+                    let result = compare(&args);
+                    assert_eq!(
+                        result.status.code(),
+                        Some(if mode == "terminal_fault" && values.contains(&0) {
+                            1
+                        } else if values.contains(&0) {
+                            7
+                        } else {
+                            0
+                        })
+                    );
+                    compare(&[vec!["--json".into()], args].concat());
+                }
+                let values = vector(&[4, 1, 0, 2]);
+                for fuel in 0..60 {
+                    compare(&[
+                        "--fuel".into(),
+                        fuel.to_string(),
+                        values.to_string(),
+                        "3".into(),
+                    ]);
+                }
+                let path = f.root.join("script.json");
+                fs::write(&path,json!({"entry":"main","arguments":[values,{"kind":"u32","value":3}],"calls":[]}).to_string()).unwrap();
+                compare(&["--scenario".into(), path.to_str().unwrap().into()]);
+            }
+        }
+    }
+
+    #[test]
     fn scalar_fold_prefix_preserves_terminal_steps_effects_and_observers() {
         let source = include_str!("../examples/batch_fold/main.vn")
             .replace("../../library/reduction.vn", "reduction.vn")

@@ -4299,6 +4299,123 @@ pub unsafe extern "C" fn tellur_rt_v1_map_drain(
     })
 }
 
+/// Move a proven scalar classifier's advancing prefix with one suffix shift.
+/// Leave the first stopped element and all terminal effects to the checked graph.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_partition_prefix(
+    ctx: *mut Context<'_>,
+    source: u64,
+    left: u64,
+    right: u64,
+    rule: usize,
+    field: usize,
+    stop: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+            return Ok(());
+        }
+        let (Ok(source), Ok(left), Ok(right)) = (
+            c.value_index(source),
+            c.value_index(left),
+            c.value_index(right),
+        ) else {
+            return Ok(());
+        };
+        let limit = {
+            let storage = c.storage.values();
+            let Ok(slot) = c.local(rule) else {
+                return Ok(());
+            };
+            let Ok(V::Reference { root, fields, .. }) = super::slot(storage, slot) else {
+                return Ok(());
+            };
+            let Ok(owner) = super::slot(storage, *root) else {
+                return Ok(());
+            };
+            let Ok(V::Construct { fields, .. }) = super::project_ref(owner, fields) else {
+                return Ok(());
+            };
+            let Some(V::U32(limit)) = fields.get(field) else {
+                return Ok(());
+            };
+            *limit
+        };
+        let Ok([source, left, right]) = c.values.get_disjoint_mut([source, left, right]) else {
+            return Ok(());
+        };
+        let [
+            Some(V::Construct {
+                ty: st,
+                name: sn,
+                fields: source,
+            }),
+            Some(V::Construct {
+                ty: lt,
+                name: ln,
+                fields: left,
+            }),
+            Some(V::Construct {
+                ty: rt,
+                name: rn,
+                fields: right,
+            }),
+        ] = [source, left, right]
+        else {
+            return Ok(());
+        };
+        if st != "vector<U32>"
+            || lt != st
+            || rt != st
+            || sn != "vector"
+            || ln != "vector"
+            || rn != "vector"
+        {
+            return Ok(());
+        }
+        let mut steps = 0usize;
+        let mut left_count = 0usize;
+        for value in source.iter() {
+            let V::U32(value) = value else {
+                break;
+            };
+            if u64::from(*value) == stop {
+                break;
+            }
+            steps += 1;
+            left_count += usize::from(*value < limit);
+        }
+        let right_count = steps - left_count;
+        if steps == 0
+            || left
+                .len()
+                .checked_add(left_count)
+                .is_none_or(|n| n > u32::MAX as usize)
+            || right
+                .len()
+                .checked_add(right_count)
+                .is_none_or(|n| n > u32::MAX as usize)
+            || !c
+                .storage
+                .values_mut()
+                .skip_completed(steps as u64, &c.host.activations)
+        {
+            return Ok(());
+        }
+        left.reserve(left_count);
+        right.reserve(right_count);
+        for value in source.drain(..steps) {
+            let goes_left = matches!(&value, V::U32(n) if *n < limit);
+            if goes_left {
+                left.push(value);
+            } else {
+                right.push(value);
+            }
+        }
+        Ok(())
+    })
+}
+
 /// Append complete, proven vector-taking iterations in one ownership transfer.
 /// Leave both temporary owners ready for the original loop's terminating path.
 #[unsafe(no_mangle)]

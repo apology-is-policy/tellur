@@ -162,3 +162,5 @@ Lexical supervision uses `fault boundary`, `contingency [owners]`, `supervised l
 `recover again` and `terminate process`. `@fault` is the ambient immutable fault
 reference inside lexical contingency; it is an expression, not an annotation.
 See [contingency](contingency.md) for the contextual restrictions on these spellings.
+
+Compiler 0.298 summarizes proven effect-free u32 partition classifiers in optimized LLVM builds. The native runtime moves each advancing prefix into stable left/right outputs with one suffix shift, while the first stopped element retains authored execution. Tracing, scripts, fuel, resource elements and classifiers with advancing effects retain the checked loop. This changes lowering, not source syntax.
