@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Consuming stable partition, 18 November 2026
+
+The experimental classifier-based partition preserves stable output order and returns both prefixes, the current item and the untouched remainder when classification stops. A must-complete ticket fixture verifies exact owner return and one close per resource, with effects in input order. Original/expanded interpreter and both native backends agree. The complete 4,096-item source partition on 0.297 takes 30.41 ms versus Rust at 11.79 µs; collection dispatch dominates the CPU sample. Next: bulk native transfer for a proven scalar classifier, then stable ordering, representation qualification and supported-library adoption. [Contract](collections-and-algorithms.md#consuming-stable-partition) · [Measured limits](../experiments/partition/README.md)
+
 ### Scalar fold prefixes, 18 November 2026
 
 Compiler 0.297 skips proven effect-free advancing steps using a native scalar loop in the precompiled runtime. The first terminal step and all observed or unsupported paths retain checked execution. The paired M2 full fold improves from 2.430 ms to 6.67 µs, versus Rust at 348 ns; allocations fall from 7,694 to 14. Empty input regresses 28%, and Rust parity remains open. Compare these timings only within this run because machine load differs from earlier runs. Next: consuming stable partition, stable ordering, representation qualification and supported-library adoption, with further measured performance passes. [Measurements and limits](../experiments/owned_fold/README.md#scalar-advancing-prefixes-in-0297)

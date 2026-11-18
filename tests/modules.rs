@@ -1491,3 +1491,197 @@ control main(vector<u32> source) exits done { u32 first, vector<u32> left, vecto
 }"#);
     f.reject("E_LOAN");
 }
+
+#[test]
+fn consuming_partition_preserves_stability_resources_and_early_stop() {
+    use tellur::runtime::ScriptCall;
+    let f = Fixture::new();
+    let source = include_str!("fixtures/owned_partition.vn");
+    f.write("partition.vn", include_str!("../library/partition.vn"));
+    f.write("main.vn", source);
+    let checked = f.check().unwrap();
+    let expanded = checked.expanded("main").unwrap();
+    let settled = checked.expanded("settle").unwrap();
+    let vector = |fields| Value::Construct {
+        ty: "vector<ticket>".into(),
+        name: "vector".into(),
+        fields,
+    };
+    let mut cases = Vec::new();
+    for ranks in [
+        vec![],
+        vec![3],
+        vec![1, 4, 2, 3, 1],
+        vec![0, 2],
+        vec![3, 1, 0, 2],
+        vec![1, 3, 0],
+    ] {
+        let tickets: Vec<_> = ranks
+            .iter()
+            .enumerate()
+            .map(|(i, &rank)| Value::Construct {
+                ty: "ticket".into(),
+                name: "ticket".into(),
+                fields: vec![
+                    Value::Opaque {
+                        ty: "handle".into(),
+                        token: format!("ticket-{i}"),
+                    },
+                    Value::U32(rank),
+                ],
+            })
+            .collect();
+        let stop = ranks.iter().position(|&r| r == 0);
+        let end = stop.unwrap_or(ranks.len());
+        let left: Vec<_> = (0..end).filter(|&i| ranks[i] < 3).collect();
+        let right: Vec<_> = (0..end).filter(|&i| ranks[i] >= 3).collect();
+        let mut fields = vec![
+            vector(left.iter().map(|&i| tickets[i].clone()).collect()),
+            vector(right.iter().map(|&i| tickets[i].clone()).collect()),
+        ];
+        if let Some(i) = stop {
+            fields.extend([
+                tickets[i].clone(),
+                vector(tickets[i + 1..].to_vec()),
+                Value::String("unclassified".into()),
+            ]);
+        }
+        let scenario = Scenario {
+            entry: "main".into(),
+            arguments: vec![vector(tickets.clone()), Value::U32(3)],
+            calls: vec![],
+        };
+        let result = checked.run(&scenario).unwrap();
+        assert_eq!(result, expanded.run(&scenario).unwrap());
+        assert_eq!(
+            result.outcome,
+            if stop.is_some() { "stopped" } else { "split" }
+        );
+        assert_eq!(result.fields, fields);
+        // Only visited elements emit, in input order, including the stopping element.
+        let emitted: Vec<_> = result
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                tellur::runtime::Event::Emit { message } => Some(message.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            emitted,
+            ranks[..end + usize::from(stop.is_some())]
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+        );
+        cases.push((scenario.clone(), result));
+        let close_order: Vec<_> = left
+            .into_iter()
+            .chain(right)
+            .chain(end..ranks.len())
+            .collect();
+        let mut scenario = scenario;
+        scenario.entry = "settle".into();
+        scenario.calls = close_order
+            .iter()
+            .enumerate()
+            .map(|(n, _)| ScriptCall {
+                operation: "close".into(),
+                outcome: if n == 0 { "failed" } else { "closed" }.into(),
+                fields: if n == 0 {
+                    vec![Value::Opaque {
+                        ty: "close_error".into(),
+                        token: "closed with error".into(),
+                    }]
+                } else {
+                    vec![]
+                },
+                waits: 0,
+            })
+            .collect();
+        let result = checked.run(&scenario).unwrap();
+        assert_eq!(result, settled.run(&scenario).unwrap());
+        let closed: Vec<_> = result
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                tellur::runtime::Event::Primitive {
+                    operation,
+                    arguments,
+                    ..
+                } if operation == "close" => Some(arguments.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            closed,
+            close_order
+                .iter()
+                .map(|&i| vec![Value::Opaque {
+                    ty: "handle".into(),
+                    token: format!("ticket-{i}")
+                }])
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(closed.len(), tickets.len());
+        cases.push((scenario, result));
+    }
+    for (name, program, entry) in [
+        ("original", &checked, "main"),
+        ("expanded", &expanded, "main"),
+        ("original-settle", &checked, "settle"),
+        ("expanded-settle", &settled, "settle"),
+    ] {
+        let binary = f.root.join(name);
+        support::scenario_executable(program)
+            .build_for_test(entry, &binary, 3)
+            .unwrap();
+        for (scenario, expected) in cases.iter().filter(|(s, _)| s.entry == entry) {
+            let path = f.root.join("case.json");
+            fs::write(&path, serde_json::to_vec(scenario).unwrap()).unwrap();
+            let result = std::process::Command::new(&binary)
+                .arg("--scenario")
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+    }
+    let rules = source.split_once("control main(").unwrap().0;
+    f.write(
+        "main.vn",
+        &format!(
+            r#"{rules}
+control main(vector<ticket> source) exits done {{
+    pivot rule = pivot {{ 3 }};
+    delta partition.partition<pivot>(source, borrow rule) {{
+        split {{ auto left, auto right }} => exit done,
+        stopped {{ auto left, auto right, auto current, auto remaining, auto reason }} => exit done
+    }}
+}}"#
+        ),
+    );
+    f.reject("E_RESOURCE");
+    f.write("main.vn", &format!(r#"{rules}
+control main(vector<ticket> source) exits done {{ u32 rank, vector<ticket> left, vector<ticket> right }},
+    empty {{ vector<ticket> original }} {{
+    pivot rule = pivot {{ 3 }};
+    delta vector_get(borrow source, 0) {{
+        found {{ auto first }} => found,
+        out_of_bounds => exit empty {{ source }}
+    }}
+    [found]: delta partition.partition<pivot>(source, borrow rule) {{
+        split {{ auto left, auto right }} => exit done {{ first.rank, left, right }},
+        stopped {{ auto left, auto right, auto current, auto remaining, auto reason }} => exit done {{ first.rank, left, right }}
+    }}
+}}"#));
+    f.reject("E_LOAN");
+}

@@ -4,6 +4,8 @@
 
 The experimental batch controls transfer every vector element to one output owner. Invalid split positions return the original input. An outstanding loan blocks consuming its source. [Consuming split and join](../collections-and-algorithms.md#consuming-sequence-batches)
 
+The experimental consuming partition returns every owner on both completion and early stop, including the current element and untouched suffix when classification stops. [Stable partition ownership](../collections-and-algorithms.md#consuming-stable-partition)
+
 ## Explicit moves
 
 `move value` makes the existing ownership transfer explicit. Owning parameters,

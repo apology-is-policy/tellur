@@ -1,0 +1,13 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [],
+  "launch": {
+    "main": {
+      "exit_codes": {
+        "split": 0,
+        "stopped": 7
+      }
+    }
+  }
+}

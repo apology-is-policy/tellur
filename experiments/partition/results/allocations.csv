@@ -1,0 +1,13 @@
+kind,case,allocations,reallocations,requested_bytes,peak_extra_bytes
+vn,empty,19,1,4589,3072
+vn,small,3349,9,418093,25072
+vn,full,106517,19,13270445,561648
+vn,first,36,2,8234,4464
+vn,middle,53285,11,6639114,283120
+vn,last,106508,20,13271122,561648
+rs,empty,0,,0,0
+rs,small,10,,992,512
+rs,full,20,,32736,16384
+rs,first,0,,0,0
+rs,middle,11,,24556,16380
+rs,last,20,,32736,16384

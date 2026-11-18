@@ -1,0 +1,69 @@
+import "partition.vn" as partition;
+struct ticket {
+    handle token;
+    u32 rank;
+}
+struct pivot {
+    u32 limit;
+}
+implement partition.classifier for pivot {
+    type item = ticket;
+    type error = string;
+    control classify(ref pivot rule, ref ticket value) exits left,
+        right,
+        stopped { string reason }
+    {
+        emit(u32_text(value.rank));
+        delta (value.rank == 0) {
+            true => exit stopped { "unclassified" },
+            false => compare
+        }
+        [compare]: exit delta (value.rank < rule.limit) {
+            true => left {},
+            false => right {}
+        };
+    }
+}
+control main(vector<ticket> source, u32 limit) exits
+        split { vector<ticket> left, vector<ticket> right },
+    stopped {
+        vector<ticket> left,
+        vector<ticket> right,
+        ticket current,
+        vector<ticket> remaining,
+        string reason
+    }
+{
+    pivot rule = pivot { limit };
+    forward partition.partition<pivot>(source, borrow rule);
+}
+control settle(vector<ticket> source, u32 limit) exits done {
+    delta main(source, limit) {
+        split { auto left, auto right } => split,
+        stopped { auto left, auto right, auto current, auto remaining, auto reason } => stopped
+    }
+    [split]: consume(left);
+        consume(right);
+        exit done;
+    [stopped]: consume(left);
+        consume(right);
+        finish(current);
+        consume(remaining);
+        exit done;
+}
+control consume(vector<ticket> source) exits done {
+    loop close_all(vector<ticket> rest = source) {
+        delta vector_take(rest) {
+            item { auto current, auto tail } => item,
+            empty => exit done
+        }
+        [item]: finish(current);
+            again close_all(tail);
+    }
+}
+control finish(ticket value) exits done {
+    delta close(value.token) {
+        closed => exit done,
+        failed { auto reason } => exit done
+    }
+}

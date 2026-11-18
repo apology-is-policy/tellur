@@ -1,0 +1,33 @@
+import "../../library/partition.vn" as partition;
+struct pivot {
+    u32 limit;
+}
+implement partition.classifier for pivot {
+    type item = u32;
+    type error = string;
+    control classify(ref pivot rule, ref u32 value) exits left,
+        right,
+        stopped { string reason }
+    {
+        delta (deref value == 0) {
+            true => exit stopped { "unclassified" },
+            false => compare
+        }
+        [compare]: exit delta (deref value < rule.limit) {
+            true => left {},
+            false => right {}
+        };
+    }
+}
+control main(vector<u32> source, u32 limit) exits split { vector<u32> left, vector<u32> right },
+    stopped {
+        vector<u32> left,
+        vector<u32> right,
+        u32 current,
+        vector<u32> remaining,
+        string reason
+    }
+{
+    pivot rule = pivot { limit };
+    forward partition.partition<pivot>(source, borrow rule);
+}

@@ -68,6 +68,21 @@ With 0.292, a full fold over 256 u32 readings requests 1.06 MB across 9,742 allo
 
 Compiler 0.297 carries proven effect-free advancing fold steps in native scalars inside the precompiled runtime. The full 256-item fold takes 6.67 µs against Rust at 348 ns in the paired run; requests fall to 14 allocations and 2,021 bytes. Terminal steps and unsupported/resource-bearing reducers retain checked execution. The remaining 19.2× gap and empty-input regression are documented. Next: consuming stable partition and stable ordering, then representation qualification and supported-library adoption. [Comparison and memory measurements](../experiments/owned_fold/README.md#scalar-advancing-prefixes-in-0297)
 
+## Consuming stable partition
+
+The experimental `partition.partition<rule_type>` owns its source vector and borrows a statically selected classifier. Each element is presented to `classify` by shared borrow, in input order. `left` and `right` move that element to the corresponding output, preserving relative order in both outputs. The classifier may emit effects; those effects occur exactly once for each visited element.
+
+| Outcome | Ownership returned to the caller |
+| --- | --- |
+| `split { left, right }` | Both completed output vectors; every input has moved to one destination. |
+| `stopped { left, right, current, remaining, reason }` | Both completed prefixes, the element the classifier stopped on, the unclassified suffix in original order, and the classifier-specific reason. |
+
+The classifier declares associated `item` and `error` types. It cannot consume or mutate through its shared item borrow. Outstanding loans prevent consuming the source. Resources in either partition, the current element or the remainder keep their completion obligations. This prototype does not change the existing scalar partition used by the editor-discovery example.
+
+Run `./bin/vnc exec examples/partition_batch/main.vn -- --scenario examples/partition_batch/main.scenario.json` for `[4, 1, 3, 2]` at pivot 3: the outputs are `[1, 2]` and `[4, 3]`. A zero stops classification and returns the remaining owners. The separate resource fixture emits visited ranks in order and closes each ticket exactly once, including when a close reports failure. Original and expanded interpreter and both native backends agree; unhandled resource ownership and consuming through an outstanding loan are rejected. [Library](../library/partition.vn) · [Caller](../examples/partition_batch/main.vn) · [Resource fixture](../tests/fixtures/owned_partition.vn)
+
+On compiler 0.297, the 4,096-item complete native partition takes 30.41 ms versus optimized Rust at 11.79 µs. The full checked path makes 106,517 allocations and 19 reallocations; front-draining the flat generic vector repeatedly shifts its suffix. Next, prove and lower a live scalar classifier's complete advancing prefix with bulk ownership transfer, leaving the first stopped element and unsupported/effectful classifiers to their checked paths. Then stable ordering, representation qualification and supported-library adoption. [Measurement, movement and profile](../experiments/partition/README.md)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

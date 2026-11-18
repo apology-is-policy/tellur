@@ -1,0 +1,47 @@
+// Classify by shared borrow. The partition owns every element until transfer.
+pub trait classifier {
+    type item;
+    type error;
+    control classify(ref self rule, ref item value) exits left,
+        right,
+        stopped { error reason };
+}
+
+pub control partition<rule_type: classifier>(
+    vector<classifier<rule_type>.item> source,
+    ref rule_type rule
+) exits split {
+        vector<classifier<rule_type>.item> left,
+        vector<classifier<rule_type>.item> right
+    },
+    stopped {
+        vector<classifier<rule_type>.item> left,
+        vector<classifier<rule_type>.item> right,
+        classifier<rule_type>.item current,
+        vector<classifier<rule_type>.item> remaining,
+        classifier<rule_type>.error reason
+    }
+{
+    loop classify(
+        vector<classifier<rule_type>.item> rest = source,
+        mutable vector<classifier<rule_type>.item> left = [],
+        mutable vector<classifier<rule_type>.item> right = []
+    ) {
+        delta vector_take(rest) {
+            item { auto current, auto tail } => item,
+            empty => exit split { left, right }
+        }
+        [item]: delta classifier<rule_type>.classify(rule, borrow current) {
+            left => take_left,
+            right => take_right,
+            stopped { auto reason } => exit stopped { left, right, current, tail, reason }
+        }
+        [take_left]: delta vector_push(borrow mutable left, current) {
+            pushed => left_added
+        }
+        [take_right]: delta vector_push(borrow mutable right, current) {
+            pushed => right_added
+        }
+        [left_added | right_added]: again classify(tail, left, right);
+    }
+}

@@ -28,6 +28,10 @@ The reduction module borrows a vector and takes ownership of its accumulator. In
 
 `sequence_batches.split_at` divides an owned vector at an index and returns the whole original on an invalid position. `sequence_batches.join` concatenates two owned inputs. Run `./bin/vnc exec examples/rotate_batch/main.vn -- --scenario examples/rotate_batch/main.scenario.json` to rotate a batch of request IDs. [Source](sequence_batches.vn) · [Contract and performance](../docs/collections-and-algorithms.md#consuming-sequence-batches)
 
+## Consuming stable partition
+
+`partition.partition` borrows a classifier and consumes the input vector. Each classification sends the owned element to the left or right vector, in stable order. An early stop returns both prefixes, the current element, untouched remainder and reason. Run `./bin/vnc exec examples/partition_batch/main.vn -- --scenario examples/partition_batch/main.scenario.json`. [Contract](../docs/collections-and-algorithms.md#consuming-stable-partition) · [Measured performance limits](../experiments/partition/README.md)
+
 ## JSON string-map files
 
 Import [json_file.vn](json_file.vn) with a relative path and a local namespace.

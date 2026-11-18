@@ -1,0 +1,25 @@
+{
+  "in_partition": 1467,
+  "innermost_abi": {
+    "tellur_rt_v1_collection": 1315,
+    "tellur_rt_v1_call": 38,
+    "tellur_rt_v1_reference": 36,
+    "tellur_rt_v1_evidence": 16,
+    "tellur_rt_v1_route": 13,
+    "generated_or_other": 10,
+    "tellur_rt_v1_binary": 8,
+    "tellur_rt_v1_store": 6,
+    "tellur_rt_v1_deref": 6,
+    "tellur_rt_v1_variant": 5,
+    "tellur_rt_v1_complete": 4,
+    "tellur_rt_v1_frame": 4,
+    "tellur_rt_v1_local": 2,
+    "tellur_rt_v1_tick": 2,
+    "tellur_rt_v1_ok": 1,
+    "tellur_rt_v1_release_local": 1
+  },
+  "partition_symbol": "control_1",
+  "partitions": 40,
+  "items_per_partition": 4096,
+  "method": "500-us CPU samples; whole stacks retained; counts include ABI callees"
+}
