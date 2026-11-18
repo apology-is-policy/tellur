@@ -44,6 +44,23 @@ The first invocation exits with status 0; the second selects `declined` and exit
 with status 7. Both report the declared outcome and its payload. Native `--json`,
 `--scenario`, `--entry`, `--help` and `--fuel` retain their existing behavior.
 
+## Singleton run construction (0.300)
+
+Optimized synchronous LLVM builds can batch a loop that takes each owned vector
+element, constructs a one-element vector and appends that run to an output vector.
+The compiler proves the entire advancing path, including the exact element and
+loop destinations. The runtime checks distinct owners and matching nested vector
+types before transferring the source in one traversal. The original graph still
+handles exhaustion and its terminal effects.
+
+This transformation moves resource-bearing and empty-record elements without
+cloning or completing them. Each element keeps exactly one destination and its
+existing obligations. No user control calls are skipped. Effects on the advancing
+path, other constructor shapes, retained execution, tracing, scripts and fuel limits
+keep ordinary checked execution. It changes neither the collection contract nor
+the stable sort's comparison order. Run buffers and generic value storage remain
+separate allocation costs.
+
 ## Stable merge traversal (0.299)
 
 Optimized synchronous LLVM builds can batch a merge whose comparator reads the

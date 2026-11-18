@@ -138,3 +138,55 @@ claim on this M2.
 
 To repeat a paired comparison, add `--previous-vnc /path/to/previous/vnc` to the
 command above. The driver builds each compiler's own IR and uses its own runtime.
+
+
+## Singleton run construction in 0.300
+
+The compiler proves an effect-free loop that takes one owner, constructs its
+singleton vector, appends that vector and continues with the remaining source.
+The runtime transfers all elements in one traversal, preserving arbitrary owners,
+including resources and empty records. The checked graph still handles exhaustion
+and terminal effects. Other constructor shapes, advancing effects, retained execution,
+scripts, tracing and fuel keep ordinary execution. No comparator calls are skipped.
+
+Each compiler uses its own IR and runtime in this paired M2 run, with unchanged
+source and the same Rust baseline. The methodology and peak-memory definitions above
+apply; absolute times from separate runs should not be compared.
+
+| Input | 0.299 | 0.300 | Rust | Speedup |
+| --- | ---: | ---: | ---: | ---: |
+| Empty | 19.54 µs | 19.79 µs | 42 ns | no elements transferred |
+| Single | 31.17 µs | 25.25 µs | 42 ns | 1.23× |
+| 128 mixed | 1.348 ms | 1.102 ms | 2.792 µs | 1.22× |
+| 1,024 mixed | 13.37 ms | 10.06 ms | 9.042 µs | 1.33× |
+| 1,024 sorted | 13.05 ms | 9.722 ms | 2.167 µs | 1.34× |
+| 1,024 reversed | 13.55 ms | 10.37 ms | 14.33 µs | 1.31× |
+| 1,024 equal | 12.51 ms | 9.137 ms | 2.208 µs | 1.37× |
+
+The mixed call makes 68,197 allocations and 648 reallocations, down from 91,749
+and 656. Requested bytes fall from 12,929,355 to 11,202,411. **Peak additional
+allocator-usable memory increases from 114,336 to 442,016 bytes**. This memory
+regression remains an investigation target; reduced request counts do not establish
+lower peak storage. Rust uses one 8,192-byte allocation. The complete mixed sort
+remains **1,113× Rust**, so this is an incremental optimization, not parity.
+
+Singleton formation now shifts no source suffixes, removing 523,776 slot shifts.
+There are still 698,027 run-header shifts and 499 merge suffix shifts, totaling
+94,999,536 modeled bytes at 136 bytes per generic value. This excludes buffer growth
+and other transfers. Comparison count remains 8,913. A separate CPU sample has
+799 in-sort stacks: 300 in control calls, 187 in vector transfer, 120 in collection
+operations, 82 in merge and six in singleton construction. Counts include callees.
+
+All 568 selected compiler/runtime/manual regressions and 48 editor tests pass.
+Focused original/expanded LLVM O2/O0 and Rust comparisons cover effects, constructor
+shape, terminal effects, scripts, 45 fuel budgets and subsequent fault identities.
+The ABI regression transfers real resources exactly once and tests fallback owners;
+the end-to-end resource sorting regression also passes. Packaged CLI/LSP, cold Hello
+and HTTP qualification pass. Both Linux targets cross-link ELF executables using the
+new helper; those executables were not run on this M2.
+
+Next: isolate the peak-memory increase and remaining run-header/terminal transport,
+then qualify representations, applicable ordered bounds and supported-library adoption.
+[Raw timings](results/0.300-timings.csv) · [Allocations](results/0.300-allocations.csv) ·
+[ABI breakdown](results/0.300-operations.csv) · [CPU](results/0.300-cpu.json) ·
+[Movement](results/0.300-movement.json) · [Environment](results/0.300-environment.json)

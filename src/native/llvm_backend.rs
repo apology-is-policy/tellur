@@ -15,6 +15,8 @@ mod merge;
 mod partition;
 #[path = "llvm_search.rs"]
 mod search;
+#[path = "llvm_singletons.rs"]
+mod singletons;
 #[path = "llvm_target.rs"]
 mod targets;
 #[path = "llvm_vector_transfer.rs"]
@@ -97,6 +99,7 @@ declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
 declare i64 @tellur_rt_v1_search_loan(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
+declare void @tellur_rt_v1_singletons(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_merge_prefix(ptr, i64, i64, i64, i64)
 declare void @tellur_rt_v1_partition_prefix(ptr, i64, i64, i64, i64, i64, i64)
 declare void @tellur_rt_v1_vector_transfer(ptr, i64, i64, i64)
@@ -2124,6 +2127,13 @@ impl Emitter {
                         && let Some(m) = merge::analyze(i, &self.comparators)
                     {
                         self.effect(format!("call void @tellur_rt_v1_merge_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {})", values[m.left],values[m.right],values[m.result],m.comparator.field));
+                    }
+                    if self.optimize_loops
+                        && !self.retained
+                        && let Some(runs) = singletons::analyze(i)
+                    {
+                        let (ty, len) = self.text(runs.ty);
+                        self.effect(format!("call void @tellur_rt_v1_singletons(ptr %ctx, i64 {}, i64 {}, ptr {ty}, i64 {len})", values[runs.source],values[runs.destination]));
                     }
                     if self.optimize_loops
                         && let Some(transfer) = vector_transfer::analyze(i)

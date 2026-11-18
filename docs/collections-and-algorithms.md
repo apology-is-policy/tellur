@@ -97,6 +97,8 @@ This remains a source prototype on compiler 0.298. On M2, 1,024 mixed two-u32 re
 
 Compiler 0.299 lowers proven effect-free merge prefixes for records containing u32 fields. The complete mixed sort improves 4.59× to 10.32 ms in a paired M2 run, versus Rust at 7.042 µs. Allocations fall to 91,749; 166.2 MB of modeled suffix movement remains, mostly in singleton/run construction. Resource and observed execution keep the checked path. Next, reduce those remaining run costs before representation qualification and supported-library adoption. [Paired evidence](../experiments/stable_ordering/README.md#bulk-merge-traversal-in-0299)
 
+Compiler 0.300 batches singleton-run formation while preserving generic element ownership, including resources. In the paired M2 run the complete mixed sort improves 1.33× to 10.06 ms, versus Rust at 9.042 µs; allocations fall to 68,197. Peak extra usable memory rises to 442,016 bytes, which remains an investigation target alongside run-header movement and terminal transport. [Paired evidence and memory limitation](../experiments/stable_ordering/README.md#singleton-run-construction-in-0300)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

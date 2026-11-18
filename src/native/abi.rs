@@ -4299,6 +4299,67 @@ pub unsafe extern "C" fn tellur_rt_v1_map_drain(
     })
 }
 
+/// Transfer each source owner into a singleton run in one traversal.
+/// No user calls are skipped; exhaustion is still handled by the checked graph.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_singletons(
+    ctx: *mut Context<'_>,
+    source: u64,
+    destination: u64,
+    ty: *const u8,
+    len: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+            return Ok(());
+        }
+        let expected = unsafe { text(ty, len)? };
+        let (Ok(source), Ok(destination)) = (c.value_index(source), c.value_index(destination))
+        else {
+            return Ok(());
+        };
+        let Ok([source, destination]) = c.values.get_disjoint_mut([source, destination]) else {
+            return Ok(());
+        };
+        let [
+            Some(V::Construct {
+                ty: st,
+                name: sn,
+                fields: source,
+            }),
+            Some(V::Construct {
+                ty: dt,
+                name: dn,
+                fields: destination,
+            }),
+        ] = [source, destination]
+        else {
+            return Ok(());
+        };
+        if st != expected
+            || sn != "vector"
+            || dn != "vector"
+            || !st.starts_with("vector<")
+            || dt.strip_prefix("vector<").and_then(|s| s.strip_suffix('>')) != Some(st.as_str())
+            || destination
+                .len()
+                .checked_add(source.len())
+                .is_none_or(|n| n > u32::MAX as usize)
+        {
+            return Ok(());
+        }
+        destination.reserve(source.len());
+        for owner in source.drain(..) {
+            destination.push(V::Construct {
+                ty: st.clone(),
+                name: "vector".into(),
+                fields: vec![owner],
+            });
+        }
+        Ok(())
+    })
+}
+
 /// Merge the advancing prefix of two owned runs. The checked graph handles exhaustion.
 /// The narrow representation guard excludes resources and reference-bearing records.
 #[unsafe(no_mangle)]

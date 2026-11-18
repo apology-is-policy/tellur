@@ -1011,6 +1011,96 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn singleton_runs_preserve_effects_shapes_observers_and_fault_identity() {
+        let library = include_str!("../library/ordering.vn");
+        let body = library
+            .split_once("control singletons<item>")
+            .unwrap()
+            .1
+            .split_once("control merge_pass")
+            .unwrap()
+            .0;
+        let base = format!("control singletons{body}").replace("vector<item>", "vector<u32>");
+        for mode in [
+            "plain",
+            "effect",
+            "terminal_effect",
+            "double",
+            "fault_after",
+        ] {
+            let body = match mode {
+                "effect" => base.replace("[item]: vector", "[item]: emit(\"item\"); vector"),
+                "terminal_effect" => base
+                    .replace("empty => exit ready { result }", "empty => empty")
+                    .replace(
+                        "[item]:",
+                        "[empty]: emit(\"empty\"); exit ready {result};\n        [item]:",
+                    ),
+                "double" => base.replace("[head]", "[head, head]"),
+                _ => base.clone(),
+            };
+            let main = if mode == "fault_after" {
+                "control main(vector<u32> source) exits ready {vector<vector<u32>> runs} faults { delta singletons(source) {ready {auto runs}=>ready} [ready]: fault \"after runs\";}"
+            } else {
+                "control main(vector<u32> source) exits ready {vector<vector<u32>> runs} {forward singletons(source);}"
+            };
+            let f = Fixture::new(&(body + main));
+            fs::write(&f.manifest,r#"{"version":"0.1","types":[],"primitives":[],"launch":{"main":{"exit_codes":{"ready":0}}}}"#).unwrap();
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                assert_eq!(
+                    ir.contains("call void @tellur_rt_v1_singletons"),
+                    !matches!(mode, "effect" | "double"),
+                    "{mode} {expanded}"
+                );
+                let compare = |args: &[String]| {
+                    let a = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let b = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (a.status.code(), &a.stdout, &a.stderr),
+                            (b.status.code(), &b.stdout, &b.stderr),
+                            "{mode} {expanded} {args:?}"
+                        );
+                    }
+                };
+                let vector = |values: &[u32]| json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}});
+                for values in [vec![], vec![7], vec![4, 1, 4, 2], vec![u32::MAX, 0, 1]] {
+                    let value = vector(&values).to_string();
+                    compare(&[value.clone()]);
+                    compare(&["--json".into(), value]);
+                }
+                let values = vector(&[3, 1, 2]);
+                for fuel in 0..45 {
+                    compare(&["--fuel".into(), fuel.to_string(), values.to_string()]);
+                }
+                let path = f.root.join("script.json");
+                fs::write(
+                    &path,
+                    json!({"entry":"main","arguments":[values],"calls":[]}).to_string(),
+                )
+                .unwrap();
+                compare(&["--scenario".into(), path.to_str().unwrap().into()]);
+            }
+        }
+    }
+
+    #[test]
     fn stable_merge_prefix_preserves_ties_effects_and_following_fault_identity() {
         for mode in [
             "plain",

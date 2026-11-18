@@ -3075,3 +3075,144 @@ fn stable_merge_prefix_preserves_owners_ties_and_fallback_state() {
         }
     }
 }
+
+#[test]
+fn singleton_runs_transfer_resources_once_and_preserve_fallback_owners() {
+    use std::{cell::Cell, rc::Rc};
+    struct Owner(Rc<Cell<usize>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    for n in [0, 1, 7] {
+        for mode in [
+            "live",
+            "trace",
+            "script",
+            "fuel",
+            "alias",
+            "type",
+            "constructor",
+        ] {
+            let drops = Rc::new(Cell::new(0));
+            let mut host = Host::new(
+                json!({}),
+                None,
+                mode == "trace",
+                (mode == "fuel").then_some(100),
+            );
+            if mode == "script" {
+                host.script = Some(vec![]);
+            }
+            let mut c = context(&mut host);
+            let values: Vec<_> = (0..n)
+                .map(|_| {
+                    c.host
+                        .resources
+                        .insert("probe", Owner(drops.clone()))
+                        .unwrap()
+                })
+                .collect();
+            let first = c
+                .host
+                .resources
+                .insert("probe", Owner(drops.clone()))
+                .unwrap();
+            let vector = |fields| V::Construct {
+                ty: "vector<probe>".into(),
+                name: "vector".into(),
+                fields,
+            };
+            let nested = |fields| V::Construct {
+                ty: if mode == "type" {
+                    "vector<vector<wrong>>"
+                } else {
+                    "vector<vector<probe>>"
+                }
+                .into(),
+                name: "vector".into(),
+                fields,
+            };
+            let source = c.put(vector(values.clone()));
+            let initial = vec![vector(vec![first.clone()])];
+            let destination = c.put(nested(initial.clone()));
+            let ty = if mode == "constructor" {
+                "vector<wrong>"
+            } else {
+                "vector<probe>"
+            };
+            unsafe {
+                tellur_rt_v1_singletons(
+                    &mut c,
+                    source,
+                    if mode == "alias" { source } else { destination },
+                    ty.as_ptr(),
+                    ty.len(),
+                );
+            }
+            assert!(c.error.is_none());
+            assert_eq!(drops.get(), 0);
+            if mode == "live" {
+                assert_eq!(c.get(source).unwrap(), &vector(vec![]));
+                let expected = initial
+                    .into_iter()
+                    .chain(values.iter().cloned().map(|v| vector(vec![v])))
+                    .collect();
+                assert_eq!(c.get(destination).unwrap(), &nested(expected));
+            } else {
+                assert_eq!(c.get(source).unwrap(), &vector(values));
+                assert_eq!(c.get(destination).unwrap(), &nested(initial));
+            }
+            let V::Construct {
+                fields: mut owners, ..
+            } = c.take(source).unwrap()
+            else {
+                panic!()
+            };
+            let V::Construct { fields: runs, .. } = c.take(destination).unwrap() else {
+                panic!()
+            };
+            for run in runs {
+                let V::Construct { fields, .. } = run else {
+                    panic!()
+                };
+                owners.extend(fields);
+            }
+            assert_eq!(owners.len(), n + 1);
+            for owner in owners {
+                drop(c.host.resources.take::<Owner>(&owner, "probe").unwrap());
+            }
+            assert_eq!(drops.get(), n + 1);
+            assert!(c.host.resources.get::<Owner>(&first, "probe").is_err());
+        }
+    }
+    // Empty records remain distinct elements even though they carry no fields.
+    let mut host = Host::new(json!({}), None, false, None);
+    let mut c = context(&mut host);
+    let empty = V::Construct {
+        ty: "unit".into(),
+        name: "unit".into(),
+        fields: vec![],
+    };
+    let vector = |fields| V::Construct {
+        ty: "vector<unit>".into(),
+        name: "vector".into(),
+        fields,
+    };
+    let source = c.put(vector(vec![empty.clone(); 3]));
+    let destination = c.put(V::Construct {
+        ty: "vector<vector<unit>>".into(),
+        name: "vector".into(),
+        fields: vec![],
+    });
+    let ty = "vector<unit>";
+    unsafe {
+        tellur_rt_v1_singletons(&mut c, source, destination, ty.as_ptr(), ty.len());
+    }
+    assert_eq!(c.get(source).unwrap(), &vector(vec![]));
+    let V::Construct { fields, .. } = c.take(destination).unwrap() else {
+        panic!()
+    };
+    assert_eq!(fields, vec![vector(vec![empty]); 3]);
+}

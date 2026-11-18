@@ -1,0 +1,9 @@
+{
+  "compiler": "vnc 0.300.0 (v0.1 core, v0.2 syntax preview)",
+  "previous_compiler": "vnc 0.299.0 (v0.1 core, v0.2 syntax preview)",
+  "comparison": "each compiler uses its own IR and matching runtime",
+  "rust": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: aarch64-apple-darwin\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+  "llvm": "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.\n  Default target: arm64-apple-darwin27.2.0\n  Host CPU: apple-m2\n",
+  "optimization": "LLVM opt default O3 and llc O3; Rust opt-level=3",
+  "method": "13 retained shuffled trials after one discarded trial; one consuming operation per process. Timing excludes construction and checking; short cases include timer noise."
+}
