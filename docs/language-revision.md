@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Reversed run headers, 18 November 2026
+
+Compiler 0.304 batches proven reversal loops; stable sorting reverses run headers once per pass and pops them in the original comparison order. On M2, mixed 1,024-record time improves 5.586 → 4.644 ms, still 675× Rust. Modeled suffix movement drops 95.0 MB → 67.9 KB, but allocations rise 41,550 → 52,030 and the 128-item case regresses 7.2%. Resource/effect checks pass. Next: reduce generic pop/reference transport and the small-input regression, then representation qualification, applicable ordered bounds and supported-library adoption. [Measurements and tradeoffs](../experiments/stable_ordering/README.md#reversed-run-headers-in-0304)
+
 ### Owned head removal, 18 November 2026
 
 Compiler 0.303 reuses an owned vector's metadata when returning its head and remainder. Shape checks allocate nothing; resources, observers and checked fallback are preserved. In the paired M2 run the complete mixed sort improves 6.831 → 6.367 ms (6.8%), with allocations 51,821 → 41,550 and unchanged peak memory. Rust takes 7.833 µs; parity remains open. Next: qualify a run-header reversal/pop candidate that removes repeated suffix shifts while retaining comparator order, then representation qualification, applicable ordered bounds and supported-library adoption. [Measurements and limits](../experiments/stable_ordering/README.md#owned-head-transport-in-0303)

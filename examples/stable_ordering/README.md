@@ -16,8 +16,11 @@ is required. A comparator implements `ordering.comparator`, declares its `item`
 and borrows two elements, returning `before`, `equal` or `after`. This first version
 has no fallible comparator. The comparator must supply a consistent ordering.
 
-The source module is experimental. Its bottom-up merge sort uses front drains,
-which make current storage movement quadratic despite O(n log n) comparisons.
+The source module is experimental. Each bottom-up pass reverses its run headers
+once, then pops adjacent pairs in the original left-to-right order. Optimized LLVM
+batches proven reversal and scalar merge prefixes. General or observed merge
+paths still use checked front drains and can move a quadratic number of slots
+despite O(n log n) comparisons.
 [Performance evidence](../../experiments/stable_ordering/README.md) records the
 remaining native gap. The [resource fixture](../../tests/fixtures/owned_ordering.vn)
 sorts tickets without copying their handles, observes comparisons and then closes

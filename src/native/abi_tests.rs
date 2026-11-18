@@ -3556,3 +3556,122 @@ fn owned_vector_take_preserves_resources_and_checked_fallbacks() {
         }
     }
 }
+
+#[test]
+fn vector_reversal_preserves_resource_identity_and_checked_fallbacks() {
+    use std::{cell::Cell, rc::Rc};
+    struct Owner(Rc<Cell<usize>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    for n in [0, 1, 7] {
+        for mode in [
+            "live",
+            "trace",
+            "script",
+            "fuel",
+            "alias",
+            "type",
+            "malformed",
+            "constructor",
+            "stale",
+        ] {
+            let drops = Rc::new(Cell::new(0));
+            let mut host = Host::new(
+                json!({}),
+                None,
+                mode == "trace",
+                (mode == "fuel").then_some(100),
+            );
+            if mode == "script" {
+                host.script = Some(vec![]);
+            }
+            let mut c = context(&mut host);
+            let values: Vec<_> = (0..n)
+                .map(|_| {
+                    c.host
+                        .resources
+                        .insert("probe", Owner(drops.clone()))
+                        .unwrap()
+                })
+                .collect();
+            let first = c
+                .host
+                .resources
+                .insert("probe", Owner(drops.clone()))
+                .unwrap();
+            let vector = |fields| V::Construct {
+                ty: if mode == "malformed" {
+                    "vector<probe,wrong>"
+                } else {
+                    "vector<probe>"
+                }
+                .into(),
+                name: if mode == "constructor" {
+                    "wrong"
+                } else {
+                    "vector"
+                }
+                .into(),
+                fields,
+            };
+            let source = c.put(vector(values.clone()));
+            let mut initial = vector(vec![first.clone()]);
+            if mode == "type" {
+                let V::Construct { ty, .. } = &mut initial else {
+                    panic!()
+                };
+                *ty = "vector<other>".into();
+            }
+            let destination = c.put(initial.clone());
+            let stale = c.put(V::U32(1));
+            c.take(stale).unwrap();
+            unsafe {
+                tellur_rt_v1_vector_reverse(
+                    &mut c,
+                    if mode == "stale" { stale } else { source },
+                    if mode == "alias" { source } else { destination },
+                );
+            }
+            assert_eq!(
+                c.error.is_some(),
+                matches!(mode, "alias" | "stale"),
+                "{mode}: {:?}",
+                c.error
+            );
+            assert_eq!(drops.get(), 0);
+            if mode == "live" {
+                assert_eq!(c.get(source).unwrap(), &vector(vec![]));
+                assert_eq!(
+                    c.get(destination).unwrap(),
+                    &vector(
+                        std::iter::once(first.clone())
+                            .chain(values.iter().rev().cloned())
+                            .collect()
+                    )
+                );
+            } else {
+                assert_eq!(c.get(source).unwrap(), &vector(values));
+                assert_eq!(c.get(destination).unwrap(), &initial);
+            }
+            let V::Construct {
+                fields: mut owners, ..
+            } = c.take(source).unwrap()
+            else {
+                panic!()
+            };
+            let V::Construct { fields, .. } = c.take(destination).unwrap() else {
+                panic!()
+            };
+            owners.extend(fields);
+            assert_eq!(owners.len(), n + 1);
+            for owner in owners {
+                drop(c.host.resources.take::<Owner>(&owner, "probe").unwrap());
+            }
+            assert_eq!(drops.get(), n + 1);
+            assert!(c.host.resources.get::<Owner>(&first, "probe").is_err());
+        }
+    }
+}

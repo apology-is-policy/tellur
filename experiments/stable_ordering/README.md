@@ -347,3 +347,75 @@ applicable ordered bounds and supported-library adoption remain ahead.
 [Environment](results/0.303-environment.json) ·
 [Control costs before](results/0.303-controls-before.json) ·
 [Control costs after](results/0.303-controls-after.json)
+
+## Reversed run headers in 0.304
+
+Each merge pass now reverses its vector of run headers and pops from the end.
+This visits the original adjacent pairs in exactly the same order, including the
+unpaired final run. Empty generic owners are settled with consuming joins; no
+new drop or clone bound is imposed on element types.
+
+Changing only the source on 0.303 made the mixed 1,024-record sort slower:
+7.008 → 8.491 ms in a paired run. A second source traversal through generic
+collection dispatch outweighed the saved suffix movement. The LLVM emitter now
+proves the advancing pop/push path structurally and emits a guarded reversal
+summary. It reverses the uniquely owned buffer and transfers it to the destination.
+An empty destination adopts the buffer. Terminal outcomes and effects execute in
+the original graph. Advancing effects, changed values, unsupported shapes and
+observed modes retain checked execution.
+
+`python3 -B experiments/stable_ordering/movement.py` reproduces the mixed workload's
+logical movement model. Its 8,913 comparisons are unchanged. Header suffix shifts
+fall from 698,027 slots to zero; reversal uses 1,023 header swaps across the ten
+passes. Merge-prefix compaction still shifts 499 slots. At 136 bytes per generic
+value, modeled suffix movement falls from 94,999,536 to 67,864 bytes. These are
+logical operations, not measured memory-bus traffic; reversal, input/output,
+record fields, buffer growth and ABI transport must not be confused with suffix
+shifts.
+
+| Input | 0.303, original source | 0.304, reversed headers | Rust |
+| --- | ---: | ---: | ---: |
+| Empty | 13.54 µs | 13.13 µs | 42 ns |
+| Single | 14.58 µs | 16.21 µs | 41 ns |
+| 128 mixed | 603.5 µs | 646.7 µs | 2.167 µs |
+| 1,024 mixed | 5.586 ms | 4.644 ms | 6.875 µs |
+| 1,024 sorted | 5.069 ms | 4.121 ms | 1.667 µs |
+| 1,024 reversed | 5.552 ms | 4.603 ms | 11.00 µs |
+| 1,024 equal | 5.056 ms | 4.091 ms | 1.625 µs |
+
+These are paired M2 medians from 13 shuffled retained trials. Each compiler uses
+its matching runtime and source version; `measure.py --previous-source PATH`
+selects a saved source baseline. Mixed 1,024-item time improves **16.9%**, but is
+still **675× Rust**. The 128-item case regresses **7.2%**, consistent with the
+preliminary run. The single-item median regresses **11.1%** on an unchanged path
+with identical allocation counts; these short timings include noise and do not
+establish a cause or statistical significance.
+
+Mixed allocations increase **41,550 → 52,030**, requested bytes
+**8,452,716 → 9,157,724**; **1,670 reallocations** and **108,128 peak extra usable
+bytes** are unchanged. The ten reversal summaries themselves allocate nothing.
+The replacement traversal makes 2,066 generic `vector_pop` calls, accounting for
+10,320 allocations and 730,584 bytes, plus additional reference and call transport.
+Independent per-control profiles match the final whole-call allocation totals.
+This trades lower suffix movement and better large-input time for more dispatch
+allocation. The next pass targets that pop/reference overhead, including the
+small-input regression. Of 266 in-sort CPU samples, 93 are in join, 53 in
+collections, 34 in merge and 27 in routing, including callees.
+
+All 575 selected compiler/runtime/manual cases and 48 editor cases pass.
+Original/expanded LLVM O2/O0 versus Rust checks cover advancing and terminal
+effects, changed values, nonempty destinations, scripts, fuel and later fault
+identity. Resource sorting preserves the exact comparator trace and completes
+every owner once. ABI tests cover empty/nonempty input, resource identity,
+malformed shapes, mismatched types and stale/aliased handles. Packaged CLI/LSP,
+cold Hello and settings HTTP qualify; both Linux targets cross-link the reversal
+helper but were not executed on this M2. Representation qualification, applicable
+ordered bounds and fresh-project supported-library adoption remain ahead.
+
+[Source-only timings](results/0.304-source-only-timings.csv) ·
+[Source-only allocations](results/0.304-source-only-allocations.csv) ·
+[Source-only environment](results/0.304-source-only-environment.json) ·
+[Final timings](results/0.304-timings.csv) · [Allocations](results/0.304-allocations.csv) ·
+[ABI costs](results/0.304-operations.csv) · [Control costs](results/0.304-controls.json) ·
+[Movement model](results/0.304-movement.json) · [CPU](results/0.304-cpu.json) ·
+[Environment](results/0.304-environment.json)

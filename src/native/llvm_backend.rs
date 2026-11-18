@@ -21,6 +21,8 @@ mod search;
 mod singletons;
 #[path = "llvm_target.rs"]
 mod targets;
+#[path = "llvm_vector_reverse.rs"]
+mod vector_reverse;
 #[path = "llvm_vector_transfer.rs"]
 mod vector_transfer;
 
@@ -106,6 +108,7 @@ declare void @tellur_rt_v1_singletons(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_merge_prefix(ptr, i64, i64, i64, i64)
 declare void @tellur_rt_v1_partition_prefix(ptr, i64, i64, i64, i64, i64, i64)
 declare void @tellur_rt_v1_vector_transfer(ptr, i64, i64, i64)
+declare void @tellur_rt_v1_vector_reverse(ptr, i64, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
 declare i64 @tellur_rt_v1_local_length(ptr, i64, ptr, i64)
@@ -2149,6 +2152,15 @@ impl Emitter {
                     {
                         let (ty, len) = self.text(runs.ty);
                         self.effect(format!("call void @tellur_rt_v1_singletons(ptr %ctx, i64 {}, i64 {}, ptr {ty}, i64 {len})", values[runs.source],values[runs.destination]));
+                    }
+                    if self.optimize_loops
+                        && !self.retained
+                        && let Some(reverse) = vector_reverse::analyze(i)
+                    {
+                        self.effect(format!(
+                            "call void @tellur_rt_v1_vector_reverse(ptr %ctx, i64 {}, i64 {})",
+                            values[reverse.source], values[reverse.destination]
+                        ));
                     }
                     if self.optimize_loops
                         && let Some(transfer) = vector_transfer::analyze(i)

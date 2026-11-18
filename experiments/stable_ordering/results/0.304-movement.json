@@ -1,0 +1,14 @@
+{
+  "items": 1024,
+  "comparisons": 8913,
+  "merge_suffix_slots": 499,
+  "singleton_suffix_slots": 0,
+  "run_header_suffix_slots": 0,
+  "previous_run_header_suffix_slots": 698027,
+  "run_header_swaps": 1023,
+  "run_header_positions_rewritten": 2046,
+  "generic_value_bytes": 136,
+  "suffix_bytes": 67864,
+  "previous_suffix_bytes": 94999536,
+  "scope": "Counts describe logical value slots, not measured memory-bus traffic. Input/output\ntransfers, buffer growth, record fields and control/ABI transport are excluded."
+}

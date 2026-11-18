@@ -95,31 +95,60 @@ control singletons<item>(vector<item> source) exits ready { vector<vector<item>>
         [pushed]: again collect(tail, result);
     }
 }
+// Reverse headers once, then pop from the end in the original left-to-right order.
+control reverse_runs<item>(vector<vector<item>> source)
+    exits reversed { vector<vector<item>> values }
+{
+    loop reverse(
+        mutable vector<vector<item>> rest = source,
+        mutable vector<vector<item>> result = []
+    ) {
+        delta vector_pop(borrow mutable rest) {
+            item { auto run } => item,
+            empty => empty
+        }
+        [empty]: delta batches.join<vector<item>>(result, rest) {
+            joined { auto completed } => exit reversed { completed }
+        }
+        [item]: delta vector_push(borrow mutable result, run) {
+            pushed => pushed
+        }
+        [pushed]: again reverse(rest, result);
+    }
+}
 control merge_pass<order: comparator>(vector<vector<comparator<order>.item>> source, ref order rule)
     exits merged { vector<vector<comparator<order>.item>> runs }
 {
-    loop pairs(
-        vector<vector<comparator<order>.item>> rest = source,
-        mutable vector<vector<comparator<order>.item>> result = []
-    ) {
-        delta vector_take(rest) {
-            item { auto first, auto tail } => first,
-            empty => exit merged { result }
+    delta reverse_runs<comparator<order>.item>(source) {
+        reversed { auto reversed } => ready
+    }
+    [ready]: {
+        loop pairs(
+            mutable vector<vector<comparator<order>.item>> rest = reversed,
+            mutable vector<vector<comparator<order>.item>> result = []
+        ) {
+            delta vector_pop(borrow mutable rest) {
+                item { auto first } => first,
+                empty => empty
+            }
+            [first]: delta vector_pop(borrow mutable rest) {
+                item { auto second } => second,
+                empty => unpaired
+            }
+            [unpaired]: delta vector_push(borrow mutable result, first) {
+                pushed => last
+            }
+            [empty | last]: delta batches.join<vector<comparator<order>.item>>(result, rest) {
+                joined { auto completed } => exit merged { completed }
+            }
+            [second]: delta merge<order>(first, second, rule) {
+                merged { auto combined } => combined
+            }
+            [combined]: delta vector_push(borrow mutable result, combined) {
+                pushed => pushed
+            }
+            [pushed]: again pairs(rest, result);
         }
-        [first]: delta vector_take(tail) {
-            item { auto second, auto remaining } => second,
-            empty => unpaired
-        }
-        [unpaired]: delta vector_push(borrow mutable result, first) {
-            pushed => exit merged { result }
-        }
-        [second]: delta merge<order>(first, second, rule) {
-            merged { auto combined } => combined
-        }
-        [combined]: delta vector_push(borrow mutable result, combined) {
-            pushed => pushed
-        }
-        [pushed]: again pairs(remaining, result);
     }
 }
 control flatten<item>(vector<vector<item>> source) exits sorted { vector<item> values } {

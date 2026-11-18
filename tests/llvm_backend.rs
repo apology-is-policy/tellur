@@ -1193,13 +1193,111 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn vector_reversal_preserves_effects_terminal_paths_observers_and_faults() {
+        let base = r#"
+control backward(vector<u32> source, vector<u32> prefix)
+    exits ready {vector<u32> values, vector<u32> empty}
+{
+    loop traverse(mutable vector<u32> rest = source, mutable vector<u32> result = prefix) {
+        delta vector_pop(borrow mutable rest) {item {auto value}=>item, empty=>empty}
+        [empty]: exit ready {result, rest};
+        [item]: delta vector_push(borrow mutable result, value) {pushed=>pushed}
+        [pushed]: again traverse(rest, result);
+    }
+}
+"#;
+        for mode in [
+            "plain",
+            "effect",
+            "terminal_effect",
+            "changed_value",
+            "fault_after",
+        ] {
+            let body = match mode {
+                "effect" => base.replace("[item]: delta", "[item]: emit(\"item\"); delta"),
+                "terminal_effect" => {
+                    base.replace("[empty]: exit", "[empty]: emit(\"empty\"); exit")
+                }
+                "changed_value" => base.replace("result, value)", "result, 7)"),
+                _ => base.into(),
+            };
+            let main = if mode == "fault_after" {
+                "control main(vector<u32> source, vector<u32> prefix) exits ready {vector<u32> values, vector<u32> empty} faults {delta backward(source,prefix) {ready {auto values,auto empty}=>ready} [ready]: fault \"after reverse\";}"
+            } else {
+                "control main(vector<u32> source, vector<u32> prefix) exits ready {vector<u32> values, vector<u32> empty} {forward backward(source,prefix);}"
+            };
+            let f = Fixture::new(&(body + main));
+            fs::write(&f.manifest,r#"{"version":"0.1","types":[],"primitives":[],"launch":{"main":{"exit_codes":{"ready":0}}}}"#).unwrap();
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                assert_eq!(
+                    ir.contains("call void @tellur_rt_v1_vector_reverse"),
+                    !matches!(mode, "effect" | "changed_value"),
+                    "{mode} {expanded}"
+                );
+                let compare = |args: &[String]| {
+                    let a = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let b = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (a.status.code(), &a.stdout, &a.stderr),
+                            (b.status.code(), &b.stdout, &b.stderr),
+                            "{mode} {expanded} {args:?}"
+                        );
+                    }
+                };
+                let vector = |values: &[u32]| json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}});
+                for values in [vec![], vec![7], vec![4, 1, 4, 2], vec![u32::MAX, 0, 1]] {
+                    for prefix in [vec![], vec![8, 9]] {
+                        let args = [vector(&values).to_string(), vector(&prefix).to_string()];
+                        compare(&args);
+                        compare(&[vec!["--json".into()], args.to_vec()].concat());
+                    }
+                }
+                let values = vector(&[3, 1, 2]);
+                let prefix = vector(&[8]);
+                for fuel in 0..30 {
+                    compare(&[
+                        "--fuel".into(),
+                        fuel.to_string(),
+                        values.to_string(),
+                        prefix.to_string(),
+                    ]);
+                }
+                let path = f.root.join("script.json");
+                fs::write(
+                    &path,
+                    json!({"entry":"main","arguments":[values,prefix],"calls":[]}).to_string(),
+                )
+                .unwrap();
+                compare(&["--scenario".into(), path.to_str().unwrap().into()]);
+            }
+        }
+    }
+
+    #[test]
     fn singleton_runs_preserve_effects_shapes_observers_and_fault_identity() {
         let library = include_str!("../library/ordering.vn");
         let body = library
             .split_once("control singletons<item>")
             .unwrap()
             .1
-            .split_once("control merge_pass")
+            .split_once("control reverse_runs")
             .unwrap()
             .0;
         let base = format!("control singletons{body}").replace("vector<item>", "vector<u32>");

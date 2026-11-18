@@ -7,6 +7,8 @@ from abi_probe import build_allocation_probe, wrap_calls
 p = argparse.ArgumentParser(description=__doc__)
 for name in ('vnc', 'llvm', 'results'): p.add_argument(name, type=Path)
 p.add_argument('--previous-vnc', type=Path, help='interleave a previous compiler using its own IR and runtime')
+p.add_argument('--source', type=Path, default=here.parents[1] / 'examples/stable_ordering/main.vn', help='source workload, including its imported library')
+p.add_argument('--previous-source', type=Path, help='optional source baseline for the previous compiler')
 p.add_argument('--alloc-only', action='store_true', help='reuse existing timings and collect scoped allocation evidence')
 
 a = p.parse_args(); vnc, llvm, results = a.vnc.resolve(), a.llvm.resolve(), a.results.resolve()
@@ -21,7 +23,8 @@ with tempfile.TemporaryDirectory(prefix='vn-ordering-') as directory:
     probes, buckets = {}, {}
     for kind, compiler in compilers.items():
         build = tmp / (kind+'-build'); build.mkdir()
-        run(compiler, 'build', here.parents[1] / 'examples/stable_ordering/main.vn', '--release', '--out', build / 'source',
+        source = a.previous_source if kind == 'previous' and a.previous_source else a.source
+        run(compiler, 'build', source.resolve(), '--release', '--out', build / 'source',
             env={**os.environ, 'CARGO_INCREMENTAL': '0', 'TELLUR_NATIVE_TARGET_DIR': str(build)})
         archive, = (build / 'tellur-runtime-pack').glob('*.a')
         ir = (build / 'source.ll').read_text(); controls = (b'sort<key_order>',)
@@ -37,6 +40,7 @@ with tempfile.TemporaryDirectory(prefix='vn-ordering-') as directory:
         'compiler':run(vnc,'--version',capture_output=True).stdout.strip(),
         'previous_compiler':run(a.previous_vnc.resolve(),'--version',capture_output=True).stdout.strip() if a.previous_vnc else None,
         'comparison':'each compiler uses its own IR and matching runtime',
+        'source':str(a.source.resolve()), 'previous_source':str((a.previous_source or a.source).resolve()),
         'rust':run('rustc','-vV',capture_output=True).stdout,
         'llvm':run(llvm/'opt','--version',capture_output=True).stdout,
         'optimization':'LLVM opt default O3 and llc O3; Rust opt-level=3',

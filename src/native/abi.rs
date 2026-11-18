@@ -4660,6 +4660,62 @@ pub unsafe extern "C" fn tellur_rt_v1_vector_transfer(
     })
 }
 
+/// Append a proven pop/push loop's owners in reverse order. Keep both vector
+/// shells alive so the original graph settles its terminal outcome and effects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_vector_reverse(
+    ctx: *mut Context<'_>,
+    source: u64,
+    destination: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+            return Ok(());
+        }
+        let source = c.value_index(source)?;
+        let destination = c.value_index(destination)?;
+        if source == destination {
+            return Err("E_NATIVE: vector reversal requires distinct owners".into());
+        }
+        let [source, destination] = c
+            .values
+            .get_disjoint_mut([source, destination])
+            .map_err(|_| "E_NATIVE: invalid vector reversal handles")?;
+        let (
+            Some(V::Construct {
+                ty: source_ty,
+                name: source_name,
+                fields: source,
+            }),
+            Some(V::Construct {
+                ty: destination_ty,
+                name: destination_name,
+                fields: destination,
+            }),
+        ) = (source, destination)
+        else {
+            return Ok(());
+        };
+        if source_ty != destination_ty
+            || source_name != "vector"
+            || destination_name != "vector"
+            || !source_ty.starts_with("vector<")
+            || collection_support::length_is_map(source_ty) != Some(false)
+            || destination
+                .len()
+                .checked_add(source.len())
+                .is_none_or(|n| n > u32::MAX as usize)
+        {
+            return Ok(());
+        }
+        // Reverse the uniquely owned buffer in place. An empty destination can
+        // adopt that buffer; a nonempty destination appends it in one transfer.
+        source.reverse();
+        append_vector_prefix(source, destination, source.len());
+        Ok(())
+    })
+}
+
 /// Collection operations use the same stable arena and element-reference
 /// evidence as generated Rust. Check the entire handle batch before mutation.
 #[unsafe(no_mangle)]
