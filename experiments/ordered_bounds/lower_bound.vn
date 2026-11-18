@@ -1,0 +1,26 @@
+import "../../library/ordering.vn" as ordering;
+import "../../library/ordered_search.vn" as search;
+struct ascending {}
+implement ordering.comparator for ascending {
+    type item = u32;
+    control compare(ref ascending rule, ref u32 a, ref u32 b) exits before,
+        equal,
+        after
+    {
+        delta (* a < * b) {
+            true => exit before,
+            false => next
+        }
+        [next]: exit delta (* a > * b) {
+            true => after {},
+            false => equal {}
+        };
+    }
+}
+outcome result {
+    @exit 0 position { u32 index }
+}
+control main(vector<u32> values, u32 needle) exits result {
+    ascending rule = ascending {};
+    forward search.lower_bound<ascending>(borrow values, borrow rule, borrow needle);
+}

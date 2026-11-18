@@ -1904,3 +1904,297 @@ control main(vector<ticket> source) exits done {{u32 key,vector<ticket> values}}
 }}"#));
     f.reject("E_LOAN");
 }
+
+#[test]
+fn ordered_bounds_preserve_resources_effects_and_first_equivalent_identity() {
+    use tellur::runtime::{Event, ScriptCall};
+    let f = Fixture::new();
+    let source = include_str!("fixtures/ordered_bounds.vn");
+    for (name, text) in [
+        ("ordering.vn", include_str!("../library/ordering.vn")),
+        (
+            "ordered_search.vn",
+            include_str!("../library/ordered_search.vn"),
+        ),
+        (
+            "sequence_batches.vn",
+            include_str!("../library/sequence_batches.vn"),
+        ),
+    ] {
+        f.write(name, text);
+    }
+    f.write("main.vn", source);
+    let checked = f.check().unwrap();
+    let expanded = checked.expanded("main").unwrap();
+    let settled = checked.expanded("settle").unwrap();
+    let ticket = |key, id| Value::Construct {
+        ty: "ticket".into(),
+        name: "ticket".into(),
+        fields: vec![
+            Value::U32(key),
+            Value::Opaque {
+                ty: "handle".into(),
+                token: format!("ticket-{id}"),
+            },
+            Value::U32(id),
+        ],
+    };
+    fn arithmetic(keys: &[u32], key: u32, descending: bool, upper: bool) -> Vec<ScriptCall> {
+        let mut calls = Vec::new();
+        let mut push = |operation: &str, outcome: &str, value: usize| {
+            calls.push(ScriptCall {
+                operation: operation.into(),
+                outcome: outcome.into(),
+                fields: vec![Value::U32(value as u32)],
+                waits: 0,
+            })
+        };
+        let (mut start, mut count) = (0, keys.len());
+        while count > 0 {
+            let half = count / 2;
+            let middle = start + half;
+            push("checked_div", "quotient", half);
+            push("checked_add", "sum", middle);
+            let before = if descending {
+                keys[middle] > key
+            } else {
+                keys[middle] < key
+            };
+            if before || (upper && keys[middle] == key) {
+                start = middle + 1;
+                push("checked_add", "sum", start);
+                push("checked_sub", "difference", count - half);
+                count -= half + 1;
+                push("checked_sub", "difference", count);
+            } else {
+                count = half;
+            }
+        }
+        calls
+    }
+    let mut cases = vec![];
+    for descending in [false, true] {
+        for mut keys in [vec![], vec![3], vec![1, 2, 2, 2, 9], vec![0, 0, u32::MAX]] {
+            if descending {
+                keys.reverse();
+            }
+            let tickets: Vec<_> = keys
+                .iter()
+                .enumerate()
+                .map(|(i, &key)| ticket(key, i as u32))
+                .collect();
+            let vector = Value::Construct {
+                ty: "vector<ticket>".into(),
+                name: "vector".into(),
+                fields: tickets.clone(),
+            };
+            for key in [0, 1, 2, 3, 4, 9, u32::MAX] {
+                let needle = ticket(key, 999);
+                let lower = keys.partition_point(|&x| if descending { x > key } else { x < key });
+                let upper = keys.partition_point(|&x| if descending { x >= key } else { x <= key });
+                for entry in ["main", "settle"] {
+                    let scenario = Scenario {
+                        entry: entry.into(),
+                        arguments: vec![vector.clone(), needle.clone(), Value::Bool(descending)],
+                        calls: {
+                            let mut calls = arithmetic(&keys, key, descending, false);
+                            calls.extend(arithmetic(&keys, key, descending, true));
+                            calls.extend(arithmetic(&keys, key, descending, false));
+                            if entry == "settle" {
+                                calls.extend((0..=keys.len()).map(|_| ScriptCall {
+                                    operation: "close".into(),
+                                    outcome: "closed".into(),
+                                    fields: vec![],
+                                    waits: 0,
+                                }));
+                            }
+                            calls
+                        },
+                    };
+                    let result = checked.run(&scenario).unwrap();
+                    for event in &result.events {
+                        if let Event::Primitive {
+                            operation,
+                            arguments,
+                            fields,
+                            ..
+                        } = event
+                            && operation.starts_with("checked_")
+                        {
+                            let [Value::U32(a), Value::U32(b)] = arguments.as_slice() else {
+                                panic!("arithmetic arguments")
+                            };
+                            let expected = match operation.as_str() {
+                                "checked_add" => a.checked_add(*b),
+                                "checked_sub" => a.checked_sub(*b),
+                                "checked_div" => a.checked_div(*b),
+                                _ => panic!("unexpected arithmetic"),
+                            }
+                            .unwrap();
+                            assert_eq!(fields, &vec![Value::U32(expected)]);
+                        }
+                    }
+
+                    assert_eq!(
+                        result,
+                        if entry == "main" {
+                            expanded.run(&scenario)
+                        } else {
+                            settled.run(&scenario)
+                        }
+                        .unwrap()
+                    );
+                    assert_eq!(
+                        result.outcome,
+                        if entry == "main" { "queried" } else { "done" }
+                    );
+                    if entry == "main" {
+                        assert_eq!(
+                            result.fields,
+                            vec![
+                                Value::Bool(lower < upper),
+                                Value::U32(lower as u32),
+                                Value::U32(upper as u32),
+                                Value::U32(lower as u32),
+                                Value::U32(if lower < upper { lower as u32 } else { 0 }),
+                                vector.clone(),
+                                needle.clone()
+                            ]
+                        );
+                    } else {
+                        assert!(result.fields.is_empty());
+                        let closes: Vec<_> = result
+                            .events
+                            .iter()
+                            .filter_map(|event| match event {
+                                Event::Primitive {
+                                    operation,
+                                    arguments,
+                                    ..
+                                } if operation == "close" => Some(arguments.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        let expected: Vec<_> = (0..keys.len())
+                            .map(|i| {
+                                vec![Value::Opaque {
+                                    ty: "handle".into(),
+                                    token: format!("ticket-{i}"),
+                                }]
+                            })
+                            .chain(std::iter::once(vec![Value::Opaque {
+                                ty: "handle".into(),
+                                token: "ticket-999".into(),
+                            }]))
+                            .collect();
+                        assert_eq!(closes, expected);
+                    }
+                    if !descending && keys == [1, 2, 2, 2, 9] && key == 2 {
+                        let emits: Vec<_> = result
+                            .events
+                            .iter()
+                            .filter_map(|event| match event {
+                                Event::Emit { message } => Some(message.clone()),
+                                _ => None,
+                            })
+                            .collect();
+                        let expected: Vec<_> = [2, 1, 0, 2, 4, 3, 2, 1, 0, 1]
+                            .into_iter()
+                            .flat_map(|i| [i.to_string(), "999".into()])
+                            .collect();
+                        assert_eq!(emits, expected);
+                    }
+                    cases.push((scenario, result));
+                }
+            }
+        }
+    }
+    for (name, program, entry) in [
+        ("original", &checked, "main"),
+        ("expanded", &expanded, "main"),
+        ("original-settle", &checked, "settle"),
+        ("expanded-settle", &settled, "settle"),
+    ] {
+        for opt in [0, 3] {
+            let binary = f.root.join(format!("{name}-{opt}"));
+            support::scenario_executable(program)
+                .build_for_test(entry, &binary, opt)
+                .unwrap();
+            for (scenario, expected) in cases.iter().filter(|(s, _)| s.entry == entry) {
+                let path = f.root.join("case.json");
+                fs::write(&path, serde_json::to_vec(scenario).unwrap()).unwrap();
+                let result = std::process::Command::new(&binary)
+                    .arg("--scenario")
+                    .arg(&path)
+                    .output()
+                    .unwrap();
+                assert!(
+                    result.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&result.stderr)
+                );
+                assert_eq!(
+                    serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+                    serde_json::to_value(expected).unwrap()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn ordered_search_keeps_owner_obligations_and_live_result_loans() {
+    let f = Fixture::new();
+    for (name, text) in [
+        ("ordering.vn", include_str!("../library/ordering.vn")),
+        (
+            "ordered_search.vn",
+            include_str!("../library/ordered_search.vn"),
+        ),
+        (
+            "sequence_batches.vn",
+            include_str!("../library/sequence_batches.vn"),
+        ),
+    ] {
+        f.write(name, text);
+    }
+    let rules = include_str!("fixtures/ordered_bounds.vn")
+        .split_once("control main(")
+        .unwrap()
+        .0;
+    f.write(
+        "main.vn",
+        &format!(
+            r#"{rules}
+control main(vector<ticket> source, ticket needle) exits done {{
+    key_order rule=key_order {{false}};
+    delta search.first_equal<key_order>(borrow source,borrow rule,borrow needle) {{
+        found {{u32 index,auto value}}=>exit done,
+        missing {{u32 insertion}}=>exit done
+    }}
+}}"#
+        ),
+    );
+    f.reject("E_RESOURCE");
+    f.write("main.vn", &format!(r#"{rules}
+control main(vector<ticket> source, ticket needle)
+    exits found {{u32 key,vector<ticket> values,ticket needle}}, missing {{vector<ticket> values,ticket needle}}
+{{
+    key_order rule=key_order {{false}};
+    delta search.first_equal<key_order>(borrow source,borrow rule,borrow needle) {{
+        found {{u32 index,auto value}}=>hit,
+        missing {{u32 insertion}}=>exit missing {{source,needle}}
+    }}
+    [hit]: exit found {{value.key,source,needle}};
+}}"#));
+    f.reject("E_LOAN");
+    f.write("main.vn", include_str!("fixtures/ordered_bounds.vn"));
+    f.write(
+        "ordered_search.vn",
+        &include_str!("../library/ordered_search.vn").replace(
+            "exit found { index, value }",
+            "exit found { index, needle }",
+        ),
+    );
+    f.reject("E_LIFETIME");
+}

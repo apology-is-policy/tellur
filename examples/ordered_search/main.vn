@@ -1,0 +1,45 @@
+import "../../library/ordering.vn" as ordering;
+import "../../library/ordered_search.vn" as search;
+pub struct record {
+    pub u32 key;
+    pub u32 identity;
+}
+struct key_order {}
+implement ordering.comparator for key_order {
+    type item = record;
+    control compare(ref key_order rule, ref record a, ref record b) exits before,
+        equal,
+        after
+    {
+        delta (a.key < b.key) {
+            true => exit before,
+            false => next
+        }
+        [next]: exit delta (a.key > b.key) {
+            true => after {},
+            false => equal {}
+        };
+    }
+}
+pub control main(vector<record> source, u32 key)
+    exits present { u32 first, u32 end, u32 identity, vector<record> values },
+    absent { u32 insertion, vector<record> values }
+{
+    key_order rule = key_order {};
+    record needle = record { key, 0 };
+    delta ordering.sort<key_order>(source, borrow rule) {
+        sorted { auto values } => bounds
+    }
+    [bounds]: delta search.upper_bound<key_order>(borrow values, borrow rule, borrow needle) {
+        position { u32 end } => find
+    }
+    [find]: delta search.first_equal<key_order>(borrow values, borrow rule, borrow needle) {
+        found { u32 first, auto value } => hit,
+        missing { u32 insertion } => exit absent { insertion, values }
+    }
+    [hit]: {
+        u32 identity = value.identity;
+        drop(value);
+        exit present { first, end, identity, values };
+    }
+}

@@ -32,6 +32,19 @@ The reduction module borrows a vector and takes ownership of its accumulator. In
 
 `partition.partition` borrows a classifier and consumes the input vector. Each classification sends the owned element to the left or right vector, in stable order. An early stop returns both prefixes, the current element, untouched remainder and reason. Run `./bin/vnc exec examples/partition_batch/main.vn -- --scenario examples/partition_batch/main.scenario.json`. [Contract](../docs/collections-and-algorithms.md#consuming-stable-partition) · [Measured performance limits](../experiments/partition/README.md)
 
+## Stable ordering and ordered search
+
+`ordering.sort` consumes a vector and preserves original order among equivalent
+records. `ordered_search.lower_bound`, `upper_bound` and `first_equal` borrow a
+vector already sorted under the same consistent comparator. The first-equivalent
+result includes a loan from the source. Run
+`./bin/vnc exec examples/ordered_search/demo.vn -- 2` to sort duplicate-key records
+and return their half-open range and first original identity. The example manifest
+supplies the required canonical checked arithmetic.
+[Ordering contract](../docs/collections-and-algorithms.md#stable-ordering) ·
+[Bounds contract](../docs/collections-and-algorithms.md#ordered-bounds-and-first-equivalent-search) ·
+[Example](../examples/ordered_search/README.md)
+
 ## JSON string-map files
 
 Import [json_file.vn](json_file.vn) with a relative path and a local namespace.

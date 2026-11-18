@@ -112,6 +112,54 @@ Compiler 0.304 adopts reversed run headers with a proven advancing-loop summary.
 Compiler 0.305 reduces live borrowed-pop transport with identical generated IR. Mixed sort improves 6.1% to 4.645 ms, with 45,832 allocations and unchanged peak memory. It remains 648× Rust; the 128-item case is still 3.5% slower than the original 0.303 traversal in a separate paired check. Generic value/reference representation qualification is next, followed by applicable ordered bounds and supported-library adoption. [Evidence and remaining costs](../experiments/stable_ordering/README.md#borrowed-pop-transport-in-0305)
 
 
+## Ordered bounds and first-equivalent search
+
+The experimental `ordered_search` module borrows a vector, an `ordering.comparator`
+rule and a needle. It uses the same consistent total-preorder and sorted-input
+obligations as `ordering.merge`. The caller must establish sortedness under the
+same rule and keep its results consistent throughout the query. The checker
+verifies interfaces and loans, not sortedness or ordering laws. A prior
+`ordering.sort` establishes the required order if the rule is consistent; changing
+keys or the rule can invalidate it.
+
+| Control | Result |
+| --- | --- |
+| `lower_bound<order>(source, rule, needle)` | `position { index }`: first element that does not compare `before` the needle, or the length |
+| `upper_bound<order>(source, rule, needle)` | `position { index }`: first element that compares `after` the needle, or the length |
+| `first_equal<order>(source, rule, needle)` | `found { index, value from source }` for the first equivalent element; `missing { insertion }` at the lower bound otherwise |
+
+The equivalent range is half-open `[lower, upper)`. Empty inputs return position
+zero or missing insertion zero without comparisons. The same definitions work for
+descending rules. Equality here means the comparator's `equal` outcome, so records
+can be equivalent while having different identities. A stable sort followed by
+`first_equal` selects the earliest original equivalent record.
+
+Bounds perform O(log n) comparisons with zero element movement. `first_equal`
+performs a lower-bound query and at most one confirmation comparison. The source
+and needle remain borrowed; there is no element clone requirement. The returned
+loan prevents moving or mutating the source while it remains live. Copy any needed
+scalar field and release the loan before returning or consuming its owner. Effects
+such as comparison logging are preserved, but comparison counts/order are not an
+API promise across library revisions. Faults remain faults; the comparator has no
+failure outcome in this initial interface.
+
+The module needs the canonical `checked_add`, `checked_sub` and `checked_div`
+primitive signatures and arithmetic behavior in its caller's manifest. Its
+start/count invariant prevents overflow, underflow and division by zero. Defensive
+failure/out-of-bounds branches return the current start; they do not promise valid
+bounds if a scripted or nonstandard arithmetic provider violates the invariant.
+Interpreter scenarios must script those primitives; native execution uses live
+checked arithmetic. Keeping this dependency in a separate module allows existing
+ordering-only callers to retain their manifests.
+
+The [runnable example](../examples/ordered_search/README.md) sorts duplicate-key
+records and queries their range. The resource fixture checks ascending/descending
+rules, empty vectors, duplicate identities, comparator effects, unchanged owners,
+exactly-once completion and live-loan rejection across expansion and both native
+backends. [Performance and ABI transport evidence](../experiments/ordered_bounds/README.md)
+separates complete query costs from construction and output; logarithmic comparison
+count is not a native-performance parity claim.
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |
@@ -120,7 +168,7 @@ Compiler 0.305 reduces live borrowed-pop transport with identical generated IR. 
 | Borrowed traversal | Start with shared array/vector slices over a half-open range and ordered key/value traversal for maps. | An empty range at either end is valid. A reversed or out-of-bounds range takes an explicit failure exit. Reads can coexist. Structural mutation waits until the last conflicting view or returned reference is released. |
 | Reduction and early exit | Fold a borrowed sequence with an owned accumulator. An outcome from the step control can stop the fold. | Visit in order. Continuation transfers the updated state to the fold. Stop and failure return the state to the caller. Failure also returns the step's reason. |
 | Consuming partition | Move each input to one of two outputs while preserving relative order in each. | A classifier borrows the current element. If it stops early, return both completed partitions, the current element and the untouched remainder. Every owner has a destination, including must-complete resources. |
-| Ordering | Stable sort with an infallible ordering for the first version. Add ordered bounds/search once the caller can supply evidence for the ordering. | Equal keys keep input order. Moving records during sorting preserves their resource obligations. A later fallible comparator needs an explicit contract for collection state on early exit. |
+| Ordering | Stable sort with an infallible ordering for the first version. Ordered bounds/search use the same caller-supplied sorted-input obligation as merge. | Equal keys keep input order. Moving records during sorting preserves their resource obligations. A later fallible comparator needs an explicit contract for collection state on early exit. |
 
 For the first search and fold prototypes, use a statically named predicate or step control with a closed outcome contract. Try Villanelle's existing trait dispatch for reuse across element types. The design question is how callers route a step's additional outcomes without losing where they arose. A two-outcome predicate, a fallible predicate and a step with an owned resource are three distinct tests. Closure syntax and a universal iterator trait can be considered after those examples.
 

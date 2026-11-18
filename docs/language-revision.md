@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Ordered bounds and first-equivalent search, 18 November 2026
+
+The source library now provides lower/upper bounds and a first-equivalent result borrowed from the source. It uses the existing comparator and caller-supplied sorted-input obligations; the checker does not certify ordering laws. Empty, duplicate, descending and resource-bearing cases preserve comparison effects and owners across expansion and both native backends. The M2 baseline exposes generic transport: a complete 4,096-item middle lower bound takes 114.125 µs versus Rust 208 ns, with 403 allocations and 29 reallocations despite zero element movement. Next: prove and lower effect-free scalar binary-search steps, preserving checked fallback; then fresh-project adoption and supported modules. Compiler/LSP/editor remain 0.305. [Contract](collections-and-algorithms.md#ordered-bounds-and-first-equivalent-search) · [Runnable example](../examples/ordered_search/README.md) · [Performance evidence](../experiments/ordered_bounds/README.md)
+
 ### Compact projection qualification, 18 November 2026
 
 An inline boxed-path candidate reduces generic values to 128 bytes without adding borrowed-search allocations. It exposed macOS retaining 512 bytes after a nominal 512 → 256-byte shrink; an exact-capacity ownership transfer restores the expected memory reduction. The complete workload still shows equal-sort and small-rotation regressions, so the candidate is not adopted. Compiler 0.305 remains current. Next: ordered bounds under the existing infallible comparator/sorted-input contract, then fresh-project supported-library adoption; generic transport and storage gaps remain documented performance work. [Results and allocator root cause](../experiments/reference_layout/README.md#inline-target-with-compact-projection-storage)

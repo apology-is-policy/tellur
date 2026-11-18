@@ -1,0 +1,1106 @@
+[
+  {
+    "operation": "lower_bound",
+    "case": "0-early",
+    "median_ns": {
+      "vn": 16208,
+      "rs": 42
+    },
+    "ratio": 385.9047619047619,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "0-last",
+    "median_ns": {
+      "vn": 15250,
+      "rs": 42
+    },
+    "ratio": 363.0952380952381,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "0-middle",
+    "median_ns": {
+      "vn": 16541,
+      "rs": 42
+    },
+    "ratio": 393.8333333333333,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "0-missing",
+    "median_ns": {
+      "vn": 16083,
+      "rs": 42
+    },
+    "ratio": 382.92857142857144,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "128-early",
+    "median_ns": {
+      "vn": 78375,
+      "rs": 42
+    },
+    "ratio": 1866.0714285714287,
+    "allocations": {
+      "vn": {
+        "allocations": 292,
+        "reallocations": 21,
+        "requested_bytes": 42906,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "128-last",
+    "median_ns": {
+      "vn": 82000,
+      "rs": 125
+    },
+    "ratio": 656.0,
+    "allocations": {
+      "vn": {
+        "allocations": 245,
+        "reallocations": 19,
+        "requested_bytes": 37766,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "128-middle",
+    "median_ns": {
+      "vn": 80667,
+      "rs": 83
+    },
+    "ratio": 971.8915662650602,
+    "allocations": {
+      "vn": {
+        "allocations": 248,
+        "reallocations": 19,
+        "requested_bytes": 38048,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "128-missing",
+    "median_ns": {
+      "vn": 88500,
+      "rs": 42
+    },
+    "ratio": 2107.1428571428573,
+    "allocations": {
+      "vn": {
+        "allocations": 242,
+        "reallocations": 19,
+        "requested_bytes": 37484,
+        "peak_extra_bytes": 11680
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "4096-early",
+    "median_ns": {
+      "vn": 109583,
+      "rs": 84
+    },
+    "ratio": 1304.5595238095239,
+    "allocations": {
+      "vn": {
+        "allocations": 457,
+        "reallocations": 31,
+        "requested_bytes": 60266,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "4096-last",
+    "median_ns": {
+      "vn": 112792,
+      "rs": 250
+    },
+    "ratio": 451.168,
+    "allocations": {
+      "vn": {
+        "allocations": 400,
+        "reallocations": 29,
+        "requested_bytes": 53746,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "4096-middle",
+    "median_ns": {
+      "vn": 114125,
+      "rs": 208
+    },
+    "ratio": 548.6778846153846,
+    "allocations": {
+      "vn": {
+        "allocations": 403,
+        "reallocations": 29,
+        "requested_bytes": 54028,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "4096-missing",
+    "median_ns": {
+      "vn": 120167,
+      "rs": 292
+    },
+    "ratio": 411.5308219178082,
+    "allocations": {
+      "vn": {
+        "allocations": 397,
+        "reallocations": 29,
+        "requested_bytes": 53464,
+        "peak_extra_bytes": 11680
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "8-early",
+    "median_ns": {
+      "vn": 60750,
+      "rs": 42
+    },
+    "ratio": 1446.4285714285713,
+    "allocations": {
+      "vn": {
+        "allocations": 160,
+        "reallocations": 13,
+        "requested_bytes": 29018,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "8-last",
+    "median_ns": {
+      "vn": 53625,
+      "rs": 83
+    },
+    "ratio": 646.0843373493976,
+    "allocations": {
+      "vn": {
+        "allocations": 121,
+        "reallocations": 11,
+        "requested_bytes": 24982,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "8-middle",
+    "median_ns": {
+      "vn": 53458,
+      "rs": 83
+    },
+    "ratio": 644.0722891566265,
+    "allocations": {
+      "vn": {
+        "allocations": 124,
+        "reallocations": 11,
+        "requested_bytes": 25264,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "lower_bound",
+    "case": "8-missing",
+    "median_ns": {
+      "vn": 54125,
+      "rs": 84
+    },
+    "ratio": 644.3452380952381,
+    "allocations": {
+      "vn": {
+        "allocations": 118,
+        "reallocations": 11,
+        "requested_bytes": 24700,
+        "peak_extra_bytes": 11680
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "0-early",
+    "median_ns": {
+      "vn": 17084,
+      "rs": 42
+    },
+    "ratio": 406.76190476190476,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "0-last",
+    "median_ns": {
+      "vn": 15334,
+      "rs": 42
+    },
+    "ratio": 365.0952380952381,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "0-middle",
+    "median_ns": {
+      "vn": 15541,
+      "rs": 42
+    },
+    "ratio": 370.0238095238095,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "0-missing",
+    "median_ns": {
+      "vn": 16292,
+      "rs": 42
+    },
+    "ratio": 387.9047619047619,
+    "allocations": {
+      "vn": {
+        "allocations": 25,
+        "reallocations": 3,
+        "requested_bytes": 8584,
+        "peak_extra_bytes": 6096
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "128-early",
+    "median_ns": {
+      "vn": 78666,
+      "rs": 83
+    },
+    "ratio": 947.7831325301205,
+    "allocations": {
+      "vn": {
+        "allocations": 257,
+        "reallocations": 19,
+        "requested_bytes": 39421,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "128-last",
+    "median_ns": {
+      "vn": 84459,
+      "rs": 83
+    },
+    "ratio": 1017.5783132530121,
+    "allocations": {
+      "vn": {
+        "allocations": 248,
+        "reallocations": 19,
+        "requested_bytes": 38046,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "128-middle",
+    "median_ns": {
+      "vn": 85458,
+      "rs": 83
+    },
+    "ratio": 1029.6144578313254,
+    "allocations": {
+      "vn": {
+        "allocations": 258,
+        "reallocations": 19,
+        "requested_bytes": 39426,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "128-missing",
+    "median_ns": {
+      "vn": 82125,
+      "rs": 83
+    },
+    "ratio": 989.4578313253012,
+    "allocations": {
+      "vn": {
+        "allocations": 242,
+        "reallocations": 19,
+        "requested_bytes": 37484,
+        "peak_extra_bytes": 11680
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "4096-early",
+    "median_ns": {
+      "vn": 113041,
+      "rs": 125
+    },
+    "ratio": 904.328,
+    "allocations": {
+      "vn": {
+        "allocations": 422,
+        "reallocations": 29,
+        "requested_bytes": 56781,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "4096-last",
+    "median_ns": {
+      "vn": 116791,
+      "rs": 250
+    },
+    "ratio": 467.164,
+    "allocations": {
+      "vn": {
+        "allocations": 400,
+        "reallocations": 29,
+        "requested_bytes": 53745,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "4096-middle",
+    "median_ns": {
+      "vn": 103166,
+      "rs": 250
+    },
+    "ratio": 412.664,
+    "allocations": {
+      "vn": {
+        "allocations": 422,
+        "reallocations": 29,
+        "requested_bytes": 56781,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "4096-missing",
+    "median_ns": {
+      "vn": 115834,
+      "rs": 250
+    },
+    "ratio": 463.336,
+    "allocations": {
+      "vn": {
+        "allocations": 397,
+        "reallocations": 29,
+        "requested_bytes": 53464,
+        "peak_extra_bytes": 11680
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "8-early",
+    "median_ns": {
+      "vn": 53167,
+      "rs": 83
+    },
+    "ratio": 640.566265060241,
+    "allocations": {
+      "vn": {
+        "allocations": 125,
+        "reallocations": 11,
+        "requested_bytes": 25533,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "8-last",
+    "median_ns": {
+      "vn": 58959,
+      "rs": 83
+    },
+    "ratio": 710.3493975903615,
+    "allocations": {
+      "vn": {
+        "allocations": 124,
+        "reallocations": 11,
+        "requested_bytes": 25262,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "8-middle",
+    "median_ns": {
+      "vn": 57083,
+      "rs": 84
+    },
+    "ratio": 679.5595238095239,
+    "allocations": {
+      "vn": {
+        "allocations": 126,
+        "reallocations": 11,
+        "requested_bytes": 25538,
+        "peak_extra_bytes": 11872
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "upper_bound",
+    "case": "8-missing",
+    "median_ns": {
+      "vn": 55958,
+      "rs": 83
+    },
+    "ratio": 674.1927710843373,
+    "allocations": {
+      "vn": {
+        "allocations": 118,
+        "reallocations": 11,
+        "requested_bytes": 24700,
+        "peak_extra_bytes": 11680
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "0-early",
+    "median_ns": {
+      "vn": 25125,
+      "rs": 83
+    },
+    "ratio": 302.71084337349396,
+    "allocations": {
+      "vn": {
+        "allocations": 44,
+        "reallocations": 5,
+        "requested_bytes": 19315,
+        "peak_extra_bytes": 11936
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "0-last",
+    "median_ns": {
+      "vn": 24375,
+      "rs": 84
+    },
+    "ratio": 290.17857142857144,
+    "allocations": {
+      "vn": {
+        "allocations": 44,
+        "reallocations": 5,
+        "requested_bytes": 19315,
+        "peak_extra_bytes": 11936
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "0-middle",
+    "median_ns": {
+      "vn": 24708,
+      "rs": 42
+    },
+    "ratio": 588.2857142857143,
+    "allocations": {
+      "vn": {
+        "allocations": 44,
+        "reallocations": 5,
+        "requested_bytes": 19315,
+        "peak_extra_bytes": 11936
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "0-missing",
+    "median_ns": {
+      "vn": 22959,
+      "rs": 83
+    },
+    "ratio": 276.6144578313253,
+    "allocations": {
+      "vn": {
+        "allocations": 44,
+        "reallocations": 5,
+        "requested_bytes": 19315,
+        "peak_extra_bytes": 11936
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "128-early",
+    "median_ns": {
+      "vn": 94167,
+      "rs": 83
+    },
+    "ratio": 1134.5421686746988,
+    "allocations": {
+      "vn": {
+        "allocations": 343,
+        "reallocations": 26,
+        "requested_bytes": 52359,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "128-last",
+    "median_ns": {
+      "vn": 97167,
+      "rs": 83
+    },
+    "ratio": 1170.686746987952,
+    "allocations": {
+      "vn": {
+        "allocations": 296,
+        "reallocations": 24,
+        "requested_bytes": 47219,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "128-middle",
+    "median_ns": {
+      "vn": 94709,
+      "rs": 83
+    },
+    "ratio": 1141.0722891566265,
+    "allocations": {
+      "vn": {
+        "allocations": 299,
+        "reallocations": 24,
+        "requested_bytes": 47501,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "128-missing",
+    "median_ns": {
+      "vn": 89542,
+      "rs": 84
+    },
+    "ratio": 1065.9761904761904,
+    "allocations": {
+      "vn": {
+        "allocations": 261,
+        "reallocations": 21,
+        "requested_bytes": 43415,
+        "peak_extra_bytes": 14768
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "4096-early",
+    "median_ns": {
+      "vn": 115166,
+      "rs": 84
+    },
+    "ratio": 1371.0238095238096,
+    "allocations": {
+      "vn": {
+        "allocations": 508,
+        "reallocations": 36,
+        "requested_bytes": 69719,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "4096-last",
+    "median_ns": {
+      "vn": 131625,
+      "rs": 291
+    },
+    "ratio": 452.319587628866,
+    "allocations": {
+      "vn": {
+        "allocations": 451,
+        "reallocations": 34,
+        "requested_bytes": 63199,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "4096-middle",
+    "median_ns": {
+      "vn": 128000,
+      "rs": 250
+    },
+    "ratio": 512.0,
+    "allocations": {
+      "vn": {
+        "allocations": 454,
+        "reallocations": 34,
+        "requested_bytes": 63481,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "4096-missing",
+    "median_ns": {
+      "vn": 123042,
+      "rs": 292
+    },
+    "ratio": 421.3767123287671,
+    "allocations": {
+      "vn": {
+        "allocations": 416,
+        "reallocations": 31,
+        "requested_bytes": 59395,
+        "peak_extra_bytes": 14768
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "8-early",
+    "median_ns": {
+      "vn": 72542,
+      "rs": 83
+    },
+    "ratio": 874.0,
+    "allocations": {
+      "vn": {
+        "allocations": 211,
+        "reallocations": 18,
+        "requested_bytes": 38471,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "8-last",
+    "median_ns": {
+      "vn": 64458,
+      "rs": 42
+    },
+    "ratio": 1534.7142857142858,
+    "allocations": {
+      "vn": {
+        "allocations": 172,
+        "reallocations": 16,
+        "requested_bytes": 34435,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "8-middle",
+    "median_ns": {
+      "vn": 71000,
+      "rs": 83
+    },
+    "ratio": 855.4216867469879,
+    "allocations": {
+      "vn": {
+        "allocations": 175,
+        "reallocations": 16,
+        "requested_bytes": 34717,
+        "peak_extra_bytes": 14960
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  },
+  {
+    "operation": "first_equal",
+    "case": "8-missing",
+    "median_ns": {
+      "vn": 59250,
+      "rs": 83
+    },
+    "ratio": 713.855421686747,
+    "allocations": {
+      "vn": {
+        "allocations": 137,
+        "reallocations": 13,
+        "requested_bytes": 30631,
+        "peak_extra_bytes": 14768
+      },
+      "rs": {
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0,
+        "peak_extra_bytes": 0
+      }
+    }
+  }
+]

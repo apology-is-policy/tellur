@@ -1,0 +1,14 @@
+import "main.vn" as example;
+control main(u32 key)
+    exits present { u32 first, u32 end, u32 identity, vector<example.record> values },
+    absent { u32 insertion, vector<example.record> values }
+{
+    vector<example.record> values = [
+        example.record { 2, 0 },
+        example.record { 1, 1 },
+        example.record { 2, 2 },
+        example.record { 1, 3 },
+        example.record { 3, 4 }
+    ];
+    forward example.main(values, key);
+}

@@ -1,0 +1,109 @@
+import "ordering.vn" as ordering;
+import "ordered_search.vn" as search;
+struct ticket {
+    u32 key;
+    handle token;
+    u32 identity;
+}
+struct key_order {
+    bool descending;
+}
+implement ordering.comparator for key_order {
+    type item = ticket;
+    control compare(ref key_order rule, ref ticket a, ref ticket b) exits before,
+        equal,
+        after
+    {
+        emit(u32_text(a.identity));
+        emit(u32_text(b.identity));
+        delta rule.descending {
+            true => reverse,
+            false => forward
+        }
+        [reverse]: {
+            delta (a.key > b.key) {
+                true => exit before,
+                false => reverse_next
+            }
+            [reverse_next]: exit delta (a.key < b.key) {
+                true => after {},
+                false => equal {}
+            };
+        }
+        [forward]: delta (a.key < b.key) {
+            true => exit before,
+            false => next
+        }
+        [next]: exit delta (a.key > b.key) {
+            true => after {},
+            false => equal {}
+        };
+    }
+}
+control main(vector<ticket> source, ticket needle, bool descending)
+    exits queried {
+        bool found,
+        u32 lower,
+        u32 upper,
+        u32 index,
+        u32 identity,
+        vector<ticket> values,
+        ticket needle
+    }
+{
+    key_order rule = key_order { descending };
+    delta search.lower_bound<key_order>(borrow source, borrow rule, borrow needle) {
+        position { u32 lower } => lower
+    }
+    [lower]: delta search.upper_bound<key_order>(borrow source, borrow rule, borrow needle) {
+        position { u32 upper } => upper
+    }
+    [upper]: delta search.first_equal<key_order>(borrow source, borrow rule, borrow needle) {
+        found { u32 index, auto value } => found,
+        missing { u32 insertion } => exit queried {
+            false,
+            lower,
+            upper,
+            insertion,
+            0,
+            source,
+            needle
+        }
+    }
+    [found]: {
+        u32 identity = value.identity;
+        drop(value);
+        exit queried { true, lower, upper, index, identity, source, needle };
+    }
+}
+
+control settle(vector<ticket> source, ticket needle, bool descending) exits done {
+    delta main(source, needle, descending) {
+        queried {
+            bool found,
+            u32 lower,
+            u32 upper,
+            u32 index,
+            u32 identity,
+            auto values,
+            auto returned
+        } => queried
+    }
+    [queried]: {
+        loop finish(vector<ticket> rest = values, ticket target = returned) {
+            delta vector_take(rest) {
+                item { auto value, auto tail } => item,
+                empty => target
+            }
+            [item]: delta close(value.token) {
+                closed => closed,
+                failed { auto reason } => failed
+            }
+            [closed | failed]: again finish(tail, target);
+            [target]: delta close(target.token) {
+                closed => exit done,
+                failed { auto target_reason } => exit done
+            }
+        }
+    }
+}
