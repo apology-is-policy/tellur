@@ -1775,6 +1775,67 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn direct_collection_length_preserves_borrowed_calls_and_fuel() {
+        let f = Fixture::new(
+            r#"
+struct batch { vector<u32> values; array<u32,2> fixed; map<string,u32> tags; }
+control count(ref vector<u32> values) exits size { u32 count } {
+    exit size { vector_length(values) };
+}
+control main() exits ready { u32 direct, u32 received, u32 fixed, u32 tags } {
+    batch input = batch { values: [1,2,3], fixed: [4,5], tags: map {} };
+    u32 direct = vector_length(borrow input.values);
+    delta count(borrow input.values) { size { u32 received } => measured }
+    [measured]: emit("measured");
+        exit ready { direct, received, array_length(borrow input.fixed), map_length(borrow input.tags) };
+}
+"#,
+        );
+        let manifest = Manifest::from_json(r#"{"version":"0.1","types":[],"primitives":[],"launch":{"main":{"exit_codes":{"ready":0}}}}"#).unwrap();
+        let program = compile_file(&f.source, manifest).unwrap();
+        for expanded in [false, true] {
+            let checked = if expanded {
+                program.expanded("main").unwrap()
+            } else {
+                program.clone()
+            };
+            let llvm = checked
+                .build_llvm("main", &f.root.join("length-llvm"), 3)
+                .unwrap();
+            let rust = checked
+                .build_native("main", &f.root.join("length-rust"), 2)
+                .unwrap();
+            let ir = fs::read_to_string(&llvm.llvm).unwrap();
+            assert!(ir.contains("call i64 @tellur_rt_v1_local_length"));
+            assert!(
+                ir.contains("call i64 @tellur_rt_v1_length("),
+                "received loans retain ordinary lowering"
+            );
+            let scenario = json!({"entry":"main","arguments":[],"calls":[]});
+            let path = f.root.join("length-scenario.json");
+            fs::write(&path, scenario.to_string()).unwrap();
+            assert_eq!(
+                report(&execute(&llvm.executable, &path, None)),
+                serde_json::to_value(
+                    checked
+                        .run(&serde_json::from_value(scenario).unwrap())
+                        .unwrap()
+                )
+                .unwrap()
+            );
+            for fuel in [None].into_iter().chain((0..25).map(Some)) {
+                let a = execute(&llvm.executable, &path, fuel);
+                let b = execute(&rust.executable, &path, fuel);
+                assert_eq!(
+                    (a.status.code(), a.stdout, a.stderr),
+                    (b.status.code(), b.stdout, b.stderr),
+                    "expanded={expanded}, fuel={fuel:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn consuming_map_drain_preserves_the_owned_suffix_and_fuel() {
         let full = r#"outcome result { @exit 0 done, @exit 0 stopped { string key, map<string,u32> rest } }
 control main(map<string,u32> input) exits result {

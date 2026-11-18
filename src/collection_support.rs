@@ -128,10 +128,117 @@ pub fn sorted_map<V: CollectionValue>(fields: &[V]) -> bool {
             .step_by(2)
             .all(|w| w[0].key_cmp(&w[2]) == Some(Ordering::Less))
 }
+
+/// Length needs the collection shape, not owned copies of its type arguments.
+/// Keep the same balanced, trimmed generic grammar as `Collection::parse`.
+fn length_is_map(ty: &str) -> Option<bool> {
+    let (name, rest) = ty.split_once('<')?;
+    let rest = rest.strip_suffix('>')?;
+    let arity = match name {
+        "vector" => 1,
+        "array" | "map" => 2,
+        _ => return None,
+    };
+    let mut arguments = [""; 2];
+    let (mut depth, mut start, mut argument) = (0usize, 0, 0);
+    for (index, character) in rest.char_indices() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth = depth.checked_sub(1)?,
+            ',' if depth == 0 => {
+                if argument + 1 >= arity {
+                    return None;
+                }
+                arguments[argument] = rest[start..index].trim();
+                argument += 1;
+                start = index + 1;
+            }
+            _ => (),
+        }
+    }
+    if depth != 0 || argument + 1 != arity {
+        return None;
+    }
+    arguments[argument] = rest[start..].trim();
+    if arguments[..arity]
+        .iter()
+        .any(|argument| argument.is_empty())
+    {
+        return None;
+    }
+    if name == "array" {
+        let length = arguments[1];
+        if !length.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        length.parse::<u32>().ok()?;
+    }
+    Some(name == "map")
+}
+
+#[cfg(test)]
+#[test]
+fn length_shape_matches_the_owned_type_parser() {
+    let check = |ty: &str| {
+        assert_eq!(
+            length_is_map(ty),
+            Collection::parse(ty).map(|c| matches!(c, Collection::Map(..))),
+            "{ty:?}"
+        );
+    };
+    let arguments = [
+        "",
+        "u32",
+        " string ",
+        "vector<u32>",
+        "map<string,vector<u32>>",
+        "array<array<u32,2>,3>",
+        "&mutable vector<u32>",
+        "0",
+        "0002",
+        "4294967295",
+        "4294967296",
+        "+2",
+        "-1",
+        "2.0",
+        "é",
+        ",",
+        "<",
+        ">",
+        "x>y<z",
+        " \t ",
+    ];
+    for name in ["vector", "array", "map", "other", " vector"] {
+        check(name);
+        for first in arguments {
+            check(&format!("{name}<{first}>"));
+            for second in arguments {
+                check(&format!("{name}<{first},{second}>"));
+                check(&format!("{name}<{first},{second},u32>"));
+            }
+        }
+    }
+    // Differential malformed-input coverage, including UTF-8 and nested delimiters.
+    let alphabet = ['<', '>', ',', ' ', '\t', 'u', '0', '1', 'é', '😀'];
+    let mut state = 295u64;
+    for length in 0..48 {
+        for _ in 0..256 {
+            let mut inner = String::new();
+            for _ in 0..length {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                inner.push(alphabet[(state >> 32) as usize % alphabet.len()]);
+            }
+            for name in ["vector", "array", "map"] {
+                check(&format!("{name}<{inner}>"));
+            }
+        }
+    }
+}
+
 pub fn length<V: CollectionValue>(value: &V) -> Result<u32, String> {
     let (ty, _, fields) = value.parts().ok_or("invalid collection")?;
-    let c = Collection::parse(ty).ok_or("invalid collection type")?;
-    let len = if matches!(c, Collection::Map(..)) {
+    let is_map = length_is_map(ty).ok_or("invalid collection type")?;
+    let len = if is_map {
         fields.len() / 2
     } else {
         fields.len()

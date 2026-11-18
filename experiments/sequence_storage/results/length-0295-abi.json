@@ -1,0 +1,326 @@
+{
+  "128": {
+    "split_at": {
+      "outer_call": {
+        "calls": 1,
+        "allocations": 4,
+        "reallocations": 0,
+        "requested_bytes": 1021
+      },
+      "ok": {
+        "calls": 57,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "frame": {
+        "calls": 2,
+        "allocations": 0,
+        "reallocations": 2,
+        "requested_bytes": 4896
+      },
+      "local": {
+        "calls": 13,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "store": {
+        "calls": 9,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "release_local": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "construct": {
+        "calls": 1,
+        "allocations": 4,
+        "reallocations": 0,
+        "requested_bytes": 84
+      },
+      "variant": {
+        "calls": 3,
+        "allocations": 5,
+        "reallocations": 0,
+        "requested_bytes": 397
+      },
+      "binary": {
+        "calls": 3,
+        "allocations": 3,
+        "reallocations": 0,
+        "requested_bytes": 816
+      },
+      "tick": {
+        "calls": 10,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "complete": {
+        "calls": 2,
+        "allocations": 4,
+        "reallocations": 0,
+        "requested_bytes": 554
+      },
+      "call": {
+        "calls": 1,
+        "allocations": 3,
+        "reallocations": 0,
+        "requested_bytes": 833
+      },
+      "vector_transfer": {
+        "calls": 1,
+        "allocations": 1,
+        "reallocations": 0,
+        "requested_bytes": 5712
+      },
+      "local_length": {
+        "calls": 2,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "route": {
+        "calls": 6,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    "join": {
+      "outer_call": {
+        "calls": 1,
+        "allocations": 3,
+        "reallocations": 0,
+        "requested_bytes": 825
+      },
+      "ok": {
+        "calls": 20,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "frame": {
+        "calls": 1,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "local": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "store": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "release_local": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "tick": {
+        "calls": 3,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "complete": {
+        "calls": 1,
+        "allocations": 2,
+        "reallocations": 0,
+        "requested_bytes": 142
+      },
+      "collection": {
+        "calls": 1,
+        "allocations": 5,
+        "reallocations": 0,
+        "requested_bytes": 400
+      },
+      "vector_transfer": {
+        "calls": 1,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "route": {
+        "calls": 1,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    }
+  },
+  "4096": {
+    "split_at": {
+      "outer_call": {
+        "calls": 1,
+        "allocations": 4,
+        "reallocations": 0,
+        "requested_bytes": 1021
+      },
+      "ok": {
+        "calls": 57,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "frame": {
+        "calls": 2,
+        "allocations": 0,
+        "reallocations": 2,
+        "requested_bytes": 4896
+      },
+      "local": {
+        "calls": 13,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "store": {
+        "calls": 9,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "release_local": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "construct": {
+        "calls": 1,
+        "allocations": 4,
+        "reallocations": 0,
+        "requested_bytes": 84
+      },
+      "variant": {
+        "calls": 3,
+        "allocations": 5,
+        "reallocations": 0,
+        "requested_bytes": 397
+      },
+      "binary": {
+        "calls": 3,
+        "allocations": 3,
+        "reallocations": 0,
+        "requested_bytes": 816
+      },
+      "tick": {
+        "calls": 10,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "complete": {
+        "calls": 2,
+        "allocations": 4,
+        "reallocations": 0,
+        "requested_bytes": 554
+      },
+      "call": {
+        "calls": 1,
+        "allocations": 3,
+        "reallocations": 0,
+        "requested_bytes": 833
+      },
+      "vector_transfer": {
+        "calls": 1,
+        "allocations": 1,
+        "reallocations": 0,
+        "requested_bytes": 185640
+      },
+      "local_length": {
+        "calls": 2,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "route": {
+        "calls": 6,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    },
+    "join": {
+      "outer_call": {
+        "calls": 1,
+        "allocations": 3,
+        "reallocations": 0,
+        "requested_bytes": 825
+      },
+      "ok": {
+        "calls": 20,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "frame": {
+        "calls": 1,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "local": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "store": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "release_local": {
+        "calls": 4,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "tick": {
+        "calls": 3,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "complete": {
+        "calls": 1,
+        "allocations": 2,
+        "reallocations": 0,
+        "requested_bytes": 142
+      },
+      "collection": {
+        "calls": 1,
+        "allocations": 5,
+        "reallocations": 0,
+        "requested_bytes": 400
+      },
+      "vector_transfer": {
+        "calls": 1,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      },
+      "route": {
+        "calls": 1,
+        "allocations": 0,
+        "reallocations": 0,
+        "requested_bytes": 0
+      }
+    }
+  }
+}

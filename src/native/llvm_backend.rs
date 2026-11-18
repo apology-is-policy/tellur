@@ -89,6 +89,7 @@ declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_vector_transfer(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
+declare i64 @tellur_rt_v1_local_length(ptr, i64, ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_unmatched(ptr, i64)
 "#;
@@ -986,6 +987,45 @@ impl Emitter {
                 ))
             }
             Expr::Length(e) => {
+                // A fresh, nonescaping borrow needs no materialized reference.
+                // Incoming/guarded evidence and indirect places retain the
+                // ordinary path; all named dependencies here are this place.
+                let value = e.without_reference_evidence();
+                if let Expr::Reference(place, ty) = value
+                    && !place.indirect
+                    && [
+                        "&vector<",
+                        "&array<",
+                        "&map<",
+                        "&mutable vector<",
+                        "&mutable array<",
+                        "&mutable map<",
+                    ]
+                    .iter()
+                    .any(|prefix| ty.starts_with(prefix))
+                    && match e.as_ref() {
+                        Expr::Reference(..) => true,
+                        Expr::WithReferenceEvidence(
+                            value,
+                            ReferenceEvidence::Partial(origins)
+                            | ReferenceEvidence::Complete(origins),
+                        ) => {
+                            matches!(value.as_ref(), Expr::Reference(..))
+                                && matches!(origins.as_slice(), [origin] if origin.place == *place && !origin.guard && !origin.opaque)
+                        }
+                        _ => false,
+                    }
+                {
+                    let slot = self.layout.slots[&place.root];
+                    let path = self.handles(
+                        &place
+                            .fields
+                            .iter()
+                            .map(usize::to_string)
+                            .collect::<Vec<_>>(),
+                    );
+                    return self.call(format!("call i64 @tellur_rt_v1_local_length(ptr %ctx, i64 {slot}, ptr {path}, i64 {})", place.fields.len()));
+                }
                 let value = self.expr(e);
                 self.call(format!(
                     "call i64 @tellur_rt_v1_length(ptr %ctx, i64 {value})"

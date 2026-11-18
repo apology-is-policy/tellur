@@ -2607,3 +2607,83 @@ fn contiguous_prefix_transfer_handles_zero_size_and_invalid_count() {
     drop(destination);
     assert_eq!(DROPS.load(Ordering::Relaxed), 12);
 }
+
+#[test]
+fn direct_collection_length_matches_reference_projection_and_errors() {
+    let vector = V::Construct {
+        ty: "vector<handle>".into(),
+        name: "vector".into(),
+        fields: vec![V::Opaque {
+            ty: "handle".into(),
+            token: "owned".into(),
+        }],
+    };
+    let nested = V::Construct {
+        ty: "batch".into(),
+        name: "batch".into(),
+        fields: vec![vector.clone()],
+    };
+    let cases = [
+        (Some(vector), 0, vec![]),
+        (Some(nested.clone()), 0, vec![0]),
+        (Some(nested.clone()), 0, vec![1]),
+        (Some(nested), 1, vec![]),
+        (None, 0, vec![]),
+        (Some(V::U32(4)), 0, vec![0]),
+        (Some(V::U32(4)), 0, vec![]),
+        (
+            Some(V::Construct {
+                ty: "array<u32,2>".into(),
+                name: "array".into(),
+                fields: vec![V::U32(1), V::U32(2)],
+            }),
+            0,
+            vec![],
+        ),
+        (
+            Some(V::Construct {
+                ty: "map<string,u32>".into(),
+                name: "map".into(),
+                fields: vec![V::String("a".into()), V::U32(1)],
+            }),
+            0,
+            vec![],
+        ),
+    ];
+    for (value, slot, path) in cases {
+        let evaluate = |direct| {
+            let mut host = Host::new(json!({}), None, false, None);
+            let mut c = context(&mut host);
+            c.frame = Some(c.storage.values_mut().enter(1).unwrap());
+            let root = c.local(0).unwrap();
+            c.storage.values_mut()[root] = value.clone();
+            let result = unsafe {
+                if direct {
+                    tellur_rt_v1_local_length(&mut c, slot, path.as_ptr(), path.len())
+                } else {
+                    let ty = "&vector<handle>";
+                    let reference = tellur_rt_v1_reference(
+                        &mut c,
+                        slot,
+                        path.as_ptr(),
+                        path.len(),
+                        0,
+                        ty.as_ptr(),
+                        ty.len(),
+                    );
+                    tellur_rt_v1_length(&mut c, reference)
+                }
+            };
+            assert_eq!(c.storage.values()[root], value);
+            match c.error.clone() {
+                Some(error) => Err(error),
+                None => c.take(result),
+            }
+        };
+        assert_eq!(
+            evaluate(true),
+            evaluate(false),
+            "slot={slot}, path={path:?}"
+        );
+    }
+}

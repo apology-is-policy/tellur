@@ -145,6 +145,56 @@ the platform memory-copy routine now dominates the remaining payload work.
 [Identical-IR runtime comparison](results/native-0294-paired.csv) ·
 [Paired allocation counts](results/native-0294-paired-alloc.csv)
 
+## Fresh collection length reads in 0.295
+
+LLVM now reads a collection's length directly when its operand is a fresh
+borrow of an owned place and its checked origin is exactly that place. The
+read retains the frame, slot, projection, collection-type and u32-range checks.
+It needs no temporary reference or reference evidence. Received loans,
+indirect places, guarded origins and more complex dependencies keep their
+ordinary lowering. Length queries also validate generic type shape without
+allocating owned type strings or a temporary argument vector.
+
+The same rotation comparison interleaves 0.294 and 0.295 with the Rust
+baselines. Here each compiler supplies its own LLVM IR because the lowering
+changed. Every executable verifies the same rotated IDs. The median of 13
+shuffled trials, after one discarded trial, is:
+
+| Complete rotation | Compiler 0.294 | Compiler 0.295 | Rust flat |
+| --- | ---: | ---: | ---: |
+| 128 u32 items | 28.63 µs | 21.46 µs | 2.13 µs |
+| 4,096 u32 items | 56.92 µs | 44.71 µs | 4.58 µs |
+
+The improvements are **25.0%** and **21.5%**. The large-case gap remains
+**9.75×**. Allocation requests fall from 42 to **34**, reallocations from three
+to **two**, and requested bytes from 197,302 to **195,608**. Both direct length
+calls make zero allocation requests. Join's allocation profile is unchanged.
+The payload still occupies 136 bytes per element and moves the same 742,696
+bytes; this pass removes temporary reference and parsing work.
+
+A separate peak probe tracks live allocator-usable bytes relative to each
+control's entry. For the large split, peak extra live storage falls from
+202,656 to 202,016 bytes; join remains 1,216 bytes. At 128 items the split falls
+from 12,192 to 11,552 bytes. These figures include allocator size-class rounding,
+exclude input storage already live at entry, and exclude allocator-internal
+reallocation transients and RSS. They are not summed across controls. Enabling
+peak accounting preserves every request-count row from the ordinary probe.
+
+Regression coverage compares authored and expanded LLVM execution with Rust
+and the interpreter, including 25 fuel cuts, effects and received borrows.
+Direct ABI cases preserve opaque owners and match the original projection and
+invalid-slot/type errors. Differential parser cases include nested generics,
+array-size boundaries, malformed delimiters, whitespace and UTF-8. The existing
+split/join, collection, origin and resource cases remain part of qualification.
+The owned fold contains no length expression, so its checked-arithmetic gap is
+unchanged and its existing evidence is retained for the next pass.
+
+[Paired timings](results/native-0295-paired.csv) ·
+[Compiler settings](results/native-0295-paired-environment.json) ·
+[Allocation requests](results/native-0295-paired-alloc.csv) ·
+[ABI attribution](results/length-0295-abi.json) ·
+[Peak live storage](results/native-0295-peaks.csv)
+
 ## Reproduce
 
 From the repository root:
@@ -158,6 +208,8 @@ python3 -B experiments/sequence_storage/transfer_time.py ./bin/vnc \
   "$LLVM_SYS_221_PREFIX/bin" /tmp/sequence-profile
 python3 -B experiments/sequence_storage/sample.py ./bin/vnc \
   "$LLVM_SYS_221_PREFIX/bin" /tmp/sequence-profile
+python3 -B experiments/sequence_storage/peaks.py \
+  "$LLVM_SYS_221_PREFIX/bin" /tmp/sequence-peaks.csv ./bin/vnc
 ./bin/vnc exec examples/rotate_batch/main.vn -- \
   --scenario examples/rotate_batch/main.scenario.json
 ```
@@ -168,3 +220,6 @@ An optional fourth argument to `native.py` supplies a previous compiler. The
 script requires both compilers to emit identical IR, links the same timed
 object against each embedded runtime, and interleaves both binaries in its
 trial schedule. Run timings without concurrent compiler or packaging jobs.
+When comparing changes to LLVM emission, add `--previous-ir`: each compiler
+then contributes its own timed object and matching runtime. The environment
+record identifies which comparison was used.

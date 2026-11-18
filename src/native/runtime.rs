@@ -2469,7 +2469,11 @@ pub fn collection_length(value: V, values: &mut [Option<V>]) -> R<V> {
     let V::Reference { root, fields, .. } = value else {
         return Err("invalid collection length argument".into());
     };
-    let value = mutable_place(values, root, &fields)?;
+    collection_length_at(values, root, &fields)
+}
+/// Read through the same checked projection as a materialized collection loan.
+pub fn collection_length_at(values: &mut [Option<V>], root: usize, fields: &[usize]) -> R<V> {
+    let value = mutable_place(values, root, fields)?;
     if let V::Construct { ty, fields, .. } = &*value
         && ty.starts_with("$tasks<")
     {

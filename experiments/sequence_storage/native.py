@@ -1,6 +1,7 @@
 """Compare one checked Villanelle rotation with the owned Rust storage operations."""
 
 import csv
+import argparse
 import json
 import os
 from pathlib import Path
@@ -13,8 +14,18 @@ here = Path(__file__).resolve().parent
 sys.path.insert(0, str(here.parent / "first_match"))
 from abi_probe import build_allocation_probe, wrap_calls
 
-vnc, llvm, results = (Path(argument).resolve() for argument in sys.argv[1:4])
-previous = Path(sys.argv[4]).resolve() if len(sys.argv) == 5 else None
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("vnc", type=Path)
+parser.add_argument("llvm", type=Path)
+parser.add_argument("results", type=Path)
+parser.add_argument("previous", type=Path, nargs="?")
+parser.add_argument("--previous-ir", action="store_true",
+                    help="compare compiler emission as well as runtime, using each compiler's own IR")
+arguments = parser.parse_args()
+vnc, llvm, results = (path.resolve() for path in (arguments.vnc, arguments.llvm, arguments.results))
+previous = arguments.previous.resolve() if arguments.previous else None
+if arguments.previous_ir and previous is None:
+    parser.error("--previous-ir requires a previous compiler")
 results.mkdir(exist_ok=True, parents=True)
 
 
@@ -50,11 +61,25 @@ with tempfile.TemporaryDirectory() as directory:
         run(previous, "build", here.parents[1] / "examples/rotate_batch/main.vn",
             "--release", "--out", previous_dir / "source",
             env={**os.environ, "TELLUR_NATIVE_TARGET_DIR": str(previous_dir), "CARGO_INCREMENTAL": "0"})
-        assert ir == (previous_dir / "source.ll").read_text(), "paired runtimes require identical generated IR"
+        old_ir = (previous_dir / "source.ll").read_text()
+        previous_object = temporary / "timed.o"
+        if arguments.previous_ir:
+            (previous_dir / "timed.ll").write_text(wrap_calls(old_ir, controls, "time_first"))
+            run(llvm / "opt", "-passes=default<O3>", previous_dir / "timed.ll", "-o", previous_dir / "timed.bc")
+            previous_object = previous_dir / "timed.o"
+            run(llvm / "llc", "-O3", "-filetype=obj", previous_dir / "timed.bc", "-o", previous_object)
+        else:
+            assert ir == old_ir, "paired runtimes require identical generated IR; use --previous-ir for compiler comparisons"
         old_archive, = (previous_dir / "tellur-runtime-pack").glob("*.a")
         archives["vn-previous"] = old_archive
-        run("cc", "-O3", "-mmacosx-version-min=13.0", temporary / "timed.o",
+        run("cc", "-O3", "-mmacosx-version-min=13.0", previous_object,
             here.parent / "first_match/timer.c", old_archive, "-o", temporary / "vn-previous")
+    (results / "native-environment.json").write_text(json.dumps({
+        "compiler": run(vnc, "--version", capture_output=True).stdout.strip(),
+        "previous_compiler": run(previous, "--version", capture_output=True).stdout.strip() if previous else None,
+        "comparison": "each compiler's own IR" if arguments.previous_ir else "same IR and object" if previous else "single compiler",
+        "rustc": run("rustc", "-vV", capture_output=True).stdout,
+    }, indent=2) + "\n")
     run("rustc", "--edition", "2024", "-C", "opt-level=3", here / "rotate.rs", "-o", temporary / "rs")
     run(
         "rustc", "--edition", "2024", "-C", "opt-level=3", "--cfg", "allocation_counts",
@@ -64,7 +89,8 @@ with tempfile.TemporaryDirectory() as directory:
     for name, runtime in archives.items():
         directory = temporary / (name + "-alloc")
         directory.mkdir()
-        probes[name], _ = build_allocation_probe(ir, controls, directory, llvm, runtime)
+        measured_ir = old_ir if name == "vn-previous" and arguments.previous_ir else ir
+        probes[name], _ = build_allocation_probe(measured_ir, controls, directory, llvm, runtime)
 
     def invoke(kind, count, allocations=False):
         if kind not in archives:

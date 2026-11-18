@@ -100,6 +100,8 @@ Compiler 0.293 lowers proven consuming split/join iterations to bulk transfers. 
 
 The follow-up profile confirms 136 bytes per runtime value against four bytes per Rust u32. Compiler 0.294 copies the proven prefix contiguously and compacts its suffix once. This improves the isolated large-value kernel while keeping its allocation volume and ownership unchanged. Generic payload width, temporary reference formation and control transport remain performance targets. [Payload and call-cost evidence](../experiments/sequence_storage/README.md#where-the-remaining-batch-time-goes)
 
+Compiler 0.295 removes temporary reference formation for proven fresh length reads and allocates no type-parser storage for length queries. The complete 4,096-item rotation takes 44.71 µs against Rust flat's 4.58 µs, with 34 allocations and two reallocations. Peak extra allocator-usable storage in split falls by 640 bytes; the large payload remains unchanged. The next performance pass returns to the owned fold's checked arithmetic. [Length-read comparison](../experiments/sequence_storage/README.md#fresh-collection-length-reads-in-0295)
+
 ## Path to a supported library
 
 1. Exercise the existing public-outcome change on both JSON callers and use it to document failure routing and provenance. The results are in the [language roadmap](language-revision.md#active-checkpoint-queue).

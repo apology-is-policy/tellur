@@ -4299,6 +4299,24 @@ pub unsafe extern "C" fn tellur_rt_v1_length(ctx: *mut Context<'_>, handle: u64)
     })
 }
 
+/// A compiler-proven fresh owned-collection borrow used only for its length.
+/// Keep the ordinary slot, projection, collection and u32-range checks, without
+/// allocating a temporary reference whose evidence cannot escape this read.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_local_length(
+    ctx: *mut Context<'_>,
+    slot: usize,
+    path: *const usize,
+    count: usize,
+) -> u64 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let root = c.local(slot)?;
+        let value =
+            collection_length_at(c.storage.values_mut(), root, unsafe { slice(path, count) })?;
+        Ok(c.put(value))
+    })
+}
+
 /// Synchronous host calls retain the existing runtime's live/scripted
 /// dispatch, tracing and failures. Borrowed parameters are already lowered to
 /// checked value reads; consuming this temporary handle does not consume the
