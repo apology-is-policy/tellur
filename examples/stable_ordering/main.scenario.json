@@ -1,0 +1,100 @@
+{
+  "entry": "main",
+  "arguments": [
+    {
+      "kind": "construct",
+      "value": {
+        "ty": "vector<record>",
+        "name": "vector",
+        "fields": [
+          {
+            "kind": "construct",
+            "value": {
+              "ty": "record",
+              "name": "record",
+              "fields": [
+                {
+                  "kind": "u32",
+                  "value": 2
+                },
+                {
+                  "kind": "u32",
+                  "value": 0
+                }
+              ]
+            }
+          },
+          {
+            "kind": "construct",
+            "value": {
+              "ty": "record",
+              "name": "record",
+              "fields": [
+                {
+                  "kind": "u32",
+                  "value": 1
+                },
+                {
+                  "kind": "u32",
+                  "value": 1
+                }
+              ]
+            }
+          },
+          {
+            "kind": "construct",
+            "value": {
+              "ty": "record",
+              "name": "record",
+              "fields": [
+                {
+                  "kind": "u32",
+                  "value": 2
+                },
+                {
+                  "kind": "u32",
+                  "value": 2
+                }
+              ]
+            }
+          },
+          {
+            "kind": "construct",
+            "value": {
+              "ty": "record",
+              "name": "record",
+              "fields": [
+                {
+                  "kind": "u32",
+                  "value": 1
+                },
+                {
+                  "kind": "u32",
+                  "value": 3
+                }
+              ]
+            }
+          },
+          {
+            "kind": "construct",
+            "value": {
+              "ty": "record",
+              "name": "record",
+              "fields": [
+                {
+                  "kind": "u32",
+                  "value": 3
+                },
+                {
+                  "kind": "u32",
+                  "value": 4
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "calls": []
+}

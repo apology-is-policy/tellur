@@ -1,0 +1,15 @@
+kind,case,allocations,reallocations,requested_bytes,peak_extra_bytes
+vn,small,55348,3207,5897098,29840
+vn,equal,395449,22056,43358715,116048
+rs,single,0,,0,0
+vn,reverse,426979,24357,46382251,116048
+vn,empty,37,2,7991,4272
+vn,single,81,3,17029,7888
+rs,small,0,,0,0
+rs,empty,0,,0,0
+rs,sorted,1,,8192,8192
+vn,mixed,622401,37578,65792779,115856
+rs,reverse,1,,8192,8192
+vn,sorted,386915,22056,42176756,115856
+rs,mixed,1,,8192,8192
+rs,equal,1,,8192,8192

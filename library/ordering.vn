@@ -1,0 +1,136 @@
+import "sequence_batches.vn" as batches;
+pub trait comparator {
+    type item;
+    control compare(ref self rule, ref item left, ref item right) exits before,
+        equal,
+        after;
+}
+
+// Equal items come from the left run first, preserving stability across passes.
+pub control merge<order: comparator>(
+    vector<comparator<order>.item> left,
+    vector<comparator<order>.item> right,
+    ref order rule
+) exits merged { vector<comparator<order>.item> values }
+{
+    loop choose(
+        vector<comparator<order>.item> a = left,
+        vector<comparator<order>.item> b = right,
+        mutable vector<comparator<order>.item> result = []
+    ) {
+        delta vector_get(borrow a, 0) {
+            found { auto first } => first,
+            out_of_bounds => finish_a
+        }
+        [first]: delta vector_get(borrow b, 0) {
+            found { auto second } => second,
+            out_of_bounds => finish_b
+        }
+        [second]: delta comparator<order>.compare(rule, first, second) {
+            before => before,
+            equal => equal,
+            after => right
+        }
+        [before | equal]: delta vector_take(a) {
+            item { auto value, auto tail } => append_left,
+            empty => only_right
+        }
+        [append_left]: delta vector_push(borrow mutable result, value) {
+            pushed => left_added
+        }
+        [left_added]: again choose(tail, b, result);
+        [right]: delta vector_take(b) {
+            item { auto value, auto tail } => append_right,
+            empty => only_left
+        }
+        [append_right]: delta vector_push(borrow mutable result, value) {
+            pushed => right_added
+        }
+        [right_added]: again choose(a, tail, result);
+        [finish_a | finish_b]: delta batches.join<comparator<order>.item>(result, a) {
+            joined { auto all } => combined
+        }
+        [combined]: delta batches.join<comparator<order>.item>(all, b) {
+            joined { auto completed } => exit merged { completed }
+        }
+        [only_right]: delta batches.join<comparator<order>.item>(result, b) {
+            joined { auto completed } => exit merged { completed }
+        }
+        [only_left]: delta batches.join<comparator<order>.item>(result, a) {
+            joined { auto completed } => exit merged { completed }
+        }
+    }
+}
+
+pub control sort<order: comparator>(vector<comparator<order>.item> source, ref order rule)
+    exits sorted { vector<comparator<order>.item> values }
+{
+    delta singletons<comparator<order>.item>(source) {
+        ready { auto runs } => ready
+    }
+    [ready]: {
+        loop passes(vector<vector<comparator<order>.item>> current = runs) {
+            delta (vector_length(borrow current) <= 1) {
+                true => finished,
+                false => pass
+            }
+            [finished]: forward flatten<comparator<order>.item>(current);
+            [pass]: delta merge_pass<order>(current, rule) {
+                merged { auto next } => merged
+            }
+            [merged]: again passes(next);
+        }
+    }
+}
+control singletons<item>(vector<item> source) exits ready { vector<vector<item>> runs } {
+    loop collect(vector<item> rest = source, mutable vector<vector<item>> result = []) {
+        delta vector_take(rest) {
+            item { auto head, auto tail } => item,
+            empty => exit ready { result }
+        }
+        [item]: vector<item> run = [head];
+            delta vector_push(borrow mutable result, run) {
+                pushed => pushed
+            }
+        [pushed]: again collect(tail, result);
+    }
+}
+control merge_pass<order: comparator>(vector<vector<comparator<order>.item>> source, ref order rule)
+    exits merged { vector<vector<comparator<order>.item>> runs }
+{
+    loop pairs(
+        vector<vector<comparator<order>.item>> rest = source,
+        mutable vector<vector<comparator<order>.item>> result = []
+    ) {
+        delta vector_take(rest) {
+            item { auto first, auto tail } => first,
+            empty => exit merged { result }
+        }
+        [first]: delta vector_take(tail) {
+            item { auto second, auto remaining } => second,
+            empty => unpaired
+        }
+        [unpaired]: delta vector_push(borrow mutable result, first) {
+            pushed => exit merged { result }
+        }
+        [second]: delta merge<order>(first, second, rule) {
+            merged { auto combined } => combined
+        }
+        [combined]: delta vector_push(borrow mutable result, combined) {
+            pushed => pushed
+        }
+        [pushed]: again pairs(remaining, result);
+    }
+}
+control flatten<item>(vector<vector<item>> source) exits sorted { vector<item> values } {
+    loop append(vector<vector<item>> rest = source, vector<item> result = []) {
+        delta vector_take(rest) {
+            item { auto run, auto tail } => item,
+            empty => exit sorted { result }
+        }
+        [item]: delta batches.join<item>(result, run) {
+            joined { auto next } => joined
+        }
+        [joined]: again append(tail, next);
+    }
+}

@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Stable ordering prototype, 18 November 2026
+
+The experimental comparator-based sort consumes its vector and returns every owner in stable order. Duplicate identities, exact comparator effects and one close per resource agree across original/expanded interpretation and LLVM/Rust execution. No clone bound or fallible comparator policy is introduced. On M2, 1,024 mixed records take 81.33 ms versus optimized Rust stable sort at 11.25 µs. Collection dispatch accounts for 2,494 of 4,678 in-sort CPU samples; the algorithm performs 236.6 MB of modeled suffix movement. Next: optimize proven merge traversal and transport, then representation qualification, ordered bounds applicability and supported-library adoption. [Contract](collections-and-algorithms.md#stable-ordering) · [Measured baseline](../experiments/stable_ordering/README.md)
+
 ### Bulk scalar partition, 18 November 2026
 
 Compiler 0.298 proves both advancing branches of a u32 classifier and moves their prefix into stable output vectors in one runtime call. The first stopped element and observed/effectful/resource-bearing paths retain checked execution. In the paired M2 run the complete 4,096-item partition improves from 75.76 ms to 174.25 µs, versus Rust at 24.92 µs; allocations fall from 106,517 to 21. The remaining 7.0× gap includes generic value width and fixed transport. Next: stable ordering, then representation qualification, fresh-project adoption and supported collection/algorithm modules. [Measured results and limits](../experiments/partition/README.md#bulk-scalar-partition-in-0298)

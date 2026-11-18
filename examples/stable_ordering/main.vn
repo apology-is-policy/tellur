@@ -1,0 +1,26 @@
+import "../../library/ordering.vn" as ordering;
+struct record {
+    u32 key;
+    u32 identity;
+}
+struct key_order {}
+implement ordering.comparator for key_order {
+    type item = record;
+    control compare(ref key_order rule, ref record a, ref record b) exits before,
+        equal,
+        after
+    {
+        delta (a.key < b.key) {
+            true => exit before,
+            false => next
+        }
+        [next]: exit delta (a.key > b.key) {
+            true => after {},
+            false => equal {}
+        };
+    }
+}
+control main(vector<record> source) exits sorted { vector<record> values } {
+    key_order rule = key_order {};
+    forward ordering.sort<key_order>(source, borrow rule);
+}

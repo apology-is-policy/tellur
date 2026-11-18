@@ -1685,3 +1685,222 @@ control main(vector<ticket> source) exits done {{ u32 rank, vector<ticket> left,
 }}"#));
     f.reject("E_LOAN");
 }
+
+#[test]
+fn stable_ordering_preserves_duplicate_resources_and_comparator_effects() {
+    use tellur::runtime::{Event, ScriptCall};
+    let f = Fixture::new();
+    let source = include_str!("fixtures/owned_ordering.vn");
+    f.write("ordering.vn", include_str!("../library/ordering.vn"));
+    f.write(
+        "sequence_batches.vn",
+        include_str!("../library/sequence_batches.vn"),
+    );
+    f.write("main.vn", source);
+    let checked = f.check().unwrap();
+    let expanded = checked.expanded("main").unwrap();
+    let settled = checked.expanded("settle").unwrap();
+    let vector = |fields| Value::Construct {
+        ty: "vector<ticket>".into(),
+        name: "vector".into(),
+        fields,
+    };
+    // Independent index-only merge model checks the observable comparator sequence.
+    // Rust's stable sort supplies the final ownership/stability oracle separately.
+    fn comparisons(keys: &[u32]) -> Vec<String> {
+        let mut runs: Vec<Vec<usize>> = (0..keys.len()).map(|i| vec![i]).collect();
+        let mut events = Vec::new();
+        while runs.len() > 1 {
+            runs = runs
+                .chunks(2)
+                .map(|pair| {
+                    if pair.len() == 1 {
+                        return pair[0].clone();
+                    }
+                    let (a, b) = (&pair[0], &pair[1]);
+                    let (mut i, mut j) = (0, 0);
+                    let mut merged = Vec::new();
+                    while i < a.len() && j < b.len() {
+                        events.extend([a[i].to_string(), b[j].to_string()]);
+                        if keys[a[i]] <= keys[b[j]] {
+                            merged.push(a[i]);
+                            i += 1;
+                        } else {
+                            merged.push(b[j]);
+                            j += 1;
+                        }
+                    }
+                    merged.extend_from_slice(&a[i..]);
+                    merged.extend_from_slice(&b[j..]);
+                    merged
+                })
+                .collect();
+        }
+        events
+    }
+    let mut cases = Vec::new();
+    for keys in [
+        vec![],
+        vec![3],
+        vec![4, 3, 2, 1],
+        vec![2, 1, 2, 1, 3],
+        vec![1, 2, 3, 4],
+        vec![3, 3, 3, 3, 3],
+        vec![u32::MAX, 0, u32::MAX, 1, 0],
+        vec![4, 1, 5, 2, 0, 4, 3, 1, 5],
+    ] {
+        let tickets: Vec<_> = keys
+            .iter()
+            .enumerate()
+            .map(|(i, &key)| Value::Construct {
+                ty: "ticket".into(),
+                name: "ticket".into(),
+                fields: vec![
+                    Value::U32(key),
+                    Value::Opaque {
+                        ty: "handle".into(),
+                        token: format!("ticket-{i}"),
+                    },
+                    Value::U32(i as u32),
+                ],
+            })
+            .collect();
+        let mut order: Vec<_> = (0..keys.len()).collect();
+        order.sort_by_key(|&i| keys[i]);
+        for entry in ["main", "settle"] {
+            let scenario = Scenario {
+                entry: entry.into(),
+                arguments: vec![vector(tickets.clone())],
+                calls: if entry == "settle" {
+                    order
+                        .iter()
+                        .enumerate()
+                        .map(|(n, _)| ScriptCall {
+                            operation: "close".into(),
+                            outcome: if n == 0 { "failed" } else { "closed" }.into(),
+                            fields: if n == 0 {
+                                vec![Value::Opaque {
+                                    ty: "close_error".into(),
+                                    token: "closed with error".into(),
+                                }]
+                            } else {
+                                vec![]
+                            },
+                            waits: 0,
+                        })
+                        .collect()
+                } else {
+                    vec![]
+                },
+            };
+            let result = checked.run(&scenario).unwrap();
+            assert_eq!(
+                result,
+                if entry == "main" {
+                    expanded.run(&scenario)
+                } else {
+                    settled.run(&scenario)
+                }
+                .unwrap()
+            );
+            assert_eq!(
+                result.outcome,
+                if entry == "main" { "sorted" } else { "done" }
+            );
+            assert_eq!(
+                result.fields,
+                if entry == "main" {
+                    vec![vector(order.iter().map(|&i| tickets[i].clone()).collect())]
+                } else {
+                    vec![]
+                }
+            );
+            let emitted: Vec<_> = result
+                .events
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Emit { message } => Some(message.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(emitted, comparisons(&keys));
+            let closed: Vec<_> = result
+                .events
+                .iter()
+                .filter_map(|e| match e {
+                    Event::Primitive {
+                        operation,
+                        arguments,
+                        ..
+                    } if operation == "close" => Some(arguments.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                closed,
+                if entry == "settle" {
+                    order
+                        .iter()
+                        .map(|&i| {
+                            vec![Value::Opaque {
+                                ty: "handle".into(),
+                                token: format!("ticket-{i}"),
+                            }]
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![]
+                }
+            );
+            cases.push((scenario, result));
+        }
+    }
+    for (name, program, entry) in [
+        ("original", &checked, "main"),
+        ("expanded", &expanded, "main"),
+        ("original-settle", &checked, "settle"),
+        ("expanded-settle", &settled, "settle"),
+    ] {
+        let binary = f.root.join(name);
+        support::scenario_executable(program)
+            .build_for_test(entry, &binary, 3)
+            .unwrap();
+        for (scenario, expected) in cases.iter().filter(|(s, _)| s.entry == entry) {
+            let path = f.root.join("case.json");
+            fs::write(&path, serde_json::to_vec(scenario).unwrap()).unwrap();
+            let result = std::process::Command::new(&binary)
+                .arg("--scenario")
+                .arg(&path)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&result.stdout).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+    }
+    let rules = source.split_once("control main(").unwrap().0;
+    f.write(
+        "main.vn",
+        &format!(
+            r#"{rules}
+control main(vector<ticket> source) exits done {{
+    key_order rule=key_order {{}};
+    delta ordering.sort<key_order>(source,borrow rule) {{ sorted {{auto values}}=>exit done }}
+}}"#
+        ),
+    );
+    f.reject("E_RESOURCE");
+    f.write("main.vn",&format!(r#"{rules}
+control main(vector<ticket> source) exits done {{u32 key,vector<ticket> values}}, empty {{vector<ticket> values}} {{
+    key_order rule=key_order {{}};
+    delta vector_get(borrow source,0) {{ found {{auto first}}=>found,out_of_bounds=>exit empty {{source}} }}
+    [found]: delta ordering.sort<key_order>(source,borrow rule) {{ sorted {{auto values}}=>exit done {{first.key,values}} }}
+}}"#));
+    f.reject("E_LOAN");
+}

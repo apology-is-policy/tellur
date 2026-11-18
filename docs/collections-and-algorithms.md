@@ -83,6 +83,18 @@ Run `./bin/vnc exec examples/partition_batch/main.vn -- --scenario examples/part
 
 Compiler 0.298 moves a proven effect-free scalar prefix in bulk, preserving the checked terminal classifier and all resource/observed fallback paths. In the paired run, the 4,096-item partition improves from 75.76 ms to 174.25 µs, versus Rust at 24.92 µs. Allocations fall from 106,517 to 21. Repeated suffix shifts disappear on full completion; wide generic storage and fixed transport remain measured gaps. Next: stable ordering, representation qualification and supported-library adoption. [Measurement, movement and profile](../experiments/partition/README.md#bulk-scalar-partition-in-0298)
 
+## Stable ordering
+
+The experimental `ordering.sort<order>(source, borrow rule)` consumes a vector and returns `sorted { values }`. Implement `ordering.comparator` for the rule type, declare its associated `item`, and supply `compare(ref self rule, ref item left, ref item right) exits before, equal, after`. Comparisons borrow both elements; the algorithm moves owners and requires no cloning capability. Equal keys retain input order. Empty and single-element inputs succeed without invoking the comparator.
+
+The rule must describe a consistent total preorder: reversing the inputs reverses before/after, equal is an equivalence relation, and the ordering is transitive. Effects such as logging are allowed, but must not change comparison results. The checker verifies the interface and ownership, not these mathematical laws. An inconsistent comparator has no sortedness guarantee. This first interface has no failure outcome; a fallible comparator still needs a separate decision about the state returned on early exit.
+
+`ordering.merge<order>(left, right, borrow rule)` returns `merged { values }`. Both inputs must already be sorted under the same rule. It takes equal elements from the left input first. The bottom-up sort forms singleton runs, merges adjacent runs and repeats without recursion. The current source invokes comparisons in that pass order; resource/effect tests compare the exact trace across expansion and both native backends. Comparison counts are not a promise across future library revisions.
+
+Run the [record example](../examples/stable_ordering/README.md) to sort duplicate keys while observing their original identities. A separate [ticket fixture](../tests/fixtures/owned_ordering.vn) proves that each resource is returned and completed once, including after a close failure. Dropping returned resources and consuming a collection through an outstanding loan are rejected. Both comparands' loans end before the selected owner moves.
+
+This remains a source prototype on compiler 0.298. On M2, 1,024 mixed two-u32 records take 81.33 ms versus Rust stable sort at 11.25 µs; the complete Villanelle call makes 622,401 allocations plus 37,578 reallocations. Front drains and generic per-element dispatch remain expensive. Next, reduce proven effect-free merge traversal and transport while preserving comparison order, resource fallback and diagnostic identities; then qualify representations and library adoption. [Timings, allocations, movement and CPU evidence](../experiments/stable_ordering/README.md)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

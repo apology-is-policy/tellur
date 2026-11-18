@@ -1,0 +1,28 @@
+{
+  "in_sort": 4678,
+  "innermost_abi": {
+    "tellur_rt_v1_collection": 2494,
+    "tellur_rt_v1_evidence": 333,
+    "tellur_rt_v1_call": 308,
+    "tellur_rt_v1_deref": 296,
+    "tellur_rt_v1_local": 252,
+    "tellur_rt_v1_reference": 224,
+    "tellur_rt_v1_store": 133,
+    "tellur_rt_v1_route": 130,
+    "generated_or_other": 119,
+    "tellur_rt_v1_release_local": 112,
+    "tellur_rt_v1_binary": 65,
+    "tellur_rt_v1_construct": 49,
+    "tellur_rt_v1_tick": 40,
+    "tellur_rt_v1_variant": 34,
+    "tellur_rt_v1_vector_transfer": 25,
+    "tellur_rt_v1_ok": 21,
+    "tellur_rt_v1_complete": 21,
+    "tellur_rt_v1_frame": 17,
+    "tellur_rt_v1_value": 5
+  },
+  "sort_symbol": "control_5",
+  "sorts": 40,
+  "items_per_sort": 1024,
+  "method": "500-us CPU samples; whole stacks retained; counts include ABI callees"
+}
