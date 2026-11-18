@@ -4205,6 +4205,80 @@ pub unsafe extern "C" fn tellur_rt_v1_map_drain(
     })
 }
 
+/// Append complete, proven vector-taking iterations in one ownership transfer.
+/// Leave both temporary owners ready for the original loop's terminating path.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_vector_transfer(
+    ctx: *mut Context<'_>,
+    source: u64,
+    destination: u64,
+    limit: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        let source = c.value_index(source)?;
+        let destination = c.value_index(destination)?;
+        if source == destination {
+            return Err("E_NATIVE: vector transfer requires distinct owners".into());
+        }
+        let limit = if limit == 0 {
+            None
+        } else {
+            let V::U32(limit) = c.take(limit)? else {
+                return Err("E_NATIVE: vector transfer requires a u32 bound".into());
+            };
+            Some(limit as usize)
+        };
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+            return Ok(());
+        }
+        let [source, destination] = c
+            .values
+            .get_disjoint_mut([source, destination])
+            .map_err(|_| "E_NATIVE: invalid vector transfer handles")?;
+        let (
+            Some(V::Construct {
+                ty: source_ty,
+                name: source_name,
+                fields: source,
+            }),
+            Some(V::Construct {
+                ty: destination_ty,
+                name: destination_name,
+                fields: destination,
+            }),
+        ) = (source, destination)
+        else {
+            return Err("E_NATIVE: vector transfer requires owned vectors".into());
+        };
+        if source_ty != destination_ty || source_name != "vector" || destination_name != "vector" {
+            return Err("E_NATIVE: vector transfer types disagree".into());
+        }
+        // A bound below the initial accumulator length cannot satisfy equality.
+        // In that case the checked loop consumes the entire source.
+        let steps = limit
+            .and_then(|limit| limit.checked_sub(destination.len()))
+            .unwrap_or(source.len())
+            .min(source.len());
+        if destination
+            .len()
+            .checked_add(steps)
+            .is_none_or(|length| length > u32::MAX as usize)
+        {
+            return Ok(());
+        }
+        if steps == source.len() {
+            if destination.is_empty() {
+                std::mem::swap(source, destination);
+            } else {
+                destination.append(source);
+            }
+        } else {
+            destination.extend(source.drain(..steps));
+        }
+        Ok(())
+    })
+}
+
 /// Collection operations use the same stable arena and element-reference
 /// evidence as generated Rust. Check the entire handle batch before mutation.
 #[unsafe(no_mangle)]

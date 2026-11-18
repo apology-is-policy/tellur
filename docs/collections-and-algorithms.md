@@ -96,7 +96,7 @@ The experimental `sequence_batches` module provides `split_at<item>` and `join<i
 
 The M2 storage prototype uses a uniquely owned 32-way relaxed radix tree with size tables. For 128 splits and rotations at 65,536 elements, eight-byte records take 296 µs in the tree versus 1,906 µs in a flat vector. With 64-byte records, the pair takes 323 µs and 17,500 µs. Flat storage leads on append, scans and random access. Its consuming moving-start iterator drains the eight-byte workload in 32 µs. The tree remains a candidate for rearranging large batches.
 
-The complete checked source rotation at 4,096 u32 values takes 18.24 ms in LLVM and 4.92 µs in the Rust flat baseline. Its front-taking source loop exposes the current collection movement and ABI costs. Next, lower consuming split/join in native code while preserving invalid-input ownership, outstanding loans and exact outcomes, then compare representations through that path. [Workloads, memory and measurements](../experiments/sequence_storage/README.md)
+Compiler 0.293 lowers proven consuming split/join iterations to bulk transfers. In a fresh M2 comparison, the complete 4,096-u32 rotation fell from 17.17 ms to 62.6 µs, while Rust flat storage took 4.79 µs. Allocation count fell from 43,722 to 42, with three remaining reallocations. The 13.1× gap now calls for profiling generic value storage, payload movement and control-call transport before selecting a backing representation. [Workloads, memory and measurements](../experiments/sequence_storage/README.md)
 
 ## Path to a supported library
 

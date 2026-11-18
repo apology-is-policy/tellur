@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Native consuming split and join, 18 November 2026
+
+Compiler 0.293 moves proven vector prefixes in bulk, preserving resource ownership and letting the checked graph route the terminal outcome. Iteration effects, tracing, scripts and fuel retain checked execution. On M2 a complete 4,096-u32 rotation improved from 17.17 ms to 62.6 µs, versus Rust flat at 4.79 µs. The operation makes 42 allocations and three reallocations. Next, profile generic value storage, payload movement and control-call transport to address the remaining 13.1× gap, alongside the existing checked-arithmetic target. Then complete the agreed consuming partition, ordering and library-adoption work. [Measured results](../experiments/sequence_storage/README.md#native-bulk-transfer-in-0293)
+
 ### Consuming sequence storage experiment, 17 November 2026
 
 The source batch prototype on compiler 0.292 supports consuming split and join, returning the original input on an invalid position. A uniquely owned relaxed radix tree reduced 128 large split/rotate operations from 1,906 to 296 µs on M2 for eight-byte records, and from 17,500 to 323 µs for 64-byte records. Flat storage leads on append, scan and index. A moving-start flat buffer leads on front drain. The checked Villanelle source path still takes 18.24 ms for one 4,096-item rotation versus 4.92 µs for Rust flat storage. Next, native consuming split/join with the same ownership and outcome contract. [Experiment and runnable caller](../experiments/sequence_storage/README.md)

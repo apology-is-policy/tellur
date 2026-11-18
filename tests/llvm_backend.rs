@@ -1690,6 +1690,91 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn bulk_vector_transfer_keeps_split_join_outcomes_effects_and_fuel() {
+        let source = include_str!("../examples/rotate_batch/main.vn")
+            .replace("../../library/sequence_batches.vn", "batches.vn");
+        let manifest =
+            Manifest::from_json(include_str!("../examples/rotate_batch/manifest.json")).unwrap();
+        for effects in [false, true] {
+            let f = Fixture::new(&source);
+            let library = include_str!("../library/sequence_batches.vn");
+            let library = if effects {
+                library.replace(
+                    "[got]: delta vector_push",
+                    "[got]: emit(\"moved\"); delta vector_push",
+                )
+            } else {
+                library.into()
+            };
+            fs::write(f.root.join("batches.vn"), library).unwrap();
+            let program = compile_file(&f.source, manifest.clone()).unwrap();
+            for expanded in [false, true] {
+                let checked = if expanded {
+                    program.expanded("main").unwrap()
+                } else {
+                    program.clone()
+                };
+                let slow = checked.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let fast = checked.build_llvm("main", &f.root.join("fast"), 3).unwrap();
+                assert_eq!(
+                    fs::read_to_string(&fast.llvm)
+                        .unwrap()
+                        .matches("call void @tellur_rt_v1_vector_transfer")
+                        .count(),
+                    if effects {
+                        0
+                    } else if expanded {
+                        4
+                    } else {
+                        2
+                    }
+                );
+                let compare = |arguments: &[String]| {
+                    let a = Command::new(&fast.executable)
+                        .args(arguments)
+                        .output()
+                        .unwrap();
+                    let b = Command::new(&slow.executable)
+                        .args(arguments)
+                        .output()
+                        .unwrap();
+                    assert_eq!(
+                        (a.status.code(), &a.stdout, &a.stderr),
+                        (b.status.code(), &b.stdout, &b.stderr),
+                        "effects={effects} expanded={expanded} args={arguments:?}"
+                    );
+                    a
+                };
+                for n in [0, 1, 5] {
+                    let fields: Vec<_> = (0..n).map(|i| json!({"kind":"u32","value":i})).collect();
+                    let input = json!({"kind":"construct","value":{
+                        "ty":"vector<U32>","name":"vector","fields":fields}});
+                    for at in [0, 1, n, n + 1, u32::MAX] {
+                        let args = [input.to_string(), at.to_string()];
+                        let result = compare(&args);
+                        assert_eq!(result.status.code(), Some(if at <= n { 0 } else { 1 }));
+                        compare(&[vec!["--json".into()], args.to_vec()].concat());
+                        let scenario = json!({"entry":"main","arguments":[input,{"kind":"u32","value":at}],"calls":[]});
+                        let path = f.root.join("scenario.json");
+                        fs::write(&path, scenario.to_string()).unwrap();
+                        let expected = checked
+                            .run(&serde_json::from_value(scenario).unwrap())
+                            .unwrap();
+                        assert_eq!(
+                            report(&execute(&fast.executable, &path, None)),
+                            serde_json::to_value(expected).unwrap()
+                        );
+                    }
+                    let args = [input.to_string(), (n / 2).to_string()];
+                    for fuel in 0..65 {
+                        compare(&[vec!["--fuel".into(), fuel.to_string()], args.to_vec()].concat());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn consuming_map_drain_preserves_the_owned_suffix_and_fuel() {
         let full = r#"outcome result { @exit 0 done, @exit 0 stopped { string key, map<string,u32> rest } }
 control main(map<string,u32> input) exits result {

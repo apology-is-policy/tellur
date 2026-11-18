@@ -2483,3 +2483,54 @@ fn scalar_search_projects_the_checked_loan_into_its_original_owner() {
         assert_eq!(report.activations.last().unwrap().id, 3);
     }
 }
+
+#[test]
+fn bulk_vector_transfer_preserves_every_owned_element_and_bound() {
+    let vector = |tokens: &[&str]| V::Construct {
+        ty: "vector<handle>".into(),
+        name: "vector".into(),
+        fields: tokens
+            .iter()
+            .map(|token| V::Opaque {
+                ty: "handle".into(),
+                token: (*token).into(),
+            })
+            .collect(),
+    };
+    for (bound, expected_source, expected_destination) in [
+        (None, vec![], vec!["left", "a", "b", "c"]),
+        (Some(0), vec![], vec!["left", "a", "b", "c"]),
+        (Some(1), vec!["a", "b", "c"], vec!["left"]),
+        (Some(2), vec!["b", "c"], vec!["left", "a"]),
+        (Some(8), vec![], vec!["left", "a", "b", "c"]),
+    ] {
+        let mut host = Host::new(json!({}), None, false, None);
+        let mut c = context(&mut host);
+        let source = c.put(vector(&["a", "b", "c"]));
+        let destination = c.put(vector(&["left"]));
+        let limit = bound.map_or(0, |bound| c.put(V::U32(bound)));
+        unsafe {
+            tellur_rt_v1_vector_transfer(&mut c, source, destination, limit);
+        }
+        assert!(c.error.is_none(), "{:?}", c.error);
+        assert_eq!(c.take(source).unwrap(), vector(&expected_source));
+        assert_eq!(c.take(destination).unwrap(), vector(&expected_destination));
+        if limit != 0 {
+            assert!(c.get(limit).is_err());
+        }
+    }
+    // Fuel and observable modes execute the checked graph with the original owners.
+    for (trace, fuel) in [(true, None), (false, Some(0)), (false, Some(100))] {
+        let mut host = Host::new(json!({}), None, trace, fuel);
+        let mut c = context(&mut host);
+        let source = c.put(vector(&["a"]));
+        let destination = c.put(vector(&[]));
+        unsafe {
+            tellur_rt_v1_vector_transfer(&mut c, source, destination, 0);
+        }
+        assert!(c.error.is_none());
+        assert_eq!(c.take(source).unwrap(), vector(&["a"]));
+        assert_eq!(c.take(destination).unwrap(), vector(&[]));
+        assert_eq!(c.host.fuel, fuel);
+    }
+}

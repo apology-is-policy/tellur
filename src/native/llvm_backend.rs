@@ -11,6 +11,8 @@ mod map_scan;
 mod search;
 #[path = "llvm_target.rs"]
 mod targets;
+#[path = "llvm_vector_transfer.rs"]
+mod vector_transfer;
 
 const DECLARATIONS: &str = r#"
 declare i32 @tellur_rt_v1_launch(ptr, i64, ptr, i64)
@@ -84,6 +86,7 @@ declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
 declare i64 @tellur_rt_v1_search_loan(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
+declare void @tellur_rt_v1_vector_transfer(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
 declare i64 @tellur_rt_v1_length(ptr, i64)
 declare i32 @tellur_rt_v1_route(ptr, i64, ptr, i64, ptr, i64)
@@ -1964,6 +1967,15 @@ impl Emitter {
                                 && self.scopes.is_empty()
                                 && !self.constructing,
                         );
+                    }
+                    if self.optimize_loops
+                        && let Some(transfer) = vector_transfer::analyze(i)
+                    {
+                        let limit = transfer.limit.map_or_else(|| "0".into(), |e| self.expr(e));
+                        self.effect(format!(
+                            "call void @tellur_rt_v1_vector_transfer(ptr %ctx, i64 {}, i64 {}, i64 {limit})",
+                            values[transfer.source], values[transfer.destination]
+                        ));
                     }
                     let arguments = self.handles(&values);
                     let restart = self.id();

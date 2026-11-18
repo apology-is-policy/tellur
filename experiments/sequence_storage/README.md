@@ -54,6 +54,21 @@ The Villanelle 4,096-item case makes 43,722 malloc/calloc requests plus 12 reall
 
 Original and expanded interpreter, LLVM and Rust execution agree on normal, empty, boundary and invalid splits. Resource tests return each opaque handle exactly once. The checker rejects discarded resources and consuming a vector while a returned element loan remains live. The tree tests rotate non-Clone owners, check one destruction per owner, audit node occupancy and size tables, and exercise a forest of interleaved append/split/join operations. [Module tests](../../tests/modules.rs)
 
+## Native bulk transfer in 0.293
+
+Optimized LLVM builds recognize a complete iteration that takes the front item from an owned vector and appends it to another owned vector. A comparison with the destination length can bound the transfer. The runtime moves the entire proven prefix in bulk. The original graph handles the final bound or empty outcome. Resource owners keep their destination. A loop with iteration effects retains checked execution, as do traced, scripted and fuel-limited invocations.
+
+A fresh same-session comparison used the installed 0.292 compiler and the packaged 0.293 compiler, each in its own batch of 13 shuffled trials after one discarded trial. Rust was rebuilt with the same settings. These are complete u32 rotations, timing the two outer controls.
+
+| Items | Villanelle 0.292 | Villanelle 0.293 | Rust flat in the 0.293 batch | Rust tree |
+| --- | ---: | ---: | ---: | ---: |
+| 128 | 152.5 µs | 31.9 µs | 2.29 µs | 1.88 µs |
+| 4,096 | 17.17 ms | 62.6 µs | 4.79 µs | 3.08 µs |
+
+The 4,096-item rotation improved **274×**. It still takes **13.1×** the Rust flat baseline. Its 43,722 malloc/calloc requests fell to **42**, reallocations fell from 12 to **3**, and requested bytes fell from 4,321,924 to **197,302**. The allocation count now stays constant between 128 and 4,096 items. Generic value storage, bulk payload movement and control-call transport remain candidates for the next profile. Short single-operation measurements vary with clock granularity and cache state.
+
+The LLVM regression compares original and expanded programs with and without iteration effects, empty and nonempty inputs, valid boundaries and invalid positions, live and scripted execution, and 65 fuel limits. The ABI regression covers resource tokens and bounds both below and above the initial destination length. The existing collection ownership and module conformance tests also pass. [0.292 timings](results/native-0292-paired.csv) · [0.292 allocations](results/native-0292-paired-alloc.csv) · [0.293 timings](results/native-0293.csv) · [0.293 allocations](results/native-0293-alloc.csv)
+
 ## Reproduce
 
 From the repository root:

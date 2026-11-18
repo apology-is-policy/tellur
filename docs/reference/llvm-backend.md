@@ -449,6 +449,15 @@ transfers that obligation, and the remainder must be transferred or consumed thr
 its empty outcome. Consuming draining loops are supported. Literal shapes and handle batches validate before
 ownership transfer. Collection operations introduce no additional fuel ticks.
 
+Since 0.293, optimized synchronous LLVM builds recognize a loop that consumes a
+vector from the front and appends each element to another owned vector. A shared
+length comparison can bound the destination. The runtime transfers the proven
+prefix in bulk, then the checked graph handles exhaustion or the reached bound.
+Every element keeps its owner and resource obligation. Iteration effects prevent
+this optimization. Traced, scripted and fuel-limited execution follows the checked
+loop. This supports the source library's consuming split and join controls.
+[Batch rotation and measurements](../../experiments/sequence_storage/README.md)
+
 The [collection example](../../playground/llvm_collections.vn) edits a vector,
 returns an element borrow through a helper, and removes the smallest map key:
 
