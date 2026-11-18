@@ -2,7 +2,7 @@
   "name": "tellur-language",
   "displayName": "Villanelle Language (Experimental)",
   "description": "Villanelle controls, inline adapters, owned outcomes, diagnostics and native build/run",
-  "version": "0.302.0",
+  "version": "0.303.0",
   "publisher": "tellur-language-local",
   "license": "Apache-2.0",
   "engines": {

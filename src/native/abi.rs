@@ -4673,6 +4673,33 @@ pub unsafe extern "C" fn tellur_rt_v1_collection(
     unsafe { &mut *ctx }.perform(|c| {
         c.require_outcome_room()?;
         let name = unsafe { text(name, len)? };
+        // An owned vector already contains the exact remainder metadata. Keep
+        // that owner instead of parsing an owned type and reconstructing it.
+        // Observed calls and unsupported shapes retain the shared checked path.
+        if name == "vector_take"
+            && count == 1
+            && !c.host.trace
+            && c.host.script.is_none()
+            && c.host.fuel.is_none()
+        {
+            let handle = unsafe { slice(args, count) }[0];
+            if matches!(c.get(handle), Ok(V::Construct { ty, name, .. })
+                if name == "vector" && ty.starts_with("vector<")
+                    && collection_support::length_is_map(ty) == Some(false))
+            {
+                let mut remainder = c.take(handle)?;
+                let V::Construct { fields, .. } = &mut remainder else {
+                    unreachable!()
+                };
+                let outcome = if fields.is_empty() {
+                    ("empty".into(), vec![])
+                } else {
+                    let head = fields.remove(0);
+                    ("item".into(), vec![head, remainder])
+                };
+                return Ok(c.put_outcome(outcome));
+            }
+        }
         let args = c.take_many(unsafe { slice(args, count) })?;
         let outcome = collection(name, args, c.storage.values_mut())?;
         Ok(c.put_outcome(outcome))

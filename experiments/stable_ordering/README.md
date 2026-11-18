@@ -293,3 +293,57 @@ supported modules. [Paired timings](results/0.302-timings.csv) ·
 [Allocation totals](results/0.302-allocations.csv) ·
 [ABI attribution](results/0.302-operations.csv) · [CPU](results/0.302-cpu.json) ·
 [Environment](results/0.302-environment.json)
+
+
+## Owned head transport in 0.303
+
+An operation-level allocation profile isolates run-header removal: 2,059
+`vector_take` calls account for 14,389 allocation requests in the complete mixed
+sort. The owned vector already has the type/name metadata needed for its remainder.
+The live ABI now validates its shape without allocating, removes the first element
+and returns that same owner with the remaining fields. Observed calls, references,
+invalid handles and unsupported shapes retain the shared checked path.
+
+| Input | 0.302 | 0.303 | Rust |
+| --- | ---: | ---: | ---: |
+| Empty | 17.08 µs | 15.08 µs | 42 ns |
+| Single | 17.58 µs | 18.04 µs | 41 ns |
+| 128 mixed | 739.2 µs | 687.8 µs | 2.541 µs |
+| 1,024 mixed | 6.831 ms | 6.367 ms | 7.833 µs |
+| 1,024 sorted | 6.230 ms | 5.771 ms | 1.833 µs |
+| 1,024 reversed | 6.810 ms | 6.333 ms | 12.42 µs |
+| 1,024 equal | 6.207 ms | 5.772 ms | 1.958 µs |
+
+The two compilers emit byte-identical LLVM IR for this workload. Each uses its own
+runtime archive; timings are paired, shuffled M2 medians from 13 retained trials.
+Mixed input improves **6.8%**, but remains **813× Rust**. The single-record median
+regresses **2.6%** despite lower allocation counts. Short cases include timer noise,
+and this shared-host run does not support statistical significance claims.
+
+Mixed allocation requests fall **51,821 → 41,550**, requested bytes
+**8,950,650 → 8,452,716**, with **1,670 reallocations** and **108,128 peak extra
+allocator-usable bytes** unchanged. The entire request reduction is attributed to
+head removal: its 2,059 calls now make 4,118 allocation requests for 567,336 bytes,
+down from 1,065,270 bytes. Independent control scopes reproduce the whole-call
+totals. Push and terminal get counts are unchanged. Inclusive control scopes must
+not be summed: merge-pass scopes include their merge calls.
+
+This changes transport, not the algorithm or representation. The comparison count
+and 94,999,536 modeled suffix bytes remain unchanged. Of 321 in-sort CPU samples,
+128 are in join, 74 in collection operations, 30 in routing and 15 in merge,
+including callees. The next experiment reverses run headers once per pass and pops
+from the end while preserving the original comparison order; it must qualify
+resource behavior and complete native performance before adoption.
+
+All 573 selected Rust cases and 48 editor cases pass. The new ABI differential
+checks cover real resources, nested vectors, malformed types, extra/aliased/stale
+arguments, outcome exhaustion, scripts and fuel. Live original/expanded LLVM O2/O0
+and Rust agree on effects, empty results, subsequent faults and 20 fuel cuts.
+Packaged CLI/LSP, cold Hello and HTTP qualification pass. Both Linux targets
+cross-link; they were not executed on the M2. Representation qualification,
+applicable ordered bounds and supported-library adoption remain ahead.
+[Timings](results/0.303-timings.csv) · [Allocation totals](results/0.303-allocations.csv) ·
+[ABI costs](results/0.303-operations.csv) · [CPU](results/0.303-cpu.json) ·
+[Environment](results/0.303-environment.json) ·
+[Control costs before](results/0.303-controls-before.json) ·
+[Control costs after](results/0.303-controls-after.json)

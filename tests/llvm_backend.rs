@@ -1011,6 +1011,74 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn owned_vector_take_keeps_live_effects_empty_outcomes_and_faults() {
+        let f = Fixture::new(
+            r#"
+            control peel(vector<u32> source)
+                exits item {u32 head, vector<u32> tail}, empty {
+                forward vector_take(source);
+            }
+            control main(vector<u32> source, bool fail) exits ready {vector<u32> rest} faults {
+                delta peel(source) {item {auto head, auto tail}=>item, empty=>empty}
+                [item]: emit(u32_text(head));
+                [item]: delta fail {true=>fault, false=>ready}
+                [fault]: fault "after take";
+                [ready]: exit ready {tail};
+                [empty]: exit ready {[]};
+            }
+        "#,
+        );
+        let mut manifest: Json =
+            serde_json::from_str(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+        manifest["launch"]["main"]["exit_codes"] = json!({"ready":0});
+        fs::write(&f.manifest, manifest.to_string()).unwrap();
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            build_pair(&f, expanded, 2);
+            let program = if expanded {
+                checked.expanded("main").unwrap()
+            } else {
+                checked.clone()
+            };
+            let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+            let compare = |args: &[String]| {
+                let a = Command::new(f.root.join("llvm-2"))
+                    .args(args)
+                    .output()
+                    .unwrap();
+                for binary in [&slow.executable, &f.root.join("rust-2")] {
+                    let b = Command::new(binary).args(args).output().unwrap();
+                    assert_eq!(
+                        (a.status.code(), &a.stdout, &a.stderr),
+                        (b.status.code(), &b.stdout, &b.stderr),
+                        "{expanded} {args:?}"
+                    );
+                }
+            };
+            for values in [vec![], vec![7], vec![u32::MAX, 0, 7, 7]] {
+                let vector = json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}}).to_string();
+                for fail in [false, true] {
+                    let inputs = [vector.clone(), fail.to_string()];
+                    compare(&inputs);
+                    compare(&["--json".into(), inputs[0].clone(), inputs[1].clone()]);
+                    for fuel in 0..20 {
+                        compare(&[
+                            "--fuel".into(),
+                            fuel.to_string(),
+                            inputs[0].clone(),
+                            inputs[1].clone(),
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn whole_join_call_preserves_effects_outcomes_and_following_faults() {
         let source = include_str!("../library/sequence_batches.vn");
         let body = format!(

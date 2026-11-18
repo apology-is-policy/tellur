@@ -3431,3 +3431,128 @@ fn summarized_join_moves_resources_once_and_falls_back_without_partial_transfers
         }
     }
 }
+
+#[test]
+fn owned_vector_take_preserves_resources_and_checked_fallbacks() {
+    use std::{cell::Cell, rc::Rc};
+    struct Owner(Rc<Cell<usize>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    for observed in [false, true] {
+        for size in [0, 1, 5] {
+            let drops = Rc::new(Cell::new(0));
+            let mut host = Host::new(json!({}), None, observed, None);
+            let mut c = context(&mut host);
+            let owners: Vec<_> = (0..size)
+                .map(|_| {
+                    c.host
+                        .resources
+                        .insert("ticket", Owner(drops.clone()))
+                        .unwrap()
+                })
+                .collect();
+            let mut value = V::Construct {
+                ty: "vector<ticket>".into(),
+                name: "vector".into(),
+                fields: owners.clone(),
+            };
+            for expected in owners.iter().map(Some).chain(std::iter::once(None)) {
+                let handle = c.put(value);
+                let result = unsafe {
+                    tellur_rt_v1_collection(&mut c, b"vector_take".as_ptr(), 11, &handle, 1)
+                };
+                assert!(c.error.is_none(), "{:?}", c.error);
+                assert!(c.get(handle).is_err());
+                assert_eq!(drops.get(), 0);
+                let (name, fields) = c.outcome(result).unwrap();
+                if let Some(expected) = expected {
+                    assert_eq!(name, "item");
+                    assert_eq!(&fields[0], expected);
+                    value = fields[1].clone();
+                } else {
+                    assert_eq!(name, "empty");
+                    assert!(fields.is_empty());
+                    break;
+                }
+            }
+            for owner in owners {
+                drop(c.host.resources.take::<Owner>(&owner, "ticket").unwrap());
+            }
+            assert_eq!(drops.get(), size);
+        }
+    }
+    // Compare native success/error and residual ownership to the shared path.
+    for (ty, name, fields) in [
+        ("vector<U32>", "vector", vec![V::U32(2), V::U32(7)]),
+        (
+            "vector<vector<U32>>",
+            "vector",
+            vec![V::Construct {
+                ty: "vector<U32>".into(),
+                name: "vector".into(),
+                fields: vec![],
+            }],
+        ),
+        ("vector< U32 >", "vector", vec![]),
+        ("vector<U32>", "different", vec![V::U32(1)]),
+        ("array<U32,1>", "array", vec![V::U32(1)]),
+        ("vector<>", "vector", vec![]),
+        ("vector<U32,Bool>", "vector", vec![]),
+        ("vector<U32>>", "vector", vec![]),
+    ] {
+        for mode in [
+            "ordinary",
+            "stale",
+            "extra",
+            "aliased",
+            "outcome_limit",
+            "script",
+            "fuel",
+        ] {
+            let evaluate = |trace| {
+                let mut host = Host::new(json!({}), None, trace, (mode == "fuel").then_some(20));
+                if mode == "script" {
+                    host.script = Some(vec![]);
+                }
+                let mut c = context(&mut host);
+                let handle = c.put(V::Construct {
+                    ty: ty.into(),
+                    name: name.into(),
+                    fields: fields.clone(),
+                });
+                let extra = c.put(V::U32(99));
+                if mode == "outcome_limit" {
+                    c.outcome_base = u64::MAX;
+                }
+                let arguments = [
+                    if mode == "stale" { 999 } else { handle },
+                    if mode == "aliased" { handle } else { extra },
+                ];
+                let count = if matches!(mode, "extra" | "aliased") {
+                    2
+                } else {
+                    1
+                };
+                let outcome = unsafe {
+                    tellur_rt_v1_collection(
+                        &mut c,
+                        b"vector_take".as_ptr(),
+                        11,
+                        arguments.as_ptr(),
+                        count,
+                    )
+                };
+                (
+                    c.error.clone(),
+                    c.outcome(outcome).ok().cloned(),
+                    c.get(handle).ok().cloned(),
+                    c.get(extra).ok().cloned(),
+                )
+            };
+            assert_eq!(evaluate(false), evaluate(true), "{ty} {name} {mode}");
+        }
+    }
+}

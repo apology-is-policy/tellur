@@ -103,6 +103,8 @@ Compiler 0.301 identifies the peak increase as retained spare capacity in decode
 
 Compiler 0.302 reduces whole consuming join transport while preserving resource ownership, effects and later fault identities. The paired mixed sort improves 7.773 → 6.278 ms, still 881× Rust; rotation improves 50.21 → 45.08 µs, still 9.33× Rust flat. Run-header movement and generic storage remain open performance work before representation qualification and supported-library adoption. [Sort](../experiments/stable_ordering/README.md#complete-join-call-transport-in-0302) · [Rotation](../experiments/sequence_storage/README.md#complete-join-call-transport-in-0302)
 
+Compiler 0.303 reuses owned vector metadata during head removal. Mixed-sort time improves 6.8% to 6.367 ms, allocations fall to 41,550 and peak memory stays unchanged. The 813× Rust gap and repeated run-header suffix shifts remain. A reversal/pop traversal candidate preserves comparison order in initial interpreter checks; resource and native performance qualification are still required before adopting it. [Evidence](../experiments/stable_ordering/README.md#owned-head-transport-in-0303)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

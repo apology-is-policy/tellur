@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Owned head removal, 18 November 2026
+
+Compiler 0.303 reuses an owned vector's metadata when returning its head and remainder. Shape checks allocate nothing; resources, observers and checked fallback are preserved. In the paired M2 run the complete mixed sort improves 6.831 → 6.367 ms (6.8%), with allocations 51,821 → 41,550 and unchanged peak memory. Rust takes 7.833 µs; parity remains open. Next: qualify a run-header reversal/pop candidate that removes repeated suffix shifts while retaining comparator order, then representation qualification, applicable ordered bounds and supported-library adoption. [Measurements and limits](../experiments/stable_ordering/README.md#owned-head-transport-in-0303)
+
 ### Complete consuming joins, 18 November 2026
 
 Compiler 0.302 proves the entire effect-free join and transfers its owners through one guarded call, preserving outcome and diagnostic identities. Paired M2 mixed sort improves 7.773 → 6.278 ms (19.2%), versus Rust at 7.125 µs. The complete 4,096-item rotation improves 50.21 → 45.08 µs, versus Rust flat at 4.833 µs. Resource, effects, observer and fallback checks pass; both substantial Rust gaps remain. Next: measured run-header costs and generic transport, representation qualification, applicable ordered bounds and supported-library adoption. [Sort evidence](../experiments/stable_ordering/README.md#complete-join-call-transport-in-0302) · [Rotation evidence](../experiments/sequence_storage/README.md#complete-join-call-transport-in-0302)

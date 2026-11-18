@@ -44,6 +44,17 @@ The first invocation exits with status 0; the second selects `declined` and exit
 with status 7. Both report the declared outcome and its payload. Native `--json`,
 `--scenario`, `--entry`, `--help` and `--fuel` retain their existing behavior.
 
+## Owned vector head removal (0.303)
+
+For a live `vector_take` on a validated owned vector, the runtime transfers the
+first element and returns the original vector as its remainder. It avoids owned
+type-parser allocations and reconstructing the remainder's type/name metadata.
+The empty case consumes the empty vector and selects the same `empty` outcome.
+Nested vectors, resources and reference-bearing elements retain their owners and
+origins. Stale handles, other shapes and observed execution use the shared checked
+path. Outcome capacity is checked before input transfer. This changes transport
+costs; the flat buffer still shifts its suffix when removing the first element.
+
 ## Complete consuming joins (0.302)
 
 Optimized synchronous LLVM builds can summarize a complete vector join call when

@@ -131,7 +131,7 @@ pub fn sorted_map<V: CollectionValue>(fields: &[V]) -> bool {
 
 /// Length needs the collection shape, not owned copies of its type arguments.
 /// Keep the same balanced, trimmed generic grammar as `Collection::parse`.
-fn length_is_map(ty: &str) -> Option<bool> {
+pub(crate) fn length_is_map(ty: &str) -> Option<bool> {
     let (name, rest) = ty.split_once('<')?;
     let rest = rest.strip_suffix('>')?;
     let arity = match name {

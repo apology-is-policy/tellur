@@ -1,0 +1,780 @@
+{
+  "compiler": "vnc 0.303.0 (v0.1 core, v0.2 syntax preview)",
+  "note": "Independent per-control inclusive scopes; do not sum scopes because merge_pass includes merge. Input construction and final reporting are outside each scope. All keys and identities checked.",
+  "rows": [
+    {
+      "control": "sort<key_order>",
+      "items": 128,
+      "invocations": 1,
+      "totals": {
+        "calls": 25409,
+        "allocations": 5250,
+        "reallocations": 219,
+        "requested_bytes": 922201
+      },
+      "operations": {
+        "outer_call": [
+          1,
+          4,
+          0,
+          1023
+        ],
+        "ok": [
+          12704,
+          0,
+          0,
+          0
+        ],
+        "frame": [
+          137,
+          0,
+          3,
+          8568
+        ],
+        "local": [
+          1828,
+          0,
+          0,
+          0
+        ],
+        "store": [
+          2003,
+          0,
+          0,
+          0
+        ],
+        "release_local": [
+          2374,
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          428,
+          562,
+          0,
+          15286
+        ],
+        "evidence": [
+          428,
+          294,
+          0,
+          65856
+        ],
+        "value": [
+          175,
+          0,
+          0,
+          0
+        ],
+        "construct": [
+          136,
+          544,
+          0,
+          12368
+        ],
+        "variant": [
+          8,
+          8,
+          0,
+          39
+        ],
+        "binary": [
+          8,
+          8,
+          0,
+          2176
+        ],
+        "tick": [
+          2738,
+          0,
+          0,
+          0
+        ],
+        "complete": [
+          137,
+          274,
+          0,
+          19453
+        ],
+        "call": [
+          136,
+          536,
+          0,
+          143588
+        ],
+        "join_call": [
+          255,
+          510,
+          31,
+          199138
+        ],
+        "collection/vector_take": [
+          264,
+          528,
+          0,
+          72153
+        ],
+        "collection/vector_push": [
+          127,
+          515,
+          10,
+          77308
+        ],
+        "collection/vector_get": [
+          167,
+          955,
+          40,
+          91749
+        ],
+        "singletons": [
+          1,
+          385,
+          128,
+          72192
+        ],
+        "merge_prefix": [
+          127,
+          127,
+          0,
+          133688
+        ],
+        "local_length": [
+          8,
+          0,
+          0,
+          0
+        ],
+        "route": [
+          1219,
+          0,
+          7,
+          7616
+        ]
+      }
+    },
+    {
+      "control": "sort<key_order>",
+      "items": 1024,
+      "invocations": 1,
+      "totals": {
+        "calls": 199633,
+        "allocations": 41550,
+        "reallocations": 1670,
+        "requested_bytes": 8452716
+      },
+      "operations": {
+        "outer_call": [
+          1,
+          4,
+          0,
+          1023
+        ],
+        "ok": [
+          99816,
+          0,
+          0,
+          0
+        ],
+        "frame": [
+          1036,
+          0,
+          3,
+          8568
+        ],
+        "local": [
+          14387,
+          0,
+          0,
+          0
+        ],
+        "store": [
+          15771,
+          0,
+          0,
+          0
+        ],
+        "release_local": [
+          18532,
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          3429,
+          4462,
+          0,
+          120486
+        ],
+        "evidence": [
+          3429,
+          2396,
+          0,
+          536704
+        ],
+        "value": [
+          1384,
+          0,
+          0,
+          0
+        ],
+        "construct": [
+          1035,
+          4140,
+          0,
+          93326
+        ],
+        "variant": [
+          11,
+          11,
+          0,
+          54
+        ],
+        "binary": [
+          11,
+          11,
+          0,
+          2992
+        ],
+        "tick": [
+          21578,
+          0,
+          0,
+          0
+        ],
+        "complete": [
+          1036,
+          2072,
+          0,
+          147111
+        ],
+        "call": [
+          1035,
+          4129,
+          0,
+          1106611
+        ],
+        "join_call": [
+          2047,
+          4094,
+          255,
+          2409826
+        ],
+        "collection/vector_take": [
+          2059,
+          4118,
+          0,
+          567336
+        ],
+        "collection/vector_push": [
+          1023,
+          4102,
+          28,
+          638364
+        ],
+        "collection/vector_get": [
+          1373,
+          7915,
+          350,
+          754531
+        ],
+        "singletons": [
+          1,
+          3073,
+          1024,
+          577536
+        ],
+        "merge_prefix": [
+          1023,
+          1023,
+          0,
+          1477368
+        ],
+        "local_length": [
+          11,
+          0,
+          0,
+          0
+        ],
+        "route": [
+          9605,
+          0,
+          10,
+          10880
+        ]
+      }
+    },
+    {
+      "control": "merge_pass<key_order>",
+      "items": 128,
+      "invocations": 7,
+      "totals": {
+        "calls": 24925,
+        "allocations": 4802,
+        "reallocations": 89,
+        "requested_bytes": 839619
+      },
+      "operations": {
+        "outer_call": [
+          7,
+          21,
+          0,
+          5859
+        ],
+        "ok": [
+          12459,
+          0,
+          0,
+          0
+        ],
+        "frame": [
+          134,
+          0,
+          1,
+          4896
+        ],
+        "local": [
+          1799,
+          0,
+          0,
+          0
+        ],
+        "store": [
+          1973,
+          0,
+          0,
+          0
+        ],
+        "release_local": [
+          2335,
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          421,
+          548,
+          0,
+          14824
+        ],
+        "evidence": [
+          421,
+          294,
+          0,
+          65856
+        ],
+        "value": [
+          167,
+          0,
+          0,
+          0
+        ],
+        "construct": [
+          134,
+          536,
+          0,
+          12172
+        ],
+        "tick": [
+          2688,
+          0,
+          0,
+          0
+        ],
+        "complete": [
+          134,
+          268,
+          0,
+          19028
+        ],
+        "call": [
+          127,
+          508,
+          0,
+          136144
+        ],
+        "join_call": [
+          254,
+          508,
+          31,
+          198996
+        ],
+        "collection/vector_take": [
+          261,
+          522,
+          0,
+          71483
+        ],
+        "collection/vector_push": [
+          127,
+          515,
+          10,
+          77308
+        ],
+        "collection/vector_get": [
+          167,
+          955,
+          40,
+          91749
+        ],
+        "merge_prefix": [
+          127,
+          127,
+          0,
+          133688
+        ],
+        "route": [
+          1190,
+          0,
+          7,
+          7616
+        ]
+      }
+    },
+    {
+      "control": "merge_pass<key_order>",
+      "items": 1024,
+      "invocations": 10,
+      "totals": {
+        "calls": 199020,
+        "allocations": 38402,
+        "reallocations": 644,
+        "requested_bytes": 7863761
+      },
+      "operations": {
+        "outer_call": [
+          10,
+          30,
+          0,
+          8370
+        ],
+        "ok": [
+          99505,
+          0,
+          0,
+          0
+        ],
+        "frame": [
+          1033,
+          0,
+          1,
+          4896
+        ],
+        "local": [
+          14352,
+          0,
+          0,
+          0
+        ],
+        "store": [
+          15735,
+          0,
+          0,
+          0
+        ],
+        "release_local": [
+          18484,
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          3419,
+          4442,
+          0,
+          119826
+        ],
+        "evidence": [
+          3419,
+          2396,
+          0,
+          536704
+        ],
+        "value": [
+          1373,
+          0,
+          0,
+          0
+        ],
+        "construct": [
+          1033,
+          4132,
+          0,
+          93130
+        ],
+        "tick": [
+          21513,
+          0,
+          0,
+          0
+        ],
+        "complete": [
+          1033,
+          2066,
+          0,
+          146686
+        ],
+        "call": [
+          1023,
+          4092,
+          0,
+          1096656
+        ],
+        "join_call": [
+          2046,
+          4092,
+          255,
+          2409684
+        ],
+        "collection/vector_take": [
+          2056,
+          4112,
+          0,
+          566666
+        ],
+        "collection/vector_push": [
+          1023,
+          4102,
+          28,
+          638364
+        ],
+        "collection/vector_get": [
+          1373,
+          7915,
+          350,
+          754531
+        ],
+        "merge_prefix": [
+          1023,
+          1023,
+          0,
+          1477368
+        ],
+        "route": [
+          9567,
+          0,
+          10,
+          10880
+        ]
+      }
+    },
+    {
+      "control": "merge<key_order>",
+      "items": 128,
+      "invocations": 127,
+      "totals": {
+        "calls": 14069,
+        "allocations": 3194,
+        "reallocations": 72,
+        "requested_bytes": 634850
+      },
+      "operations": {
+        "outer_call": [
+          127,
+          508,
+          0,
+          136144
+        ],
+        "ok": [
+          6971,
+          0,
+          0,
+          0
+        ],
+        "frame": [
+          127,
+          0,
+          1,
+          4896
+        ],
+        "local": [
+          889,
+          0,
+          0,
+          0
+        ],
+        "store": [
+          1056,
+          0,
+          0,
+          0
+        ],
+        "release_local": [
+          1397,
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          167,
+          167,
+          0,
+          2505
+        ],
+        "evidence": [
+          167,
+          167,
+          0,
+          37408
+        ],
+        "value": [
+          167,
+          0,
+          0,
+          0
+        ],
+        "construct": [
+          127,
+          508,
+          0,
+          11430
+        ],
+        "tick": [
+          1651,
+          0,
+          0,
+          0
+        ],
+        "complete": [
+          127,
+          254,
+          0,
+          18034
+        ],
+        "join_call": [
+          254,
+          508,
+          31,
+          198996
+        ],
+        "collection/vector_get": [
+          167,
+          955,
+          40,
+          91749
+        ],
+        "merge_prefix": [
+          127,
+          127,
+          0,
+          133688
+        ],
+        "route": [
+          548,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "control": "merge<key_order>",
+      "items": 1024,
+      "invocations": 1023,
+      "totals": {
+        "calls": 113661,
+        "allocations": 26006,
+        "reallocations": 606,
+        "requested_bytes": 6308618
+      },
+      "operations": {
+        "outer_call": [
+          1023,
+          4092,
+          0,
+          1096656
+        ],
+        "ok": [
+          56319,
+          0,
+          0,
+          0
+        ],
+        "frame": [
+          1023,
+          0,
+          1,
+          4896
+        ],
+        "local": [
+          7161,
+          0,
+          0,
+          0
+        ],
+        "store": [
+          8534,
+          0,
+          0,
+          0
+        ],
+        "release_local": [
+          11253,
+          0,
+          0,
+          0
+        ],
+        "reference": [
+          1373,
+          1373,
+          0,
+          20595
+        ],
+        "evidence": [
+          1373,
+          1373,
+          0,
+          307552
+        ],
+        "value": [
+          1373,
+          0,
+          0,
+          0
+        ],
+        "construct": [
+          1023,
+          4092,
+          0,
+          92070
+        ],
+        "tick": [
+          13299,
+          0,
+          0,
+          0
+        ],
+        "complete": [
+          1023,
+          2046,
+          0,
+          145266
+        ],
+        "join_call": [
+          2046,
+          4092,
+          255,
+          2409684
+        ],
+        "collection/vector_get": [
+          1373,
+          7915,
+          350,
+          754531
+        ],
+        "merge_prefix": [
+          1023,
+          1023,
+          0,
+          1477368
+        ],
+        "route": [
+          4442,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ]
+}
