@@ -154,3 +154,7 @@ Compiler 0.295 removes temporary reference formation for proven fresh length rea
 2. Specify the ownership and outcome contracts above using caller examples. Start with membership and one borrowed traversal. Prototype the ordered string map alongside them.
 3. Evaluate higher-order algorithms and the sequence representation with real callers. Introduce slices, generic bounds or additional origin contracts as the examples require them.
 4. Try adopting a module in a fresh project, including its import and any host adapter. Publish the first supported modules with documented semantics, compatibility expectations and runnable examples. The existing JSON-file module and the collection algorithms can mature independently.
+
+### Generic value representation qualification
+
+The first compact reference-target candidate lowers generic value width from 136 to 104 bytes and reduces peak memory, but adds allocations to borrowed search and sorting. It is not adopted. The runtime remains on the measured 0.305 layout while compact projection storage is investigated. This private metadata experiment changes no collection ownership or public library contract. [Results and reproducible candidate](../experiments/reference_layout/README.md)

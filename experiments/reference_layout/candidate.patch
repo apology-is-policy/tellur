@@ -1,0 +1,93 @@
+--- a/src/native/reference_evidence.rs
++++ b/src/native/reference_evidence.rs
+@@ -3,0 +4 @@
++use std::sync::Arc;
+@@ -89 +90 @@
+-    pub target: Option<StoragePlace>,
++    pub target: Option<Arc<StoragePlace>>,
+@@ -101,2 +102,2 @@
+-            } else {
+-                target.fields.extend_from_slice(fields);
++            } else if !fields.is_empty() {
++                Arc::make_mut(target).fields.extend_from_slice(fields);
+@@ -130 +131 @@
+-                target: Some(StoragePlace {
++                target: Some(Arc::new(StoragePlace {
+@@ -133 +134 @@
+-                }),
++                })),
+@@ -253 +254 @@
+-        .any(|entry| !entry.guard && !entry.opaque && entry.place == *target)
++        .any(|entry| !entry.guard && !entry.opaque && entry.place == **target)
+@@ -535,6 +536,15 @@
+-        let mut evidence =
+-            ReferenceEvidence::from_place(values, origin.root, origin.fields, origin.indirect);
+-        let target = evidence
+-            .target
+-            .take()
+-            .ok_or("checked origin allocation is unavailable")?;
++        let (target, inherited) = if origin.indirect {
++            let mut evidence =
++                ReferenceEvidence::from_place(values, origin.root, origin.fields, true);
++            let target = evidence
++                .target
++                .take()
++                .ok_or("checked origin allocation is unavailable")?;
++            (Arc::unwrap_or_clone(target), evidence.origins)
++        } else {
++            (StoragePlace {
++                storage: values.storage_at(origin.root)
++                    .map_err(|_| "checked origin allocation is unavailable")?,
++                fields: origin.fields.to_vec(),
++            }, Origins::default())
++        };
+@@ -543 +553 @@
+-            .checked_sub(evidence.origins.cost())
++            .checked_sub(inherited.cost())
+@@ -546 +556 @@
+-            result.extend(evidence.origins);
++            result.extend(inherited);
+--- a/src/native/dependencies.rs
++++ b/src/native/dependencies.rs
+@@ -243 +243 @@
+-        place: target.clone(),
++        place: target.as_ref().clone(),
+@@ -319 +319 @@
+-                    target.clone()
++                    target.as_ref().clone()
+--- a/src/native/reference_evidence_tests.rs
++++ b/src/native/reference_evidence_tests.rs
+@@ -84 +84 @@
+-    evidence.target = Some(StoragePlace {
++    evidence.target = Some(std::sync::Arc::new(StoragePlace {
+@@ -91 +91 @@
+-    });
++    }));
+@@ -509,2 +509,2 @@
+-            1 => proof.target.as_mut().unwrap().storage = foreign_storage.clone(),
+-            2 => proof.target.as_mut().unwrap().fields.push(0),
++            1 => std::sync::Arc::make_mut(proof.target.as_mut().unwrap()).storage = foreign_storage.clone(),
++            2 => std::sync::Arc::make_mut(proof.target.as_mut().unwrap()).fields.push(0),
+@@ -908,0 +909,17 @@
++
++#[test]
++fn shared_formation_projection_keeps_prior_snapshots_independent() {
++    let mut values = Frames::default();
++    let frame = values.enter(1).unwrap();
++    let root = frame.base();
++    let original = ReferenceEvidence::from_place(&values, root, &[0], false);
++    let shared = original.clone();
++    assert!(std::sync::Arc::ptr_eq(original.target.as_ref().unwrap(), shared.target.as_ref().unwrap()));
++    let projected = shared.into_projected(&[2]);
++    assert_eq!(original.target.as_ref().unwrap().fields, [0]);
++    assert_eq!(projected.target.as_ref().unwrap().fields, [0, 2]);
++    assert!(!std::sync::Arc::ptr_eq(original.target.as_ref().unwrap(), projected.target.as_ref().unwrap()));
++    let unchanged = original.clone().into_projected(&vec![0; LIMIT]);
++    assert!(unchanged.target.is_none());
++    assert_eq!(original.target.as_ref().unwrap().fields, [0]);
++}
+--- a/src/native/holder_origins_tests.rs
++++ b/src/native/holder_origins_tests.rs
+@@ -116 +116 @@
+-            evidence.target.as_mut().unwrap().storage = foreign.storage_at(other.base()).unwrap();
++            std::sync::Arc::make_mut(evidence.target.as_mut().unwrap()).storage = foreign.storage_at(other.base()).unwrap();

@@ -1,0 +1,17 @@
+kind,case,query,peak_extra_bytes
+candidate,early,0,3200
+candidate,early,1,1664
+candidate,last,0,3200
+candidate,last,1,1664
+candidate,miss,0,2608
+candidate,miss,1,1072
+candidate,failure,0,4048
+candidate,failure,1,2512
+baseline,early,0,4176
+baseline,early,1,2128
+baseline,last,0,4176
+baseline,last,1,2128
+baseline,miss,0,3504
+baseline,miss,1,1456
+baseline,failure,0,5136
+baseline,failure,1,3088

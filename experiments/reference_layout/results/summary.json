@@ -1,0 +1,104 @@
+{
+  "sort": {
+    "median_ns": {
+      "mixed/previous": 7696041.0,
+      "mixed/rs": 10625.0,
+      "sorted/previous": 6696375.0,
+      "reverse/vn": 6798083.0,
+      "sorted/rs": 2625.0,
+      "equal/vn": 6162542.0,
+      "empty/rs": 42.0,
+      "equal/rs": 2750.0,
+      "reverse/previous": 7578125.0,
+      "small/vn": 1210542.0,
+      "empty/previous": 22167.0,
+      "sorted/vn": 7079375.0,
+      "mixed/vn": 7573792.0,
+      "single/previous": 28208.0,
+      "single/rs": 42.0,
+      "small/previous": 1008375.0,
+      "reverse/rs": 17500.0,
+      "equal/previous": 7284459.0,
+      "small/rs": 3291.0,
+      "empty/vn": 22209.0,
+      "single/vn": 25834.0
+    }
+  },
+  "rotation": {
+    "median_ns": {
+      "4096/relaxed": 5375.0,
+      "128/vn": 26916.0,
+      "128/vn-previous": 26291.0,
+      "4096/vn-previous": 66416.0,
+      "4096/flat": 8583.0,
+      "128/flat": 3917.0,
+      "128/relaxed": 2958.0,
+      "4096/vn": 59083.0
+    }
+  },
+  "search": {
+    "repeated_median_ns": {
+      "failure/vn_previous": 7645.5,
+      "failure/vn": 7438.0,
+      "last/rs": 167.0,
+      "last/rs_batched": 135.57958984375,
+      "early/vn_previous": 2688.0,
+      "miss/rs": 167.0,
+      "miss/vn_previous": 2916.5,
+      "failure/rs_batched": 98.6328125,
+      "early/rs_batched": 1.1806640625,
+      "early/rs": 41.0,
+      "miss/rs_batched": 135.3759765625,
+      "failure/rs": 125.0,
+      "early/vn": 2625.0,
+      "last/vn": 3625.0,
+      "last/vn_previous": 3333.5,
+      "miss/vn": 3895.5
+    },
+    "candidate_repeated_allocations": {
+      "early": {
+        "allocations": 15,
+        "reallocations": 2,
+        "bytes": 2379
+      },
+      "last": {
+        "allocations": 15,
+        "reallocations": 2,
+        "bytes": 2379
+      },
+      "miss": {
+        "allocations": 11,
+        "reallocations": 0,
+        "bytes": 1193
+      },
+      "failure": {
+        "allocations": 35,
+        "reallocations": 3,
+        "bytes": 4275
+      }
+    },
+    "baseline_repeated_allocations": {
+      "early": {
+        "allocations": 13,
+        "reallocations": 2,
+        "bytes": 2731
+      },
+      "last": {
+        "allocations": 13,
+        "reallocations": 2,
+        "bytes": 2731
+      },
+      "miss": {
+        "allocations": 11,
+        "reallocations": 0,
+        "bytes": 1449
+      },
+      "failure": {
+        "allocations": 34,
+        "reallocations": 3,
+        "bytes": 5019
+      }
+    }
+  },
+  "note": "Final Arc candidate with direct-origin and empty-projection allocation avoidance. Runtime tests completed before timing. Same0.305 IR; experimental standalone runtime. Initial trial timings overlapped a compiler build and are excluded. Lower memory trades against more allocations and slower repeated borrowed search; not adopted."
+}

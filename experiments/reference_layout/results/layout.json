@@ -1,0 +1,33 @@
+{
+  "copied": {
+    "children": [
+      null,
+      null
+    ],
+    "fields_capacity": 2,
+    "fields_len": 2,
+    "fields_usable": 224,
+    "name_capacity": 6,
+    "name_len": 6,
+    "name_usable": 16,
+    "type_capacity": 6,
+    "type_len": 6,
+    "type_usable": 16
+  },
+  "decoded": {
+    "children": [
+      null,
+      null
+    ],
+    "fields_capacity": 4,
+    "fields_len": 2,
+    "fields_usable": 448,
+    "name_capacity": 6,
+    "name_len": 6,
+    "name_usable": 16,
+    "type_capacity": 6,
+    "type_len": 6,
+    "type_usable": 16
+  },
+  "value_bytes": 104
+}

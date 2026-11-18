@@ -7,6 +7,7 @@ from abi_probe import build_allocation_probe, wrap_calls
 p = argparse.ArgumentParser(description=__doc__)
 for name in ('vnc', 'llvm', 'results'): p.add_argument(name, type=Path)
 p.add_argument('--previous-vnc', type=Path, help='interleave a previous compiler using its own IR and runtime')
+p.add_argument('--runtime-archive', type=Path, help='experimental current runtime archive; previous keeps its embedded runtime')
 p.add_argument('--source', type=Path, default=here.parents[1] / 'examples/stable_ordering/main.vn', help='source workload, including its imported library')
 p.add_argument('--previous-source', type=Path, help='optional source baseline for the previous compiler')
 p.add_argument('--alloc-only', action='store_true', help='reuse existing timings and collect scoped allocation evidence')
@@ -27,6 +28,7 @@ with tempfile.TemporaryDirectory(prefix='vn-ordering-') as directory:
         run(compiler, 'build', source.resolve(), '--release', '--out', build / 'source',
             env={**os.environ, 'CARGO_INCREMENTAL': '0', 'TELLUR_NATIVE_TARGET_DIR': str(build)})
         archive, = (build / 'tellur-runtime-pack').glob('*.a')
+        if kind == 'vn' and a.runtime_archive: archive = a.runtime_archive.resolve()
         ir = (build / 'source.ll').read_text(); controls = (b'sort<key_order>',)
         (results / (kind+'-sort.ll')).write_text(ir)
         (build / 'timed.ll').write_text(wrap_calls(ir, controls, 'time_first'))
@@ -39,7 +41,8 @@ with tempfile.TemporaryDirectory(prefix='vn-ordering-') as directory:
     (results / 'environment.json').write_text(json.dumps({
         'compiler':run(vnc,'--version',capture_output=True).stdout.strip(),
         'previous_compiler':run(a.previous_vnc.resolve(),'--version',capture_output=True).stdout.strip() if a.previous_vnc else None,
-        'comparison':'each compiler uses its own IR and matching runtime',
+        'comparison':'current IR with experimental runtime; previous embedded runtime' if a.runtime_archive else 'each compiler uses its own IR and matching runtime',
+        'runtime_archive':str(a.runtime_archive.resolve()) if a.runtime_archive else None,
         'source':str(a.source.resolve()), 'previous_source':str((a.previous_source or a.source).resolve()),
         'rust':run('rustc','-vV',capture_output=True).stdout,
         'llvm':run(llvm/'opt','--version',capture_output=True).stdout,

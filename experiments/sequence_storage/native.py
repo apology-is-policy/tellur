@@ -19,6 +19,7 @@ parser.add_argument("vnc", type=Path)
 parser.add_argument("llvm", type=Path)
 parser.add_argument("results", type=Path)
 parser.add_argument("previous", type=Path, nargs="?")
+parser.add_argument("--runtime-archive", type=Path, help="experimental current runtime; previous keeps its embedded runtime")
 parser.add_argument("--previous-ir", action="store_true",
                     help="compare compiler emission as well as runtime, using each compiler's own IR")
 arguments = parser.parse_args()
@@ -45,6 +46,7 @@ with tempfile.TemporaryDirectory() as directory:
         },
     )
     archive, = (temporary / "tellur-runtime-pack").glob("*.a")
+    if arguments.runtime_archive: archive = arguments.runtime_archive.resolve()
     ir = (temporary / "source.ll").read_text()
     controls = (b"split_at<u32>", b"join<u32>")
     (temporary / "timed.ll").write_text(wrap_calls(ir, controls, "time_first"))
@@ -78,6 +80,7 @@ with tempfile.TemporaryDirectory() as directory:
             *([here / "join_timer.c"] if "call i64 @tellur_rt_v1_join_call(" in old_ir else []), old_archive, "-o", temporary / "vn-previous")
     (results / "native-environment.json").write_text(json.dumps({
         "compiler": run(vnc, "--version", capture_output=True).stdout.strip(),
+        "runtime_archive": str(arguments.runtime_archive.resolve()) if arguments.runtime_archive else None,
         "previous_compiler": run(previous, "--version", capture_output=True).stdout.strip() if previous else None,
         "comparison": "each compiler's own IR" if arguments.previous_ir else "same IR and object" if previous else "single compiler",
         "rustc": run("rustc", "-vV", capture_output=True).stdout,

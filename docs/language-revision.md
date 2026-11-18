@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Reference layout qualification, 18 November 2026
+
+An isolated candidate shrinks generic values from 136 to 104 bytes by sharing immutable reference-target metadata. It reduces mixed-sort peak extra memory 108,128 → 89,696 bytes, but adds 4,462 allocations and regresses small sorting and repeated search in the paired run. All 364 isolated runtime tests pass; the candidate is not adopted and compiler 0.305 remains current. Next: compact projection storage without a per-borrow allocation, then applicable ordered bounds and fresh-project supported-library adoption. [Reproduction, results and limits](../experiments/reference_layout/README.md)
+
 ### Borrowed pop transport, 18 November 2026
 
 Compiler 0.305 removes temporary argument/type transport from live borrowed vector pops, preserving projected owners and checked fallback. With identical LLVM IR on M2, mixed 1,024-record sort improves 4.948 → 4.645 ms (6.1%); allocations fall 52,030 → 45,832. Rust takes 7.167 µs, leaving a 648× gap. The 128-item case improves 7.4% versus 0.304, but a separate comparison remains 3.5% slower than pre-reversal 0.303. Next: generic value/reference representation qualification, applicable ordered bounds and fresh-project supported-library adoption. [Measurements and limits](../experiments/stable_ordering/README.md#borrowed-pop-transport-in-0305)
