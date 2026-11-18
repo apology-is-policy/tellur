@@ -6,6 +6,7 @@ sys.path.insert(0, str(here.parent / 'first_match'))
 from abi_probe import build_allocation_probe, wrap_calls
 p = argparse.ArgumentParser(description=__doc__)
 for name in ('vnc', 'llvm', 'results'): p.add_argument(name, type=Path)
+p.add_argument('--previous-vnc', type=Path, help='interleave a previous compiler using its own IR and runtime')
 p.add_argument('--alloc-only', action='store_true', help='reuse existing timings and collect scoped allocation evidence')
 
 a = p.parse_args(); vnc, llvm, results = a.vnc.resolve(), a.llvm.resolve(), a.results.resolve()
@@ -16,6 +17,7 @@ cases = {'empty':(0,'mixed'), 'single':(1,'mixed'), 'small':(128,'mixed'),
 with tempfile.TemporaryDirectory(prefix='vn-ordering-') as directory:
     tmp = Path(directory)
     compilers = {'vn': vnc}
+    if a.previous_vnc: compilers['previous'] = a.previous_vnc.resolve()
     probes, buckets = {}, {}
     for kind, compiler in compilers.items():
         build = tmp / (kind+'-build'); build.mkdir()
@@ -33,6 +35,7 @@ with tempfile.TemporaryDirectory(prefix='vn-ordering-') as directory:
         run('rustc', '--edition', '2024', '-C', 'opt-level=3', *flags, here / 'sort.rs', '-o', tmp / ('rs'+suffix))
     (results / 'environment.json').write_text(json.dumps({
         'compiler':run(vnc,'--version',capture_output=True).stdout.strip(),
+        'previous_compiler':run(a.previous_vnc.resolve(),'--version',capture_output=True).stdout.strip() if a.previous_vnc else None,
         'comparison':'each compiler uses its own IR and matching runtime',
         'rust':run('rustc','-vV',capture_output=True).stdout,
         'llvm':run(llvm/'opt','--version',capture_output=True).stdout,

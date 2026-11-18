@@ -95,6 +95,8 @@ Run the [record example](../examples/stable_ordering/README.md) to sort duplicat
 
 This remains a source prototype on compiler 0.298. On M2, 1,024 mixed two-u32 records take 81.33 ms versus Rust stable sort at 11.25 µs; the complete Villanelle call makes 622,401 allocations plus 37,578 reallocations. Front drains and generic per-element dispatch remain expensive. Next, reduce proven effect-free merge traversal and transport while preserving comparison order, resource fallback and diagnostic identities; then qualify representations and library adoption. [Timings, allocations, movement and CPU evidence](../experiments/stable_ordering/README.md)
 
+Compiler 0.299 lowers proven effect-free merge prefixes for records containing u32 fields. The complete mixed sort improves 4.59× to 10.32 ms in a paired M2 run, versus Rust at 7.042 µs. Allocations fall to 91,749; 166.2 MB of modeled suffix movement remains, mostly in singleton/run construction. Resource and observed execution keep the checked path. Next, reduce those remaining run costs before representation qualification and supported-library adoption. [Paired evidence](../experiments/stable_ordering/README.md#bulk-merge-traversal-in-0299)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

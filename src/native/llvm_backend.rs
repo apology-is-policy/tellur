@@ -9,6 +9,8 @@ mod adapters;
 mod fold;
 #[path = "llvm_map_scan.rs"]
 mod map_scan;
+#[path = "llvm_merge.rs"]
+mod merge;
 #[path = "llvm_partition.rs"]
 mod partition;
 #[path = "llvm_search.rs"]
@@ -95,6 +97,7 @@ declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
 declare i64 @tellur_rt_v1_search_loan(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_drain(ptr, i64, i64, ptr, i64)
+declare void @tellur_rt_v1_merge_prefix(ptr, i64, i64, i64, i64)
 declare void @tellur_rt_v1_partition_prefix(ptr, i64, i64, i64, i64, i64, i64)
 declare void @tellur_rt_v1_vector_transfer(ptr, i64, i64, i64)
 declare void @tellur_rt_v1_map_scan(ptr, i64, i32, i64, i64, i32, ptr, i64)
@@ -608,6 +611,7 @@ struct Emitter {
     predicates: BTreeMap<String, search::Predicate>,
     reducers: BTreeMap<String, fold::Reducer>,
     classifiers: BTreeMap<String, partition::Classifier>,
+    comparators: BTreeMap<String, merge::Comparator>,
     map_wrappers: BTreeMap<String, map_scan::Wrapper>,
     frame_types: String,
     retained: bool,
@@ -2116,6 +2120,12 @@ impl Emitter {
                         self.effect(format!("call void @tellur_rt_v1_partition_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {}, i64 {}, i64 {})", values[p.source], values[p.left], values[p.right], self.layout.slots[&p.rule], p.classifier.field, p.classifier.stop.map(u64::from).unwrap_or(u64::MAX)));
                     }
                     if self.optimize_loops
+                        && !self.retained
+                        && let Some(m) = merge::analyze(i, &self.comparators)
+                    {
+                        self.effect(format!("call void @tellur_rt_v1_merge_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {})", values[m.left],values[m.right],values[m.result],m.comparator.field));
+                    }
+                    if self.optimize_loops
                         && let Some(transfer) = vector_transfer::analyze(i)
                     {
                         let limit = transfer.limit.map_or_else(|| "0".into(), |e| self.expr(e));
@@ -2346,6 +2356,10 @@ impl CheckedProgram {
             reducers: self
                 .regions()
                 .filter_map(|r| Some((r.name.clone(), fold::reducer(r)?)))
+                .collect(),
+            comparators: self
+                .regions()
+                .filter_map(|r| Some((r.name.clone(), merge::comparator(r)?)))
                 .collect(),
             classifiers: self
                 .regions()

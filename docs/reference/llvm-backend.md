@@ -44,6 +44,21 @@ The first invocation exits with status 0; the second selects `declined` and exit
 with status 7. Both report the declared outcome and its payload. Native `--json`,
 `--scenario`, `--entry`, `--help` and `--fuel` retain their existing behavior.
 
+## Stable merge traversal (0.299)
+
+Optimized synchronous LLVM builds can batch a merge whose comparator reads the
+same u32 field of two records and whose before/equal/after paths have no effects.
+The compiler proves all three comparison paths and both advancing ownership paths;
+equal elements must come from the left run first. Runtime guards restrict this first
+profile to records containing only u32 fields. Each selected owner moves once, each
+input suffix shifts at most once, and the original graph handles exhaustion and joins.
+The skipped comparator activations are counted to retain later diagnostic identities.
+
+Effectful comparators, resource-bearing records, invalid shapes, retained execution,
+tracing, scripts and fuel limits keep the checked path. The generic stable-sort
+contract is unchanged. Singleton creation, run-header drains and generic transport
+are separate performance costs. [Ordering contract](../collections-and-algorithms.md#stable-ordering)
+
 ## Linux static musl targets (0.280)
 
 The Apple Silicon distribution can build standalone ELF executables for either

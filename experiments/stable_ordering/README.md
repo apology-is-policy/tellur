@@ -80,3 +80,61 @@ The [source caller](../../examples/stable_ordering/README.md) and
 [resource/effect regression](../../tests/fixtures/owned_ordering.vn) exercise the same
 library. The source-only checkpoint reuses the qualified 0.298 compiler/LSP/editor;
 it does not produce a new compiler package.
+
+## Bulk merge traversal in 0.299
+
+The compiler now proves all three comparator results and both ownership transfers
+in an advancing merge. Equal records must come from the left run first. For the
+first profile, every field of each participating record must be u32. The runtime
+merges the proven prefix, compacts each input suffix once and leaves exhaustion and
+joins to the original graph. It accounts for one skipped comparator activation per
+decision, preserving the identities of later faults. Effects, resources, unsupported
+shapes, retained execution, scripts, traces and fuel limits keep checked execution.
+
+The paired M2 run uses each compiler's own IR and matching runtime, the unchanged
+source algorithm and the same optimized Rust baseline. Shared-machine load differs
+from the earlier baseline; compare columns within this run.
+
+| Input | 0.298 | 0.299 | Rust | Speedup |
+| --- | ---: | ---: | ---: | ---: |
+| Empty | 15.33 µs | 14.21 µs | 41 ns | no merge work |
+| Single | 22.67 µs | 25.25 µs | 42 ns | no merge work |
+| 128 mixed | 3.983 ms | 1.065 ms | 2.375 µs | 3.74× |
+| 1,024 mixed | 47.34 ms | 10.32 ms | 7.042 µs | 4.59× |
+| 1,024 sorted | 30.70 ms | 10.19 ms | 1.708 µs | 3.01× |
+| 1,024 reversed | 34.23 ms | 10.79 ms | 11.50 µs | 3.17× |
+| 1,024 equal | 31.58 ms | 9.764 ms | 1.708 µs | 3.23× |
+
+Empty and single inputs invoke no merge; their allocation counts are unchanged and
+the timing differences do not demonstrate an improvement from this lowering.
+The complete mixed sort remains **1,466× Rust**. Allocations fall from 622,401 to
+91,749 and reallocations from 37,578 to 656. Requested bytes fall from 65,792,779 to
+12,929,355; peak extra usable storage falls from 115,856 to 114,336 bytes. Rust still
+uses one 8,192-byte allocation. Peak accounting retains the definitions above.
+
+Comparison count remains 8,913. Modeled merge suffix shifts fall from 518,155 slots
+to 499. Singleton creation and run-header drains still shift 1,221,803 slots, leaving
+166,233,072 bytes of modeled total suffix movement, versus 236,634,288 before. The
+current algorithm still has quadratic movement outside the optimized merge.
+
+The new CPU sample contains 537 in-sort stacks: 205 in collection dispatch, 152 in
+bulk vector transfer, 77 in local access and only nine in the merge helper. Next,
+reduce run construction and run transport, then qualify representations and supported
+library adoption. The scalar and resource contracts stay the same.
+
+Validation covers each comparator branch's effects, unstable equal routing (which
+must reject the optimization), empty/odd/duplicate/extreme inputs, original and
+expanded LLVM O2/O0 versus Rust, 60 fuel cuts, script/JSON modes and a fault after
+sorting. ABI cases cover preexisting output, both depletion directions, ties, aliasing,
+bad projections and types, resource-bearing records and observer fallback. The
+existing resource sort regression passes with the new compiler. All 566 selected
+Rust tests and 48 editor tests passed. The packaged CLI/LSP and loopback HTTP service
+passed; both Linux targets cross-link the helper to ELF, with no Linux execution
+claim on this M2.
+
+[Paired timings](results/0.299-timings.csv) · [Allocation breakdown](results/0.299-operations.csv) ·
+[Summary](results/0.299-summary.json) · [Movement](results/0.299-movement.json) ·
+[CPU samples](results/0.299-cpu.json) · [Toolchain](results/0.299-environment.json)
+
+To repeat a paired comparison, add `--previous-vnc /path/to/previous/vnc` to the
+command above. The driver builds each compiler's own IR and uses its own runtime.

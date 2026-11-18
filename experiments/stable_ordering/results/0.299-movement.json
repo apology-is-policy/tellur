@@ -1,0 +1,7 @@
+{
+  "comparisons": 8913,
+  "merge_suffix_slots": 499,
+  "singleton_suffix_slots": 523776,
+  "run_header_suffix_slots": 698027,
+  "suffix_bytes_at_136_per_slot": 166233072
+}

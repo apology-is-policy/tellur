@@ -4299,6 +4299,111 @@ pub unsafe extern "C" fn tellur_rt_v1_map_drain(
     })
 }
 
+/// Merge the advancing prefix of two owned runs. The checked graph handles exhaustion.
+/// The narrow representation guard excludes resources and reference-bearing records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_merge_prefix(
+    ctx: *mut Context<'_>,
+    left: u64,
+    right: u64,
+    result: u64,
+    field: usize,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() {
+            return Ok(());
+        }
+        let (Ok(left), Ok(right), Ok(result)) = (
+            c.value_index(left),
+            c.value_index(right),
+            c.value_index(result),
+        ) else {
+            return Ok(());
+        };
+        let Ok([left, right, result]) = c.values.get_disjoint_mut([left, right, result]) else {
+            return Ok(());
+        };
+        let [
+            Some(V::Construct {
+                ty: lt,
+                name: ln,
+                fields: left,
+            }),
+            Some(V::Construct {
+                ty: rt,
+                name: rn,
+                fields: right,
+            }),
+            Some(V::Construct {
+                ty: ot,
+                name: on,
+                fields: result,
+            }),
+        ] = [left, right, result]
+        else {
+            return Ok(());
+        };
+        if lt != rt || lt != ot || ln != "vector" || rn != "vector" || on != "vector" {
+            return Ok(());
+        }
+        let Some(item) = lt.strip_prefix("vector<").and_then(|s| s.strip_suffix('>')) else {
+            return Ok(());
+        };
+        let key = |value: &V| -> Option<u32> {
+            let V::Construct { ty, name, fields } = value else {
+                return None;
+            };
+            if ty != item || name != item || !fields.iter().all(|v| matches!(v, V::U32(_))) {
+                return None;
+            }
+            match fields.get(field) {
+                Some(V::U32(n)) => Some(*n),
+                _ => None,
+            }
+        };
+        let (mut a, mut b) = (0, 0);
+        while a < left.len() && b < right.len() {
+            let (Some(x), Some(y)) = (key(&left[a]), key(&right[b])) else {
+                return Ok(());
+            };
+            if x <= y {
+                a += 1;
+            } else {
+                b += 1;
+            }
+        }
+        let Some(count) = a.checked_add(b) else {
+            return Ok(());
+        };
+        if count == 0
+            || result
+                .len()
+                .checked_add(count)
+                .is_none_or(|n| n > u32::MAX as usize)
+            || !c
+                .storage
+                .values_mut()
+                .skip_completed(count as u64, &c.host.activations)
+        {
+            return Ok(());
+        }
+        result.reserve(count);
+        // Each drain shifts its suffix at most once. Every moved owner is appended once.
+        let mut left = left.drain(..a).peekable();
+        let mut right = right.drain(..b).peekable();
+        while let (Some(x), Some(y)) = (left.peek(), right.peek()) {
+            if key(x).unwrap() <= key(y).unwrap() {
+                result.push(left.next().unwrap());
+            } else {
+                result.push(right.next().unwrap());
+            }
+        }
+        result.extend(left);
+        result.extend(right);
+        Ok(())
+    })
+}
+
 /// Move a proven scalar classifier's advancing prefix with one suffix shift.
 /// Leave the first stopped element and all terminal effects to the checked graph.
 #[unsafe(no_mangle)]

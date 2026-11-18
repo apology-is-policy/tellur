@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Native stable merge traversal,18November2026
+
+Compiler 0.299 batches proven effect-free merges of u32-field records, preserving left-on-equal stability and subsequent fault identities. Effects, resources and observed execution keep their checked paths. In the paired M2 run, the complete 1,024-record mixed sort improves from 47.34 ms to 10.32 ms, versus Rust at 7.042 µs; allocations fall from 622,401 to 91,749. Singleton creation and run-header draining still move large suffixes, so Rust parity remains open. Next: reduce run construction and transport, then representation qualification, ordered bounds applicability and supported-library adoption. [Measurements and limits](../experiments/stable_ordering/README.md#bulk-merge-traversal-in-0299)
+
 ### Stable ordering prototype, 18 November 2026
 
 The experimental comparator-based sort consumes its vector and returns every owner in stable order. Duplicate identities, exact comparator effects and one close per resource agree across original/expanded interpretation and LLVM/Rust execution. No clone bound or fallible comparator policy is introduced. On M2, 1,024 mixed records take 81.33 ms versus optimized Rust stable sort at 11.25 µs. Collection dispatch accounts for 2,494 of 4,678 in-sort CPU samples; the algorithm performs 236.6 MB of modeled suffix movement. Next: optimize proven merge traversal and transport, then representation qualification, ordered bounds applicability and supported-library adoption. [Contract](collections-and-algorithms.md#stable-ordering) · [Measured baseline](../experiments/stable_ordering/README.md)

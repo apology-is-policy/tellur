@@ -2968,3 +2968,110 @@ fn scalar_partition_prefix_moves_stably_and_preserves_fallback_owners() {
         }
     }
 }
+
+#[test]
+fn stable_merge_prefix_preserves_owners_ties_and_fallback_state() {
+    let record = |key, id| V::Construct {
+        ty: "record".into(),
+        name: "record".into(),
+        fields: vec![V::U32(key), V::U32(id)],
+    };
+    let vector = |fields| V::Construct {
+        ty: "vector<record>".into(),
+        name: "vector".into(),
+        fields,
+    };
+    for (a, b) in [
+        (vec![], vec![1]),
+        (vec![1], vec![]),
+        (vec![1, 2, 2, 7], vec![0, 2, 4]),
+        (vec![7, 8], vec![1, 2]),
+        (vec![0, 1], vec![2, 3]),
+        (vec![u32::MAX], vec![u32::MAX]),
+    ] {
+        for mode in [
+            "live",
+            "trace",
+            "script",
+            "fuel",
+            "alias",
+            "projection",
+            "type",
+            "opaque",
+            "malformed",
+        ] {
+            let mut host = Host::new(
+                json!({"primitives":[]}),
+                None,
+                mode == "trace",
+                (mode == "fuel").then_some(100),
+            );
+            if mode == "script" {
+                host.script = Some(vec![]);
+            }
+            let mut c = context(&mut host);
+            let av: Vec<_> = a
+                .iter()
+                .enumerate()
+                .map(|(i, &k)| record(k, i as u32))
+                .collect();
+            let mut bv: Vec<_> = b
+                .iter()
+                .enumerate()
+                .map(|(i, &k)| record(k, 100 + i as u32))
+                .collect();
+            if !bv.is_empty() && matches!(mode, "opaque" | "malformed") {
+                if let V::Construct { fields, .. } = &mut bv[0] {
+                    if mode == "opaque" {
+                        fields.push(V::Opaque {
+                            ty: "handle".into(),
+                            token: "owned".into(),
+                        });
+                    } else {
+                        fields[0] = V::String("bad key".into());
+                    }
+                }
+            }
+            let original_a = vector(av.clone());
+            let original_b = vector(bv.clone());
+            let initial = if mode == "type" {
+                V::U32(8)
+            } else {
+                vector(vec![record(99, 999)])
+            };
+            let left = c.put(original_a.clone());
+            let right = c.put(original_b.clone());
+            let result = c.put(initial.clone());
+            unsafe {
+                tellur_rt_v1_merge_prefix(
+                    &mut c,
+                    left,
+                    if mode == "alias" { left } else { right },
+                    result,
+                    if mode == "projection" { 4 } else { 0 },
+                );
+            }
+            if mode == "live" {
+                let (mut i, mut j) = (0, 0);
+                let mut expected = vec![record(99, 999)];
+                while i < a.len() && j < b.len() {
+                    if a[i] <= b[j] {
+                        expected.push(av[i].clone());
+                        i += 1;
+                    } else {
+                        expected.push(bv[j].clone());
+                        j += 1;
+                    }
+                }
+                assert_eq!(c.get(left).unwrap(), &vector(av[i..].to_vec()));
+                assert_eq!(c.get(right).unwrap(), &vector(bv[j..].to_vec()));
+                assert_eq!(c.get(result).unwrap(), &vector(expected));
+            } else {
+                assert_eq!(c.get(left).unwrap(), &original_a);
+                assert_eq!(c.get(right).unwrap(), &original_b);
+                assert_eq!(c.get(result).unwrap(), &initial);
+            }
+            assert!(c.error.is_none());
+        }
+    }
+}

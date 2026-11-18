@@ -1011,6 +1011,134 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn stable_merge_prefix_preserves_ties_effects_and_following_fault_identity() {
+        for mode in [
+            "plain",
+            "before_effect",
+            "equal_effect",
+            "after_effect",
+            "fault_after",
+            "unstable",
+        ] {
+            let mut source = include_str!("../examples/stable_ordering/main.vn")
+                .replace("../../library/ordering.vn", "ordering.vn");
+            // Use explicit exits to inject effects independently on all comparator routes.
+            let start = source.find("        delta (a.key < b.key)").unwrap();
+            let end = source[start..].find("    }\n}").unwrap() + start;
+            let body = format!(
+                r#"        delta (a.key < b.key) {{true=>before,false=>next}}
+        [before]: {} exit before;
+        [next]: delta (a.key > b.key) {{true=>after,false=>equal}}
+        [after]: {} exit after;
+        [equal]: {} exit equal;
+"#,
+                if mode == "before_effect" {
+                    "emit(\"before\");"
+                } else {
+                    ""
+                },
+                if mode == "after_effect" {
+                    "emit(\"after\");"
+                } else {
+                    ""
+                },
+                if mode == "equal_effect" {
+                    "emit(\"equal\");"
+                } else {
+                    ""
+                }
+            );
+            source.replace_range(start..end, &body);
+            if mode == "fault_after" {
+                source=source.replace("exits sorted { vector<record> values } {","exits sorted { vector<record> values } faults {")
+                    .replace("forward ordering.sort<key_order>(source, borrow rule);","delta ordering.sort<key_order>(source, borrow rule) {sorted {auto values}=>sorted} [sorted]: fault \"after sort\";");
+            }
+            let f = Fixture::new(&source);
+            let library = include_str!("../library/ordering.vn");
+            fs::write(
+                f.root.join("ordering.vn"),
+                if mode == "unstable" {
+                    library
+                        .replace("[before | equal]", "[before]")
+                        .replace("[right]:", "[right | equal]:")
+                } else {
+                    library.to_owned()
+                },
+            )
+            .unwrap();
+            fs::write(
+                f.root.join("sequence_batches.vn"),
+                include_str!("../library/sequence_batches.vn"),
+            )
+            .unwrap();
+            fs::write(
+                &f.manifest,
+                include_str!("../examples/stable_ordering/manifest.json"),
+            )
+            .unwrap();
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                assert_eq!(
+                    ir.matches("call void @tellur_rt_v1_merge_prefix").count(),
+                    usize::from(matches!(mode, "plain" | "fault_after")),
+                    "{mode} {expanded}"
+                );
+                let compare = |args: &[String]| {
+                    let a = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let b = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (a.status.code(), &a.stdout, &a.stderr),
+                            (b.status.code(), &b.stdout, &b.stderr),
+                            "{mode} {expanded} {args:?}"
+                        );
+                    }
+                };
+                let vector = |keys: &[u32]| json!({"kind":"construct","value":{"ty":"vector<record>","name":"vector","fields":keys.iter().enumerate().map(|(i,k)|json!({"kind":"construct","value":{"ty":"record","name":"record","fields":[{"kind":"u32","value":k},{"kind":"u32","value":i}]}})).collect::<Vec<_>>()}});
+                for keys in [
+                    vec![],
+                    vec![3],
+                    vec![4, 3, 2, 1],
+                    vec![2, 1, 2, 1, 3],
+                    vec![1, 2, 3, 4],
+                    vec![3, 3, 3, 3, 3],
+                    vec![u32::MAX, 0, u32::MAX, 1, 0],
+                ] {
+                    let value = vector(&keys).to_string();
+                    compare(&[value.clone()]);
+                    compare(&["--json".into(), value]);
+                }
+                let value = vector(&[2, 1, 2]);
+                for fuel in 0..60 {
+                    compare(&["--fuel".into(), fuel.to_string(), value.to_string()]);
+                }
+                let path = f.root.join("script.json");
+                fs::write(
+                    &path,
+                    json!({"entry":"main","arguments":[value],"calls":[]}).to_string(),
+                )
+                .unwrap();
+                compare(&["--scenario".into(), path.to_str().unwrap().into()]);
+            }
+        }
+    }
+
+    #[test]
     fn scalar_partition_prefix_preserves_order_stops_effects_and_faults() {
         for mode in [
             "plain",
