@@ -2687,3 +2687,103 @@ fn direct_collection_length_matches_reference_projection_and_errors() {
         );
     }
 }
+
+#[test]
+fn arithmetic_operand_guard_preserves_fallbacks_and_manifest_mutations() {
+    for modern in [false, true] {
+        for op in 0..4 {
+            let name = ["checked_add", "checked_sub", "checked_mul", "checked_div"][op];
+            let (params, outcomes, effects) = contract(name).unwrap();
+            let primitive = json!({"name":name,"parameters":params.iter().map(|(ty, mode)|json!({"type":ty,"mode":mode})).collect::<Vec<_>>(),
+                "outcomes":outcomes.iter().map(|(old,new,fields)|json!({"name":if modern {new} else {old},"fields":fields.iter().map(|ty|json!({"type":ty})).collect::<Vec<_>>()})).collect::<Vec<_>>(),
+                "effects":effects,"returns":true});
+            for case in [
+                "live",
+                "trace",
+                "script",
+                "fuel",
+                "pure",
+                "adapter",
+                "async",
+                "nonreturning",
+                "contract",
+                "duplicate",
+                "stale",
+                "type",
+                "spelling",
+            ] {
+                let mut host = Host::new(
+                    json!({"types":[],"primitives":[primitive.clone()]}),
+                    None,
+                    false,
+                    None,
+                );
+                match case {
+                    "trace" => host.trace = true,
+                    "script" => host.script = Some(vec![]),
+                    "fuel" => host.fuel = Some(100),
+                    "pure" => host.manifest["primitives"][0]["pure"] = json!(true),
+                    "adapter" => host.manifest["primitives"][0]["rust"] = json!({}),
+                    "async" => host.manifest["primitives"][0]["async"] = json!(true),
+                    "nonreturning" => host.manifest["primitives"][0]["returns"] = json!(false),
+                    "contract" => host.manifest["primitives"][0]["effects"] = json!(["changed"]),
+                    _ => {}
+                }
+                let mut c = context(&mut host);
+                let left = c.put(V::U32(u32::MAX));
+                let right = c.put(if case == "type" {
+                    V::Bool(true)
+                } else {
+                    V::U32(1)
+                });
+                if case == "stale" {
+                    c.take(right).unwrap();
+                }
+                let supplied = if case == "duplicate" { left } else { right };
+                let spelling = if case == "spelling" { !modern } else { modern };
+                let mut output = [123, 456];
+                let selected = unsafe {
+                    tellur_rt_v1_arithmetic_operands(
+                        &mut c,
+                        op as u32,
+                        u32::from(spelling),
+                        left,
+                        supplied,
+                        output.as_mut_ptr(),
+                    )
+                };
+                assert_eq!(
+                    selected,
+                    u32::from(case == "live"),
+                    "{name} {modern} {case}"
+                );
+                assert!(c.error.is_none());
+                if case == "live" {
+                    assert_eq!(output, [u32::MAX, 1]);
+                    assert!(c.get(left).is_err() && c.get(right).is_err());
+                    // A later manifest mutation must disable the same fast call.
+                    c.host.manifest["primitives"][0]["effects"] = json!(["changed"]);
+                    let args = [c.put(V::U32(1)), c.put(V::U32(2))];
+                    assert_eq!(
+                        unsafe {
+                            tellur_rt_v1_arithmetic_operands(
+                                &mut c,
+                                op as u32,
+                                u32::from(modern),
+                                args[0],
+                                args[1],
+                                output.as_mut_ptr(),
+                            )
+                        },
+                        0
+                    );
+                    assert!(args.iter().all(|h| c.get(*h).is_ok()));
+                } else {
+                    assert_eq!(output, [123, 456]);
+                    assert!(c.get(left).is_ok());
+                    assert_eq!(c.get(right).is_ok(), case != "stale");
+                }
+            }
+        }
+    }
+}

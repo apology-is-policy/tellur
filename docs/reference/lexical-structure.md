@@ -105,6 +105,13 @@ implicit aggregate equality. Arithmetic uses checked control operations such as
 expression is not permission to invoke any source control in expression position:
 only supported pure operations and designated builtins work there.
 
+Optimized LLVM builds since 0.296 lower live built-in `checked_add`, `checked_sub`,
+`checked_mul` and `checked_div` on u32 operands to native arithmetic. Overflow,
+underflow and division by zero still select their declared outcomes. The runtime
+checks the current primitive contract before this path; scripts, tracing, fuel
+limits and custom adapters retain ordinary checked dispatch. This changes no
+source arithmetic or outcome syntax.
+
 Path masks have their own precedence: parentheses, then `&`, then `|`.
 Their operands are established path atoms or aliases, not boolean values. There
 is no executable path complement. `&&`/`||` operate on bool; `&`/`|` combine paths.

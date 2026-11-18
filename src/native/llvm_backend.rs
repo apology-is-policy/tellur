@@ -81,6 +81,10 @@ declare void @tellur_rt_v1_settled(ptr)
 declare void @tellur_rt_v1_escalate(ptr)
 declare void @tellur_rt_v1_supervise(ptr, ptr, ptr, ptr, i64, ptr, i64, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_primitive(ptr, ptr, i64, ptr, i64)
+declare i32 @tellur_rt_v1_arithmetic_operands(ptr, i32, i32, i64, i64, ptr)
+declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+declare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)
+declare { i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
 declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
@@ -742,7 +746,88 @@ impl Emitter {
             values.len(), retained.len()
         ));
     }
+    fn arithmetic(&mut self, name: &str, args: &[Expr], arms: &[Arm]) -> bool {
+        if !self.optimize_loops || args.len() != 2 || arms.len() != 2 {
+            return false;
+        }
+        let (op, success, failure, old_success, old_failure, intrinsic) = match name {
+            "checked_add" => (0, "sum", "overflow", "Sum", "Overflow", "uadd"),
+            "checked_sub" => (
+                1,
+                "difference",
+                "underflow",
+                "Difference",
+                "Underflow",
+                "usub",
+            ),
+            "checked_mul" => (2, "product", "overflow", "Product", "Overflow", "umul"),
+            "checked_div" => (3, "quotient", "zero_divisor", "Quotient", "ZeroDivisor", ""),
+            _ => return false,
+        };
+        let shape = |ok, bad| {
+            Some((
+                arms.iter()
+                    .find(|a| a.outcome == ok && a.slots.len() == 1)?,
+                arms.iter()
+                    .find(|a| a.outcome == bad && a.slots.is_empty())?,
+            ))
+        };
+        let (modern, accepted, rejected) = if let Some((a, b)) = shape(success, failure) {
+            (1, a, b)
+        } else if let Some((a, b)) = shape(old_success, old_failure) {
+            (0, a, b)
+        } else {
+            return false;
+        };
+        let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
+        let scalars = self.scratch("[2 x i32]");
+        let ready = self.call(format!(
+            "call i32 @tellur_rt_v1_arithmetic_operands(ptr %ctx, i32 {op}, i32 {modern}, i64 {}, i64 {}, ptr {scalars})", values[0], values[1]
+        ));
+        let ready = self.value(format!("icmp ne i32 {ready}, 0"));
+        let fast = self.id();
+        let fallback = self.id();
+        let yes = self.id();
+        let no = self.id();
+        let done = self.id();
+        self.line(format!(
+            "br i1 {ready}, label %{fast}, label %{fallback}\n{fast}:"
+        ));
+        let a = self.value(format!("load i32, ptr {scalars}"));
+        let bp = self.value(format!("getelementptr i32, ptr {scalars}, i64 1"));
+        let b = self.value(format!("load i32, ptr {bp}"));
+        let result = if op == 3 {
+            let zero = self.value(format!("icmp eq i32 {b}, 0"));
+            self.line(format!("br i1 {zero}, label %{no}, label %{yes}\n{yes}:"));
+            self.value(format!("udiv i32 {a}, {b}"))
+        } else {
+            let pair = self.value(format!(
+                "call {{ i32, i1 }} @llvm.{intrinsic}.with.overflow.i32(i32 {a}, i32 {b})"
+            ));
+            let result = self.value(format!("extractvalue {{ i32, i1 }} {pair}, 0"));
+            let overflow = self.value(format!("extractvalue {{ i32, i1 }} {pair}, 1"));
+            self.line(format!(
+                "br i1 {overflow}, label %{no}, label %{yes}\n{yes}:"
+            ));
+            result
+        };
+        let result = self.value(format!("zext i32 {result} to i64"));
+        let result = self.literal(2, result, &[]);
+        self.store(accepted.slots[0], &result);
+        self.line(format!("store i1 true, ptr %a{}\nbr label %{done}\n{no}:\nstore i1 true, ptr %a{}\nbr label %{done}\n{fallback}:", self.layout.atoms[&accepted.atom], self.layout.atoms[&rejected.atom]));
+        let args = self.handles(&values);
+        let (name, len) = self.text(name);
+        let outcome = self.call(format!(
+            "call i64 @tellur_rt_v1_primitive(ptr %ctx, ptr {name}, i64 {len}, ptr {args}, i64 2)"
+        ));
+        self.route(&outcome, arms);
+        self.line(format!("br label %{done}\n{done}:"));
+        true
+    }
     fn runtime_operation(&mut self, abi: &str, name: &str, args: &[Expr], arms: &[Arm]) {
+        if abi == "primitive" && self.arithmetic(name, args, arms) {
+            return;
+        }
         let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
         let args = self.handles(&values);
         let (name, len) = self.text(name);

@@ -4317,6 +4317,63 @@ pub unsafe extern "C" fn tellur_rt_v1_local_length(
     })
 }
 
+/// Prove a live built-in arithmetic call and copy its two scalar operands.
+/// Zero leaves both handles untouched for ordinary dispatch, including all
+/// diagnostics. One consumes them; generated LLVM selects the checked outcome.
+/// The manifest is checked on every invocation, never cached across mutations.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_arithmetic_operands(
+    ctx: *mut Context<'_>,
+    operation: u32,
+    modern: u32,
+    left: u64,
+    right: u64,
+    output: *mut u32,
+) -> u32 {
+    unsafe { &mut *ctx }.perform(|c| {
+        let name = match operation {
+            0 => "checked_add",
+            1 => "checked_sub",
+            2 => "checked_mul",
+            3 => "checked_div",
+            _ => return Ok(0),
+        };
+        if modern > 1
+            || c.host.trace
+            || c.host.script.is_some()
+            || c.host.fuel.is_some()
+            || left == right
+            || c.require_outcome_room().is_err()
+        {
+            return Ok(0);
+        }
+        let Ok(declaration) = declared_primitive(&c.host.manifest, name) else {
+            return Ok(0);
+        };
+        if declaration["pure"] == true
+            || declaration["rust"].is_object()
+            || declaration["async"] == true
+            || declaration["returns"] != true
+            || c.host.check_contract(name, declaration) != Ok(modern != 0)
+        {
+            return Ok(0);
+        }
+        let (Ok(a), Ok(b)) = (c.value_index(left), c.value_index(right)) else {
+            return Ok(0);
+        };
+        let (Some(V::U32(x)), Some(V::U32(y))) = (&c.values[a], &c.values[b]) else {
+            return Ok(0);
+        };
+        unsafe {
+            output.write(*x);
+            output.add(1).write(*y);
+        }
+        c.values[a] = None;
+        c.values[b] = None;
+        Ok(1)
+    })
+}
+
 /// Synchronous host calls retain the existing runtime's live/scripted
 /// dispatch, tracing and failures. Borrowed parameters are already lowered to
 /// checked value reads; consuming this temporary handle does not consume the

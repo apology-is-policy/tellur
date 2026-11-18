@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "villanelle"
-version = "0.295.0"
+version = "0.296.0"
 dependencies = [
  "cc",
  "llvm-sys",

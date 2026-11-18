@@ -53,3 +53,34 @@ The timed call excludes argument decoding and output. Rust uses the same workloa
 A separate CPU sample ran 1,800 complete folds per runtime and checked every returned total. Primitive dispatch appeared as the innermost ABI call in 1,259 of 2,054 samples inside the baseline fold (61%) and 477 of 1,411 in 0.292 (34%). Collection access, child calls and reference evidence together account for another 377 samples in 0.292. These shares include the callees' work. The remaining scalar-fold performance experiment is to lower a proved live checked addition to native arithmetic while preserving its overflow exit, trace, scripted behavior and fuel accounting. The next collection representation experiment is consuming split/join. [CPU sample counts](results/0.292-cpu.json)
 
 To repeat the paired timings, add `--previous-archive /path/to/0.291-runtime.a` to the benchmark command above. Pass `--borrow-only-archive /path/to/intermediate.a` to include the declaration-only stage. The intermediate uses 0.292's borrowed declaration lookup and 0.291's `contract` and `check_contract` implementations, with the same release runtime flags.
+
+## Direct checked arithmetic in 0.296
+
+Optimized LLVM builds now guard live u32 arithmetic and emit overflow intrinsics for addition, subtraction and multiplication. Division branches around a zero divisor before executing `udiv`. The selected outcome is bound directly, avoiding the temporary argument vector and named result payload. The current manifest contract is checked on every invocation. Scripts, tracing, fuel limits, custom adapters, incompatible declarations and unproved call shapes retain ordinary dispatch. Both modern and legacy outcome spellings are supported.
+
+On Apple M2 the 256-reading exhausted fold improves **18.0%**, from 1.012 ms to 0.830 ms. Optimized Rust takes 166 ns in batches of 1,024 folds. The remaining gap is about **4,994×**: this pass removes arithmetic transport allocations, but the loop still executes generic collection access, child calls and reference/evidence operations for every item. It does not establish Rust parity.
+
+| Case | 0.295 | 0.296 | Rust, batched |
+| --- | ---: | ---: | ---: |
+| Empty | 2.27 µs | 2.33 µs | 1.42 ns |
+| Target on first | 8.46 µs | 7.00 µs | 1.63 ns |
+| Target on last | 1.005 ms | 0.817 ms | 167 ns |
+| Exhausted | 1.012 ms | 0.830 ms | 166 ns |
+| Offline at item 128 | 500 µs | 411 µs | 90.0 ns |
+| Overflow at item 2 | 13.8 µs | 13.0 µs | 2.03 ns |
+
+The comparison uses each compiler's own emitted IR and embedded runtime, because lowering changed. Workloads and checked outputs match. There are twelve retained shuffled trials after one discarded trial; the table uses queries two through seven. Compilation, qualification and tests finished before measurement. Empty input shows no improvement. [Raw timings](results/0.296-paired.csv) · [Toolchain and comparison mode](results/0.296-environment.json)
+
+The 512 additions in a full exhausted fold now request **zero allocations**, down from 2,048 allocations and 214,528 bytes. Whole-fold requests fall from 9,742 to 7,694 allocations and from 1,061,925 to 847,397 bytes. Reallocations remain 513. Early-stop requested bytes are identical for one input and 256 inputs, so the unused suffix is not copied. The logical input remains 1,024 bytes and runtime values remain 136 bytes; input traversal and per-element ownership transfers are unchanged. [Per-operation requests](results/0.296-allocations.csv) · [Process requests, including decoding and output](results/0.296-process.csv)
+
+Peak extra allocator-usable storage during the exhausted fold falls from 4,336 to 4,144 bytes. This is relative to storage live at control entry and includes allocator size-class rounding. It excludes preexisting input storage, transient allocator-internal reallocation storage and RSS. A separate probe verifies identical output and request-count rows when peak accounting is enabled. Rust makes no heap requests within these folds. [Peak measurements](results/0.296-peaks.csv)
+
+A separate 1,800-fold CPU sample finds the arithmetic guard inside 93 of 379 fold samples (24.5%). Child calls, collection access and reference evidence remain substantial. The emitted arithmetic is native; repeated manifest checks and generic per-item execution are now the next targets. Prove a scalar fold segment whose guards can be checked once and whose state can remain in LLVM scalars, retaining checked execution for effects, scripts, fuel, failures and resource-bearing states. [CPU sample counts](results/0.296-cpu.json)
+
+Boundary regression cases cover all four operations at zero, u32 limits, exact multiplication limits and division by zero, before and after expansion, against generated Rust and interpreter reports. Separate cases cover scripted overrides, thirty fuel limits, mutable manifest contracts, legacy names and operand ownership on fallback. The existing fold resource and fault suites also pass. The runnable caller remains `./bin/vnc exec examples/batch_fold/main.vn -- 20 0`.
+
+```sh
+python3 -B experiments/owned_fold/measure.py ./bin/vnc \
+  "$LLVM_SYS_221_PREFIX/bin" /tmp/owned-fold.csv \
+  --previous-vnc /path/to/0.295/vnc
+```

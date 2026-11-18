@@ -21,7 +21,9 @@ for name in ("vnc", "llvm_bin", "results"):
 mode = parser.add_mutually_exclusive_group()
 mode.add_argument("--timing-only", action="store_true", help="collect timings separately from allocator probes")
 mode.add_argument("--alloc-only", action="store_true", help="reuse timings and run allocation probes only")
-parser.add_argument("--previous-archive", type=Path, help="baseline runtime for the same fold object")
+baseline = parser.add_mutually_exclusive_group()
+baseline.add_argument("--previous-archive", type=Path, help="baseline runtime for the same fold object")
+baseline.add_argument("--previous-vnc", type=Path, help="baseline compiler using its own IR and runtime")
 parser.add_argument("--borrow-only-archive", type=Path, help="intermediate runtime with declaration borrowing alone")
 args = parser.parse_args()
 llvm = args.llvm_bin.resolve()
@@ -67,12 +69,34 @@ with tempfile.TemporaryDirectory() as temp:
     run(llvm / "opt", "-passes=default<O3>", work / "timed.ll", "-o", work / "timed.bc")
     run(llvm / "llc", "-O3", "-filetype=obj", work / "timed.bc", "-o", work / "timed.o")
     archives = {"vn": archive}
+    objects = {"vn": work / "timed.o"}
+    sources = {"vn": ir}
+    if args.previous_vnc:
+        old = work / "previous-build"
+        old.mkdir()
+        old_env = {**env, "TELLUR_NATIVE_TARGET_DIR": str(old)}
+        run(args.previous_vnc.resolve(), "build", here / "main.vn", here.parents[1] / "examples/batch_fold/manifest.json",
+            "--release", "--backend", "llvm", "--out", old / "fold", env=old_env)
+        archives["previous"], = (old / "tellur-runtime-pack").glob("*.a")
+        sources["previous"] = (old / "fold.ll").read_text()
+        (old / "timed.ll").write_text(wrap_calls(sources["previous"], controls, "time_first"))
+        run(llvm / "opt", "-passes=default<O3>", old / "timed.ll", "-o", old / "timed.bc")
+        run(llvm / "llc", "-O3", "-filetype=obj", old / "timed.bc", "-o", old / "timed.o")
+        objects["previous"] = old / "timed.o"
+    args.results.with_suffix(".environment.json").write_text(json.dumps({
+        "compiler": run(args.vnc.resolve(), "--version", capture_output=True).stdout.strip(),
+        "previous_compiler": run(args.previous_vnc.resolve(), "--version", capture_output=True).stdout.strip() if args.previous_vnc else None,
+        "comparison": "each compiler's own IR and runtime" if args.previous_vnc else "same IR and object",
+        "llvm": run(llvm / "opt", "--version", capture_output=True).stdout,
+        "rust": run("rustc", "--version", capture_output=True).stdout.strip(),
+        "optimization": "LLVM default O3 and llc O3; Rust opt-level=3"
+    }, indent=2) + "\n")
     if args.previous_archive:
         archives["previous"] = args.previous_archive.resolve()
     if args.borrow_only_archive:
         archives["borrow_only"] = args.borrow_only_archive.resolve()
     for name, runtime in archives.items():
-        run("cc", "-O3", "-mmacosx-version-min=13.0", work / "timed.o", search / "timer.c", runtime,
+        run("cc", "-O3", "-mmacosx-version-min=13.0", objects.get(name, work / "timed.o"), search / "timer.c", runtime,
             "-o", work / name)
     run("rustc", "-C", "opt-level=3", here / "fold.rs", "-o", work / "rs")
 
@@ -105,7 +129,7 @@ with tempfile.TemporaryDirectory() as temp:
     for name, runtime in archives.items():
         directory = work / (name + "-profile")
         directory.mkdir()
-        probes[name] = build_allocation_probe(ir, controls, directory, llvm, runtime)
+        probes[name] = build_allocation_probe(sources.get(name, ir), controls, directory, llvm, runtime)
     run("rustc", "-C", "opt-level=3", "--cfg", "alloc_probe", here / "fold.rs",
         "-C", f"link-arg={work / 'vn-profile/alloc.dylib'}", "-o", work / "rs-probe")
     probes["rs"] = (work / "rs-probe", ["fold"])
@@ -124,6 +148,22 @@ with tempfile.TemporaryDirectory() as temp:
                         bucket, *counts = map(int, line.split())
                         writer.writerow((case, name, n, names[bucket], *counts))
                 assert n == 2
+
+    # Measure peaks separately; require the same request counts and checked output.
+    with args.results.with_suffix(".peaks.csv").open("w") as file:
+        writer = csv.writer(file, lineterminator="\n")
+        writer.writerow(("case", "runtime", "query", "peak_extra_usable_bytes"))
+        for case in cases:
+            for name, (exe, _) in probes.items():
+                if name == "rs":
+                    continue  # Rust's standalone allocator reports zero requests above.
+                plain = query(exe, case, 2)
+                measured = query(exe, case, 2, env={**os.environ, "VN_ALLOC_PEAK": "1"})
+                assert [line for line in measured if not line.startswith("peak ")] == plain
+                peaks = [int(line.split()[1]) for line in measured if line.startswith("peak ")]
+                assert len(peaks) == 2
+                for i, peak in enumerate(peaks, 1):
+                    writer.writerow((case, name, i, peak))
 
     process_probe = work / "process.dylib"
     run("cc", "-O2", "-dynamiclib", here.parent / "ordered_maps/comparison/profile.c", "-o", process_probe)

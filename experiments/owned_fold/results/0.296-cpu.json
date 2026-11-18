@@ -1,0 +1,26 @@
+{
+  "in_fold": 379,
+  "innermost_abi": {
+    "tellur_rt_v1_arithmetic_operands": 93,
+    "tellur_rt_v1_call": 44,
+    "tellur_rt_v1_collection": 39,
+    "tellur_rt_v1_evidence": 29,
+    "tellur_rt_v1_reference": 26,
+    "tellur_rt_v1_store": 25,
+    "generated_or_other": 23,
+    "tellur_rt_v1_route": 23,
+    "tellur_rt_v1_binary": 17,
+    "tellur_rt_v1_local": 13,
+    "tellur_rt_v1_deref": 11,
+    "tellur_rt_v1_release_local": 11,
+    "tellur_rt_v1_tick": 9,
+    "tellur_rt_v1_variant": 9,
+    "tellur_rt_v1_ok": 3,
+    "tellur_rt_v1_complete": 2,
+    "tellur_rt_v1_frame": 1,
+    "tellur_rt_v1_value": 1
+  },
+  "fold_symbol": "control_0",
+  "folds": 1800,
+  "method": "500-us CPU samples; whole stacks retained; counts include ABI callees"
+}

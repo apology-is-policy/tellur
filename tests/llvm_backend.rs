@@ -1011,6 +1011,116 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn native_checked_arithmetic_matches_all_boundaries_and_fallbacks() {
+        let f = Fixture::new(
+            r#"
+        outcome result {@exit 0 ready {u32 value}, @exit 7 invalid}
+        control main(u32 a, u32 b, u32 operation) exits result {
+            delta operation == 0 {true=>add,false=>other}
+            [add]: delta checked_add(a,b) {sum {auto n}=>added,overflow=>add_bad}
+            [added]: exit ready {n};
+            [other]: delta operation == 1 {true=>sub,false=>remaining}
+            [sub]: delta checked_sub(a,b) {difference {auto n}=>subtracted,underflow=>sub_bad}
+            [subtracted]: exit ready {n};
+            [remaining]: delta operation == 2 {true=>mul,false=>div}
+            [mul]: delta checked_mul(a,b) {product {auto n}=>multiplied,overflow=>mul_bad}
+            [multiplied]: exit ready {n};
+            [div]: delta checked_div(a,b) {quotient {auto n}=>divided,zero_divisor=>div_bad}
+            [divided]: exit ready {n};
+            [add_bad | sub_bad | mul_bad | div_bad]: exit invalid;
+        }"#,
+        );
+        let checked = compile_file(
+            &f.source,
+            Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+        )
+        .unwrap();
+        for expanded in [false, true] {
+            build_pair(&f, expanded, 2);
+            let compare = |args: &[String]| {
+                let a = Command::new(f.root.join("llvm-2"))
+                    .args(args)
+                    .output()
+                    .unwrap();
+                let b = Command::new(f.root.join("rust-2"))
+                    .args(args)
+                    .output()
+                    .unwrap();
+                assert_eq!(
+                    (a.status.code(), &a.stdout, &a.stderr),
+                    (b.status.code(), &b.stdout, &b.stderr),
+                    "{expanded} {args:?}"
+                );
+                a
+            };
+            for op in 0..4 {
+                for (a, b) in [
+                    (0, 0),
+                    (0, 1),
+                    (1, 0),
+                    (1, 1),
+                    (u32::MAX, 1),
+                    (u32::MAX, 2),
+                    (u32::MAX, u32::MAX),
+                    (65535, 65537),
+                    (65536, 65536),
+                ] {
+                    let result = match op {
+                        0 => a.checked_add(b),
+                        1 => a.checked_sub(b),
+                        2 => a.checked_mul(b),
+                        _ => a.checked_div(b),
+                    };
+                    let args = vec![a.to_string(), b.to_string(), op.to_string()];
+                    let live = compare(&args);
+                    assert_eq!(
+                        live.status.code(),
+                        Some(if result.is_some() { 0 } else { 7 })
+                    );
+                    let traced = compare(&[vec!["--json".into()], args.clone()].concat());
+                    let (name, yes, no) = [
+                        ("checked_add", "sum", "overflow"),
+                        ("checked_sub", "difference", "underflow"),
+                        ("checked_mul", "product", "overflow"),
+                        ("checked_div", "quotient", "zero_divisor"),
+                    ][op];
+                    let scenario = json!({"entry":"main","arguments":[{"kind":"u32","value":a},{"kind":"u32","value":b},{"kind":"u32","value":op}],"calls":[{"operation":name,"outcome":if result.is_some(){yes}else{no},"fields":result.map(|n|vec![json!({"kind":"u32","value":n})]).unwrap_or_default()}]});
+                    assert_eq!(
+                        report(&traced),
+                        serde_json::to_value(
+                            checked
+                                .run(&serde_json::from_value(scenario).unwrap())
+                                .unwrap()
+                        )
+                        .unwrap()
+                    );
+                }
+            }
+            for fuel in 0..30 {
+                compare(&[
+                    "--fuel".into(),
+                    fuel.to_string(),
+                    "4294967295".into(),
+                    "2".into(),
+                    "2".into(),
+                ]);
+            }
+            // Scripted success must override the live overflow, with no duplicate evaluation.
+            let scenario = f.root.join("override.json");
+            fs::write(&scenario,json!({"entry":"main","arguments":[{"kind":"u32","value":4294967295u32},{"kind":"u32","value":2},{"kind":"u32","value":0}],"calls":[{"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":17}]}]}).to_string()).unwrap();
+            assert!(
+                compare(&[
+                    "--scenario".into(),
+                    scenario.to_str().unwrap().into(),
+                    "--json".into()
+                ])
+                .status
+                .success()
+            );
+        }
+    }
+
+    #[test]
     fn live_owned_primitives_match_reference_scripts_and_rust() {
         let f = Fixture::new(include_str!("../playground/llvm_primitives.vn"));
         let checked = compile_file(

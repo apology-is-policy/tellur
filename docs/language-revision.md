@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Direct checked arithmetic, 18 November 2026
+
+Compiler 0.296 lowers proven live u32 addition, subtraction, multiplication and division to LLVM arithmetic, preserving the declared failure outcomes. Scripts, tracing, fuel and custom contracts retain ordinary dispatch. On M2 the full 256-reading fold improves 18% to 0.830 ms, versus Rust at 166 ns. The 512 additions allocate nothing; whole-fold allocations fall from 9,742 to 7,694. The large remaining gap comes from repeated guards and generic per-item execution. Next, prove a scalar fold segment that can keep its state in LLVM values, then continue consuming partition, stable ordering and supported library adoption. [Measurements and regression coverage](../experiments/owned_fold/README.md#direct-checked-arithmetic-in-0296)
+
 ### Direct collection length reads, 18 November 2026
 
 Compiler 0.295 avoids materializing a fresh owned-collection borrow used only for its length, and parses length-query type shape without allocation. Received and guarded borrows retain their existing lowering. In a shuffled M2 comparison the complete 4,096-u32 rotation improves from 56.92 to 44.71 µs, versus Rust flat at 4.58 µs. Allocations fall from 42 to 34, with two remaining reallocations. The 128-item case improves 25%. Payload width and movement are unchanged. Next, tackle the measured live checked-arithmetic overhead in owned-state fold, then continue consuming partition, stable ordering and supported library adoption. [Measurements, memory and regression coverage](../experiments/sequence_storage/README.md#fresh-collection-length-reads-in-0295)
