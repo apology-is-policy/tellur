@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Complete consuming joins, 18 November 2026
+
+Compiler 0.302 proves the entire effect-free join and transfers its owners through one guarded call, preserving outcome and diagnostic identities. Paired M2 mixed sort improves 7.773 → 6.278 ms (19.2%), versus Rust at 7.125 µs. The complete 4,096-item rotation improves 50.21 → 45.08 µs, versus Rust flat at 4.833 µs. Resource, effects, observer and fallback checks pass; both substantial Rust gaps remain. Next: measured run-header costs and generic transport, representation qualification, applicable ordered bounds and supported-library adoption. [Sort evidence](../experiments/stable_ordering/README.md#complete-join-call-transport-in-0302) · [Rotation evidence](../experiments/sequence_storage/README.md#complete-join-call-transport-in-0302)
+
 ### Fixed payload capacity, 18 November 2026
 
 Compiler 0.301 compacts fixed-arity payload buffers before building singleton runs, preserving resource ownership and growable collection reserves. The 0.300 memory increase came from decoded records retaining capacity that the older implicit Copy operation had tightened. Paired M2 mixed-sort peak extra usable memory returns from 442,016 to 114,336 bytes, at 1,024 extra reallocations and about 4.5% slower execution (11.44 ms versus Rust 10.54 µs). Next: run-header draining and terminal transport, then representation qualification, ordered bounds and supported-library adoption. [Root cause and measured tradeoff](../experiments/stable_ordering/README.md#fixed-payload-compaction-in-0301)

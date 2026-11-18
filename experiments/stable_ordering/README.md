@@ -244,3 +244,52 @@ with the helper and were not executed on this M2. Existing windows were not relo
 [Timings](results/0.301-timings.csv) · [Allocations](results/0.301-allocations.csv) ·
 [Operations](results/0.301-operations.csv) · [CPU](results/0.301-cpu.json) ·
 [Environment](results/0.301-environment.json)
+
+
+## Complete join call transport in 0.302
+
+The compiler now proves the complete consuming join control: argument-to-loop
+mapping, each advancing step and the empty terminal outcome. A guarded runtime
+call transfers both owners once without building a child context and executing
+its terminal graph. Recognition is independent of names. Entry, advancing or
+terminal effects disqualify the summary; observed and unsupported calls execute
+the original callback. Completed frame and activation identities are preserved.
+
+| Input | 0.301 | 0.302 | Rust |
+| --- | ---: | ---: | ---: |
+| Empty | 16.38 µs | 14.54 µs | 41 ns |
+| Single | 19.83 µs | 15.96 µs | 42 ns |
+| 128 mixed | 860.5 µs | 673.6 µs | 2.333 µs |
+| 1,024 mixed | 7.773 ms | 6.278 ms | 7.125 µs |
+| 1,024 sorted | 7.543 ms | 5.717 ms | 1.917 µs |
+| 1,024 reversed | 7.926 ms | 6.182 ms | 11.42 µs |
+| 1,024 equal | 7.219 ms | 5.708 ms | 1.667 µs |
+
+These are paired M2 medians from 13 shuffled retained trials, with each compiler's
+own IR and runtime. Compare within this run; the shared host and observed outliers
+make cross-run absolute timings unsuitable. The mixed call is 19.2% faster, but
+still **881× Rust**. Empty input executes no join, so its timing change is not
+attributed to this optimization.
+
+Mixed allocations fall **68,197 → 51,821**, reallocations **1,672 → 1,670**,
+requested bytes **11,480,939 → 8,950,650**, and peak extra allocator-usable bytes
+**114,336 → 108,128**. Rust uses one 8,192-byte allocation. Comparison order and
+payload/suffix movement are unchanged; the earlier model still gives 8,913
+comparisons and 94,999,536 suffix bytes. This pass removes call transport, not
+run-header shifting. Of 288 in-sort CPU samples, 87 are in collection operations,
+69 in join, 57 in merge and 34 in outcome routing, including their callees.
+
+All 571 selected compiler/runtime/manual cases and 48 editor cases pass. The new
+ABI test covers resource identity/order, both parameter positions, empty inputs,
+invalid/aliased handles and checked fallback. Original/expanded LLVM O2/O0 versus
+Rust tests cover renamed controls/outcomes, entry/advancing/terminal effects,
+scripts, 65 fuel limits and subsequent fault identities. Existing resource sorting
+and split/join tests pass. Packaged CLI/LSP, cold Hello and settings HTTP qualify;
+both Linux targets cross-link the new helper but were not executed on the M2.
+
+Next: reduce measured run-header draining and remaining generic transport, qualify
+representations and applicable ordered bounds, then fresh-project adoption and
+supported modules. [Paired timings](results/0.302-timings.csv) ·
+[Allocation totals](results/0.302-allocations.csv) ·
+[ABI attribution](results/0.302-operations.csv) · [CPU](results/0.302-cpu.json) ·
+[Environment](results/0.302-environment.json)

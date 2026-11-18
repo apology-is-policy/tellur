@@ -44,6 +44,24 @@ The first invocation exits with status 0; the second selects `declined` and exit
 with status 7. Both report the declared outcome and its payload. Native `--json`,
 `--scenario`, `--entry`, `--help` and `--fuel` retain their existing behavior.
 
+## Complete consuming joins (0.302)
+
+Optimized synchronous LLVM builds can summarize a complete vector join call when
+its two owned parameters initialize the consuming loop, every advancing step
+appends exactly the next source element, and exhaustion returns the destination
+through the declared outcome. The proof follows the checked control body and
+parameter positions; it does not depend on the control or outcome name. Entry,
+advancing and terminal effects prevent this summary.
+
+The runtime validates distinct live argument handles, matching vector types,
+combined length and outcome capacity before transferring either owner. It then
+appends the entire source and returns the authored outcome. Generic elements,
+including resources and reference-bearing values, retain their original ownership
+and obligations. Completed activation and frame identities advance once, preserving
+later fault identities. Retained execution, tracing, scripts, fuel limits and
+unsupported runtime shapes use the original callback. Expanded code can instead
+use the existing advancing-loop optimization when no separate call remains.
+
 ## Fixed payload capacity (0.301)
 
 Before forming singleton runs, the runtime compacts spare field-buffer capacity

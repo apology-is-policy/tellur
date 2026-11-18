@@ -3288,3 +3288,146 @@ fn singleton_runs_compact_fixed_fields_and_preserve_collection_reserve() {
         assert_eq!(drops.get(), 1);
     }
 }
+
+#[test]
+fn summarized_join_moves_resources_once_and_falls_back_without_partial_transfers() {
+    use std::{cell::Cell, rc::Rc};
+    struct Owner(Rc<Cell<usize>>);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    let vector = |ty: &str, fields| V::Construct {
+        ty: ty.into(),
+        name: "vector".into(),
+        fields,
+    };
+    for destination in [0, 1] {
+        for (a, b) in [(0, 0), (0, 3), (3, 0), (2, 3)] {
+            let drops = Rc::new(Cell::new(0));
+            let mut host = Host::new(json!({}), None, false, None);
+            host.enter("root").unwrap();
+            let mut c = context(&mut host);
+            let owners: Vec<_> = (0..a + b)
+                .map(|_| {
+                    c.host
+                        .resources
+                        .insert("probe", Owner(drops.clone()))
+                        .unwrap()
+                })
+                .collect();
+            let left = c.put(vector("vector<probe>", owners[..a].to_vec()));
+            let right = c.put(vector("vector<probe>", owners[a..].to_vec()));
+            let args = if destination == 0 {
+                [left, right]
+            } else {
+                [right, left]
+            };
+            let result = unsafe {
+                tellur_rt_v1_join_call(
+                    &mut c,
+                    echo,
+                    b"arbitrary".as_ptr(),
+                    9,
+                    args.as_ptr(),
+                    2,
+                    destination,
+                    b"combined".as_ptr(),
+                    8,
+                )
+            };
+            assert!(c.error.is_none());
+            assert_eq!(drops.get(), 0);
+            let (name, values) = c.outcome(result).unwrap();
+            assert_eq!(name, "combined");
+            let [V::Construct { fields, .. }] = values.as_slice() else {
+                panic!()
+            };
+            assert_eq!(fields, &owners);
+            assert!(c.get(left).is_err() && c.get(right).is_err());
+            for owner in owners {
+                drop(c.host.resources.take::<Owner>(&owner, "probe").unwrap());
+            }
+            assert_eq!(drops.get(), a + b);
+            c.host.enter("after").unwrap();
+            let report = c
+                .host
+                .activations
+                .failure("test", fault::Phase::Execution, "done");
+            assert_eq!(report.activations.last().unwrap().id, 3);
+        }
+    }
+    for mode in [
+        "trace",
+        "script",
+        "fuel",
+        "type",
+        "shape",
+        "alias",
+        "stale",
+        "destination",
+        "count",
+        "outcome_limit",
+    ] {
+        let mut host = Host::new(
+            json!({}),
+            None,
+            mode == "trace",
+            (mode == "fuel").then_some(50),
+        );
+        if mode == "script" {
+            host.script = Some(vec![]);
+        }
+        let mut c = context(&mut host);
+        let left = c.put(vector("vector<U32>", vec![V::U32(7)]));
+        let right = c.put(if mode == "shape" {
+            V::U32(8)
+        } else {
+            vector(
+                if mode == "type" {
+                    "vector<Bool>"
+                } else {
+                    "vector<U32>"
+                },
+                vec![],
+            )
+        });
+        if mode == "outcome_limit" {
+            c.outcome_base = u64::MAX;
+        }
+        let args = [
+            left,
+            if mode == "alias" {
+                left
+            } else if mode == "stale" {
+                999
+            } else {
+                right
+            },
+        ];
+        let result = unsafe {
+            tellur_rt_v1_join_call(
+                &mut c,
+                echo,
+                b"join".as_ptr(),
+                4,
+                args.as_ptr(),
+                if mode == "count" { 1 } else { 2 },
+                if mode == "destination" { 2 } else { 0 },
+                b"combined".as_ptr(),
+                8,
+            )
+        };
+        if matches!(mode, "alias" | "stale" | "outcome_limit") {
+            assert_eq!(result, 0);
+            assert!(c.error.is_some());
+            assert!(c.get(left).is_ok() && c.get(right).is_ok());
+        } else {
+            assert!(c.error.is_none(), "{mode}: {:?}", c.error);
+            let (name, values) = c.outcome(result).unwrap();
+            assert_eq!(name, "ready", "{mode}");
+            assert_eq!(values.len(), if mode == "count" { 1 } else { 2 });
+        }
+    }
+}

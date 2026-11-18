@@ -195,6 +195,40 @@ unchanged and its existing evidence is retained for the next pass.
 [ABI attribution](results/length-0295-abi.json) ·
 [Peak live storage](results/native-0295-peaks.csv)
 
+## Complete join call transport in 0.302
+
+The same whole-control proof used by stable ordering removes join's temporary
+child context and terminal transport. The paired M2 rotation preserves each
+compiler's own IR and runtime and times the entire split and join calls. The
+measurement shim wraps the new summary ABI directly, so the optimized join remains
+inside both the timed and allocation scopes. All result elements are checked.
+
+| Complete rotation | 0.301 | 0.302 | Rust flat |
+| --- | ---: | ---: | ---: |
+| 128 u32 items | 22.33 µs | 18.04 µs | 2.250 µs |
+| 4,096 u32 items | 50.21 µs | 45.08 µs | 4.833 µs |
+
+The medians improve 19.2% and 10.2%, with a remaining **9.33×** large-case gap.
+The separate owned relaxed-tree baseline takes 3.292 µs at 4,096 items; it remains
+representation evidence, not the production Villanelle path. Shared-host timings
+include outliers and should be compared only within this paired run.
+
+Rotation requests fall **34 → 26 allocations**, with two reallocations unchanged.
+Large-case requested bytes fall **195,608 → 194,383**. Join alone falls from ten
+to two allocations, 1,367 to 142 requested bytes, and **1,216 → 144 peak extra
+usable bytes**. Split remains 24 allocations, two reallocations and 202,016 peak
+extra usable bytes. Per-control peaks are relative to entry and must not be summed.
+The probe verifies that peak accounting leaves ordinary request counts unchanged.
+Payload movement remains 742,696 modeled bytes at 136 bytes per generic value.
+
+Source-level resource, origin and original/expanded native behavior tests pass;
+scripted, traced and fuel-limited joins retain their original callback. Remaining
+storage width, buffer movement and split transport are measured performance work.
+[Timings](results/native-0302-paired.csv) ·
+[Allocations](results/native-0302-paired-alloc.csv) ·
+[Peak storage](results/native-0302-peaks.csv) ·
+[Environment](results/native-0302-paired-environment.json)
+
 ## Reproduce
 
 From the repository root:

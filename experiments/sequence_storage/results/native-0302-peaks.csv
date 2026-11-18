@@ -1,0 +1,9 @@
+compiler,n,control,peak_extra_usable_bytes,allocations,reallocations,requested_bytes
+0.302.0,128,split_at,11552,24,2,14313
+0.302.0,128,join,144,2,0,142
+0.302.0,4096,split_at,202016,24,2,194241
+0.302.0,4096,join,144,2,0,142
+0.301.0,128,split_at,11552,24,2,14313
+0.301.0,128,join,1216,10,0,1367
+0.301.0,4096,split_at,202016,24,2,194241
+0.301.0,4096,join,1216,10,0,1367

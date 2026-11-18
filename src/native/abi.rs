@@ -4857,6 +4857,89 @@ pub unsafe extern "C" fn tellur_rt_v1_call(
     })
 }
 
+/// Summarize a fully proved consuming join, preserving its completed identities.
+/// Unsupported or observed calls execute the original compiled callback.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_join_call(
+    ctx: *mut Context<'_>,
+    callback: Callback,
+    name: *const u8,
+    len: usize,
+    args: *const u64,
+    count: usize,
+    destination: usize,
+    outcome: *const u8,
+    outcome_len: usize,
+) -> u64 {
+    let result = unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace
+            || c.host.script.is_some()
+            || c.host.fuel.is_some()
+            || count != 2
+            || destination > 1
+        {
+            return Ok(None);
+        }
+        c.require_outcome_room()?;
+        let handles = unsafe { slice(args, count) };
+        if handles[0] == handles[1] {
+            return Ok(None);
+        }
+        let (Ok(left), Ok(right)) = (c.get(handles[destination]), c.get(handles[1 - destination]))
+        else {
+            return Ok(None);
+        };
+        let (
+            V::Construct {
+                ty: lt,
+                name: ln,
+                fields: left,
+            },
+            V::Construct {
+                ty: rt,
+                name: rn,
+                fields: right,
+            },
+        ) = (left, right)
+        else {
+            return Ok(None);
+        };
+        if lt != rt
+            || ln != "vector"
+            || rn != "vector"
+            || !lt.starts_with("vector<")
+            || left
+                .len()
+                .checked_add(right.len())
+                .is_none_or(|n| n > u32::MAX as usize)
+        {
+            return Ok(None);
+        }
+        let outcome = unsafe { text(outcome, outcome_len)? };
+        if !c
+            .storage
+            .values_mut()
+            .skip_completed(1, &c.host.activations)
+        {
+            return Ok(None);
+        }
+        let mut result = c.take(handles[destination])?;
+        let V::Construct {
+            fields: mut source, ..
+        } = c.take(handles[1 - destination])?
+        else {
+            unreachable!()
+        };
+        let V::Construct { fields: target, .. } = &mut result else {
+            unreachable!()
+        };
+        let count = source.len();
+        append_vector_prefix(&mut source, target, count);
+        Ok(Some(c.put_outcome((outcome.into(), vec![result]))))
+    });
+    result.unwrap_or_else(|| unsafe { tellur_rt_v1_call(ctx, callback, name, len, args, count) })
+}
+
 /// Constructor calls bypass outcome packaging and deliver into a checked caller
 /// local. Destination and the whole argument batch are checked before transfer.
 #[unsafe(no_mangle)]

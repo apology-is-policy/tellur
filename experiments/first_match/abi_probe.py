@@ -5,13 +5,21 @@ import subprocess
 
 
 def wrap_calls(ir, controls, wrapper):
+    declarations = set()
     for control in controls:
         escaped = "".join(f"\\{byte:02X}" for byte in control)
         symbol, = [line.split()[0] for line in ir.splitlines() if f'c"{escaped}"' in line]
         call, = [line for line in ir.splitlines()
-                 if "call i64 @tellur_rt_v1_call(" in line and f"ptr {symbol}," in line]
-        ir = ir.replace(call, call.replace("@tellur_rt_v1_call(", f"@{wrapper}("))
-    return ir + f"\ndeclare i64 @{wrapper}(ptr, ptr, ptr, i64, ptr, i64)\n"
+                 if any(f"call i64 @{abi}(" in line for abi in
+                        ("tellur_rt_v1_call", "tellur_rt_v1_join_call"))
+                 and f"ptr {symbol}," in line]
+        joined = "@tellur_rt_v1_join_call(" in call
+        abi = "tellur_rt_v1_join_call" if joined else "tellur_rt_v1_call"
+        wrapped = wrapper + ("_join" if joined else "")
+        ir = ir.replace(call, call.replace(f"@{abi}(", f"@{wrapped}("))
+        params = "ptr, ptr, ptr, i64, ptr, i64" + (", i64, ptr, i64" if joined else "")
+        declarations.add(f"declare i64 @{wrapped}({params})")
+    return ir + "\n" + "\n".join(sorted(declarations)) + "\n"
 
 
 def build_allocation_probe(ir, controls, work, llvm_bin, archive):
@@ -48,6 +56,19 @@ def build_allocation_probe(ir, controls, work, llvm_bin, archive):
         return result;
     }
     """)
+    if "call i64 @profile_outer_join(" in ir:
+        wrappers.append("""
+        extern uint64_t tellur_rt_v1_join_call(void *, void *, void *, uint64_t, void *, uint64_t, uint64_t, void *, uint64_t);
+        uint64_t profile_outer_join(void *ctx, void *fn, void *name, uint64_t len,
+                                   void *args, uint64_t n, uint64_t destination,
+                                   void *outcome, uint64_t outcome_len) {
+            probe_begin();
+            uint64_t result = tellur_rt_v1_join_call(ctx, fn, name, len, args, n,
+                                                    destination, outcome, outcome_len);
+            probe_end();
+            return result;
+        }
+        """)
     header = f"#define BUCKETS {len(names)}\n" + """
 int probe_enter(int bucket);
 void probe_leave(int previous);

@@ -101,6 +101,8 @@ Compiler 0.300 batches singleton-run formation while preserving generic element 
 
 Compiler 0.301 identifies the peak increase as retained spare capacity in decoded records. It compacts fixed-arity payload fields before reserving run output, retaining growable collection reserves and all resource owners. Mixed-sort peak extra usable memory returns to 114,336 bytes; this adds 1,024 reallocations and costs about 4.5% in the final paired run. Next, reduce run-header and terminal transport before representation qualification and supported-library adoption. [Root cause and tradeoff](../experiments/stable_ordering/README.md#fixed-payload-compaction-in-0301)
 
+Compiler 0.302 reduces whole consuming join transport while preserving resource ownership, effects and later fault identities. The paired mixed sort improves 7.773 → 6.278 ms, still 881× Rust; rotation improves 50.21 → 45.08 µs, still 9.33× Rust flat. Run-header movement and generic storage remain open performance work before representation qualification and supported-library adoption. [Sort](../experiments/stable_ordering/README.md#complete-join-call-transport-in-0302) · [Rotation](../experiments/sequence_storage/README.md#complete-join-call-transport-in-0302)
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |

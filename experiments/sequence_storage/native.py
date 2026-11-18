@@ -52,7 +52,8 @@ with tempfile.TemporaryDirectory() as directory:
     run(llvm / "llc", "-O3", "-filetype=obj", temporary / "timed.bc", "-o", temporary / "timed.o")
     run(
         "cc", "-O3", "-mmacosx-version-min=13.0", temporary / "timed.o",
-        here.parent / "first_match/timer.c", archive, "-o", temporary / "vn",
+        here.parent / "first_match/timer.c",
+        *([here / "join_timer.c"] if "call i64 @tellur_rt_v1_join_call(" in ir else []), archive, "-o", temporary / "vn",
     )
     archives = {"vn": archive}
     if previous:
@@ -73,7 +74,8 @@ with tempfile.TemporaryDirectory() as directory:
         old_archive, = (previous_dir / "tellur-runtime-pack").glob("*.a")
         archives["vn-previous"] = old_archive
         run("cc", "-O3", "-mmacosx-version-min=13.0", previous_object,
-            here.parent / "first_match/timer.c", old_archive, "-o", temporary / "vn-previous")
+            here.parent / "first_match/timer.c",
+            *([here / "join_timer.c"] if "call i64 @tellur_rt_v1_join_call(" in old_ir else []), old_archive, "-o", temporary / "vn-previous")
     (results / "native-environment.json").write_text(json.dumps({
         "compiler": run(vnc, "--version", capture_output=True).stdout.strip(),
         "previous_compiler": run(previous, "--version", capture_output=True).stdout.strip() if previous else None,

@@ -1011,6 +1011,120 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn whole_join_call_preserves_effects_outcomes_and_following_faults() {
+        let source = include_str!("../library/sequence_batches.vn");
+        let body = format!(
+            "control splice{}",
+            source.split_once("pub control join<item>").unwrap().1
+        )
+        .replace("vector<item>", "vector<u32>")
+        .replace("item next", "u32 next")
+        .replace("joined", "finished");
+        for mode in [
+            "plain",
+            "entry_effect",
+            "advance_effect",
+            "terminal_effect",
+            "reverse_parameters",
+            "fault_after",
+        ] {
+            let selected = match mode {
+                "entry_effect" => {
+                    body.replace("    loop append", "    emit(\"entry\");\n    loop append")
+                }
+                "advance_effect" => body.replace("[got]: delta", "[got]: emit(\"item\"); delta"),
+                "terminal_effect" => body
+                    .replace("empty => exit finished { result }", "empty => ended")
+                    .replace(
+                        "[got]:",
+                        "[ended]: emit(\"empty\"); exit finished { result };\n        [got]:",
+                    ),
+                "reverse_parameters" => body.replace(
+                    "vector<u32> left, vector<u32> right",
+                    "vector<u32> right, vector<u32> left",
+                ),
+                _ => body.clone(),
+            };
+            let ending = if mode == "fault_after" {
+                "fault \"after join\";"
+            } else {
+                "exit ready {values};"
+            };
+            let f = Fixture::new(&format!(
+                "{selected} control main(vector<u32> a, vector<u32> b) exits ready {{vector<u32> values}} faults {{delta splice(a,b) {{finished {{auto values}}=>done}} [done]: {ending}}}"
+            ));
+            fs::write(&f.manifest,r#"{"version":"0.1","types":[],"primitives":[],"launch":{"main":{"exit_codes":{"ready":0}}}}"#).unwrap();
+            let checked = compile_file(
+                &f.source,
+                Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap(),
+            )
+            .unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                if !expanded {
+                    let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                    assert_eq!(
+                        ir.contains("call i64 @tellur_rt_v1_join_call"),
+                        matches!(mode, "plain" | "reverse_parameters" | "fault_after"),
+                        "{mode}"
+                    );
+                }
+                let compare = |args: &[String]| {
+                    let a = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let b = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (a.status.code(), &a.stdout, &a.stderr),
+                            (b.status.code(), &b.stdout, &b.stderr),
+                            "{mode} {expanded} {args:?}"
+                        );
+                    }
+                };
+                let vector = |values: &[u32]| json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}});
+                for (left, right) in [
+                    (vec![], vec![]),
+                    (vec![], vec![7]),
+                    (vec![u32::MAX], vec![]),
+                    (vec![4, 1], vec![4, 2, 0]),
+                ] {
+                    compare(&[vector(&left).to_string(), vector(&right).to_string()]);
+                    compare(&[
+                        "--json".into(),
+                        vector(&left).to_string(),
+                        vector(&right).to_string(),
+                    ]);
+                }
+                let a = vector(&[3, 1]);
+                let b = vector(&[2, 4]);
+                for fuel in 0..65 {
+                    compare(&[
+                        "--fuel".into(),
+                        fuel.to_string(),
+                        a.to_string(),
+                        b.to_string(),
+                    ]);
+                }
+                let path = f.root.join("script.json");
+                fs::write(
+                    &path,
+                    json!({"entry":"main","arguments":[a,b],"calls":[]}).to_string(),
+                )
+                .unwrap();
+                compare(&["--scenario".into(), path.to_str().unwrap().into()]);
+            }
+        }
+    }
+
+    #[test]
     fn singleton_runs_preserve_effects_shapes_observers_and_fault_identity() {
         let library = include_str!("../library/ordering.vn");
         let body = library

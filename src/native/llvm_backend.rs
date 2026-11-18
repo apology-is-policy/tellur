@@ -7,6 +7,8 @@ use super::*;
 mod adapters;
 #[path = "llvm_fold.rs"]
 mod fold;
+#[path = "llvm_join.rs"]
+mod join;
 #[path = "llvm_map_scan.rs"]
 mod map_scan;
 #[path = "llvm_merge.rs"]
@@ -78,6 +80,7 @@ declare void @tellur_rt_v1_emit(ptr, i64)
 declare void @tellur_rt_v1_fault(ptr, i64)
 declare void @tellur_rt_v1_complete(ptr, ptr, i64, ptr, i64)
 declare i64 @tellur_rt_v1_call(ptr, ptr, ptr, i64, ptr, i64)
+declare i64 @tellur_rt_v1_join_call(ptr, ptr, ptr, i64, ptr, i64, i64, ptr, i64)
 declare void @tellur_rt_v1_construct_call(ptr, ptr, ptr, i64, ptr, i64, i64)
 declare void @tellur_rt_v1_constructed(ptr, i64)
 declare i64 @tellur_rt_v1_lexical_begin(ptr, ptr, i64, ptr, i64, i64, i64, i64, i64)
@@ -611,6 +614,7 @@ struct ScopeTarget {
 }
 struct Emitter {
     optimize_loops: bool,
+    joins: BTreeMap<String, join::Join>,
     predicates: BTreeMap<String, search::Predicate>,
     reducers: BTreeMap<String, fold::Reducer>,
     classifiers: BTreeMap<String, partition::Classifier>,
@@ -721,6 +725,9 @@ impl Emitter {
         }
     }
     fn region_call(&mut self, name: &str, args: &[Expr], arms: &[Arm]) {
+        let join = (self.optimize_loops && !self.retained)
+            .then(|| self.joins.get(name).cloned())
+            .flatten();
         let (index, display) = self.controls[name].clone();
         let values = args.iter().map(|a| self.expr(a)).collect::<Vec<_>>();
         let args = self.handles(&values);
@@ -741,10 +748,18 @@ impl Emitter {
             ));
             return;
         }
-        let result = self.call(format!(
+        let result = if let Some(join) = join {
+            let (outcome, outcome_len) = self.text(&join.outcome);
+            self.call(format!(
+                "call i64 @tellur_rt_v1_join_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {}, i64 {}, ptr {outcome}, i64 {outcome_len})",
+                values.len(), join.destination
+            ))
+        } else {
+            self.call(format!(
             "call i64 @tellur_rt_v1_call(ptr %ctx, ptr @control_{index}, ptr {name}, i64 {len}, ptr {args}, i64 {})",
             values.len()
-        ));
+        ))
+        };
         self.route(&result, arms);
     }
     fn supervise(&mut self, name: &str, args: &[Expr]) {
@@ -2359,6 +2374,10 @@ impl CheckedProgram {
         let resumables = resumable_controls(self, &boundaries)?;
         let mut emitter = Emitter {
             optimize_loops,
+            joins: self
+                .regions()
+                .filter_map(|r| Some((r.name.clone(), join::analyze(r)?)))
+                .collect(),
             predicates: self
                 .regions()
                 .filter_map(|r| Some((r.name.clone(), search::predicate(r)?)))
