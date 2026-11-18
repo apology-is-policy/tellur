@@ -4756,6 +4756,32 @@ pub unsafe extern "C" fn tellur_rt_v1_collection(
                 return Ok(c.put_outcome(outcome));
             }
         }
+        // A borrowed pop returns an owned element, so neither the reference nor
+        // parsed element-type metadata escapes. Resolve and validate first;
+        // unsupported inputs retain the shared path and its error/transfer order.
+        if name == "vector_pop"
+            && count == 1
+            && !c.host.trace
+            && c.host.script.is_none()
+            && c.host.fuel.is_none()
+        {
+            let handle = unsafe { slice(args, count) }[0];
+            if let Ok(index) = c.value_index(handle)
+                && let Some(V::Reference { root, fields, .. }) = &c.values[index]
+                && let Ok(V::Construct { ty, name, fields }) =
+                    mutable_place(c.storage.values_mut(), *root, fields)
+                && name == "vector"
+                && ty.starts_with("vector<")
+                && collection_support::length_is_map(ty) == Some(false)
+            {
+                let item = fields.pop();
+                c.values[index] = None;
+                return Ok(c.put_outcome(match item {
+                    Some(value) => ("item".into(), vec![value]),
+                    None => ("empty".into(), vec![]),
+                }));
+            }
+        }
         let args = c.take_many(unsafe { slice(args, count) })?;
         let outcome = collection(name, args, c.storage.values_mut())?;
         Ok(c.put_outcome(outcome))

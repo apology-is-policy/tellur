@@ -419,3 +419,71 @@ ordered bounds and fresh-project supported-library adoption remain ahead.
 [ABI costs](results/0.304-operations.csv) · [Control costs](results/0.304-controls.json) ·
 [Movement model](results/0.304-movement.json) · [CPU](results/0.304-cpu.json) ·
 [Environment](results/0.304-environment.json)
+
+## Borrowed pop transport in 0.305
+
+The reversal pass exposed the cost of returning one owned item through generic
+collection dispatch. Its 2,066 `vector_pop` calls made 10,320 allocation requests
+for 730,584 bytes. A pop needs neither an owned type parse nor an intermediate
+argument and payload representation once the actual referenced vector is checked.
+
+The live ABI now resolves the reference's root and field projection, validates the
+vector shape without allocation, removes the last element and returns that owner.
+It checks outcome capacity first. Invalid roots/projections, malformed types,
+unsupported shapes, extra or aliased arguments, tracing, scripts and fuel retain
+the shared checked path. Element resources and the remaining vector keep their
+existing ownership obligations. This changes runtime transport; the source
+algorithm, comparison order and suffix movement are unchanged.
+
+The final release comparison uses byte-identical LLVM IR and matching runtime
+archives on Apple M2, with 13 shuffled retained trials after warmup. Construction
+and result checking are excluded; all returned keys and identities are checked.
+
+| Input | 0.304 | 0.305 | Rust |
+| --- | ---: | ---: | ---: |
+| Empty | 16.58 µs | 14.29 µs | 42 ns |
+| Single | 17.96 µs | 18.25 µs | 41 ns |
+| 128 mixed | 690.8 µs | 639.5 µs | 2.292 µs |
+| 1,024 mixed | 4.948 ms | 4.645 ms | 7.167 µs |
+| 1,024 sorted | 4.415 ms | 4.051 ms | 1.750 µs |
+| 1,024 reversed | 4.859 ms | 4.505 ms | 10.750 µs |
+| 1,024 equal | 4.382 ms | 4.057 ms | 1.834 µs |
+
+Mixed 1,024-item time improves **6.1%** and the 128-item case **7.4%**, but the
+mixed sort remains **648× Rust**. Empty and single inputs do not exercise pop;
+their unchanged allocation counts and short durations do not support a causal
+speed claim. Compare timings within each paired run, not across release tables.
+
+Mixed allocations fall **52,030 → 45,832**, requested bytes
+**9,157,724 → 8,715,600**. The 1,670 reallocations and 108,128 peak extra usable
+bytes are unchanged. Independent per-control profiles match final packaged
+whole-call totals at both 128 and 1,024 items. All 6,198 saved allocations and
+442,124 saved bytes occur in the 2,066 pop calls, which now request 4,122 allocations
+and 288,460 bytes. No comparison or suffix-movement reduction is claimed.
+Of 216 in-sort CPU samples, 82 are in join, 48 in collections, 29 in routing and
+16 in merge, including callees. Generic transport and the 136-byte value payload
+remain representation targets.
+
+A separate paired check against the retained **0.303 compiler and original
+source** addresses the earlier small-input regression. At 128 items, 0.305 takes
+643.9 µs versus 622.0 µs on 0.303: **3.5% slower**, so the regression is reduced
+but not closed. Mixed 1,024-item time improves 5.956 → 4.589 ms in that check.
+This comparison changes both the source traversal and runtime, unlike the
+byte-identical-IR 0.304 comparison above.
+
+All **576 selected compiler/runtime/manual tests** and **48 editor tests** pass.
+The new ABI differential case covers projected resources, empty exhaustion,
+invalid roots/projections, malformed types, stale/aliased handles and outcome
+capacity; resources complete exactly once. Original/expanded LLVM O2/O0 and Rust
+checks cover advancing/terminal effects, observer modes and later faults.
+Packaged CLI/LSP, cold Hello and settings HTTP qualify. Both Linux targets
+cross-link; they were not executed on this M2. Next: qualify generic value and
+reference representations against these remaining costs, then applicable ordered
+bounds and fresh-project supported-library adoption.
+
+[Timings](results/0.305-timings.csv) · [Allocations](results/0.305-allocations.csv) ·
+[ABI costs](results/0.305-operations.csv) · [Control costs](results/0.305-controls.json) ·
+[CPU](results/0.305-cpu.json) · [Environment](results/0.305-environment.json) ·
+[Pre-reversal timings](results/0.305-prior-source-timings.csv) ·
+[Pre-reversal allocations](results/0.305-prior-source-allocations.csv) ·
+[Pre-reversal environment](results/0.305-prior-source-environment.json)

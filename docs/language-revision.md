@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Borrowed pop transport, 18 November 2026
+
+Compiler 0.305 removes temporary argument/type transport from live borrowed vector pops, preserving projected owners and checked fallback. With identical LLVM IR on M2, mixed 1,024-record sort improves 4.948 → 4.645 ms (6.1%); allocations fall 52,030 → 45,832. Rust takes 7.167 µs, leaving a 648× gap. The 128-item case improves 7.4% versus 0.304, but a separate comparison remains 3.5% slower than pre-reversal 0.303. Next: generic value/reference representation qualification, applicable ordered bounds and fresh-project supported-library adoption. [Measurements and limits](../experiments/stable_ordering/README.md#borrowed-pop-transport-in-0305)
+
 ### Reversed run headers, 18 November 2026
 
 Compiler 0.304 batches proven reversal loops; stable sorting reverses run headers once per pass and pops them in the original comparison order. On M2, mixed 1,024-record time improves 5.586 → 4.644 ms, still 675× Rust. Modeled suffix movement drops 95.0 MB → 67.9 KB, but allocations rise 41,550 → 52,030 and the 128-item case regresses 7.2%. Resource/effect checks pass. Next: reduce generic pop/reference transport and the small-input regression, then representation qualification, applicable ordered bounds and supported-library adoption. [Measurements and tradeoffs](../experiments/stable_ordering/README.md#reversed-run-headers-in-0304)

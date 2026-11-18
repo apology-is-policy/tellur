@@ -109,6 +109,9 @@ Compiler 0.303 reuses owned vector metadata during head removal. Mixed-sort time
 
 Compiler 0.304 adopts reversed run headers with a proven advancing-loop summary. Mixed 1,024-record time improves 16.9% to 4.644 ms, still 675× Rust; header suffix shifts disappear. The 128-item case regresses 7.2% and allocations rise to 52,030. Pop/reference transport is the next measured target before representation qualification and supported-library adoption. [Evidence and limits](../experiments/stable_ordering/README.md#reversed-run-headers-in-0304)
 
+Compiler 0.305 reduces live borrowed-pop transport with identical generated IR. Mixed sort improves 6.1% to 4.645 ms, with 45,832 allocations and unchanged peak memory. It remains 648× Rust; the 128-item case is still 3.5% slower than the original 0.303 traversal in a separate paired check. Generic value/reference representation qualification is next, followed by applicable ordered bounds and supported-library adoption. [Evidence and remaining costs](../experiments/stable_ordering/README.md#borrowed-pop-transport-in-0305)
+
+
 ## Proposed algorithm contracts
 
 | Family | First useful contract | Observable behavior |
