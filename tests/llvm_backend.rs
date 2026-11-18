@@ -1011,6 +1011,153 @@ outcome result {@exit 0 done}
     }
 
     #[test]
+    fn scalar_fold_prefix_preserves_terminal_steps_effects_and_observers() {
+        let source = include_str!("../examples/batch_fold/main.vn")
+            .replace("../../library/reduction.vn", "reduction.vn")
+            .replace(
+                "control main(u32 target, u32 last_reading)",
+                "control main(vector<u32> weights, u32 target)",
+            )
+            .replace("    vector<u32> weights = [4, 7, last_reading];\n", "")
+            .replace("exits done {", "exits result {")
+            + "\noutcome result {@exit 0 done}\n";
+        for mode in [
+            "plain",
+            "projected",
+            "advancing_effect",
+            "terminal_effect",
+            "terminal_fault",
+        ] {
+            let source = if mode == "terminal_fault" {
+                source.replace("exits result {", "exits result faults {")
+            } else if mode == "projected" {
+                source
+                    .replace(
+                        "    scale.batch_limit rule",
+                        "    batch owner = batch {weights};\n    scale.batch_limit rule",
+                    )
+                    .replace("borrow weights", "borrow owner.items")
+                    + "\nstruct batch {vector<u32> items;}\n"
+            } else {
+                source.clone()
+            };
+            let f = Fixture::new(&source);
+            let library = include_str!("../library/reduction.vn");
+            let library = if mode == "terminal_fault" {
+                library
+                    .replace(
+                        "failed { state partial, error reason };",
+                        "failed { state partial, error reason } faults;",
+                    )
+                    .replace(
+                        "reducer<rule_type>.error reason }\n{",
+                        "reducer<rule_type>.error reason } faults\n{",
+                    )
+            } else {
+                library.to_owned()
+            };
+            fs::write(f.root.join("reduction.vn"), library).unwrap();
+            let mut reducer = include_str!("../examples/batch_fold/scale.vn")
+                .replace("../../library/reduction.vn", "reduction.vn");
+            if mode == "advancing_effect" {
+                reducer = reducer.replace(
+                    "[weigh]: delta checked_add",
+                    "[weigh]: emit(\"step\"); delta checked_add",
+                );
+            } else if mode == "terminal_effect" {
+                reducer = reducer.replace(
+                    "true => exit failed { current, \"scale offline\" }",
+                    "true => offline",
+                );
+                let end = reducer.rfind("    }").unwrap();
+                reducer.insert_str(end,"        [offline]: emit(\"offline\"); exit failed {current, \"scale offline\"};\n");
+            }
+            if mode == "terminal_fault" {
+                reducer = reducer
+                    .replace(
+                        "true => exit failed { current, \"scale offline\" }",
+                        "true => fault \"offline\"",
+                    )
+                    .replace("    {\n", "    faults {\n");
+            }
+            fs::write(f.root.join("scale.vn"), reducer).unwrap();
+            let manifest = Manifest::from_json(&fs::read_to_string(&f.manifest).unwrap()).unwrap();
+            let checked = compile_file(&f.source, manifest).unwrap();
+            for expanded in [false, true] {
+                build_pair(&f, expanded, 2);
+                let program = if expanded {
+                    checked.expanded("main").unwrap()
+                } else {
+                    checked.clone()
+                };
+                let slow = program.build_llvm("main", &f.root.join("slow"), 0).unwrap();
+                let ir = fs::read_to_string(f.root.join("llvm-2.ll")).unwrap();
+                assert_eq!(
+                    ir.matches("call void @tellur_rt_v1_fold_prefix").count(),
+                    usize::from(mode != "advancing_effect"),
+                    "{mode} {expanded}"
+                );
+                let compare = |args: &[String]| {
+                    let fast = Command::new(f.root.join("llvm-2"))
+                        .args(args)
+                        .output()
+                        .unwrap();
+                    for path in [&slow.executable, &f.root.join("rust-2")] {
+                        let other = Command::new(path).args(args).output().unwrap();
+                        assert_eq!(
+                            (fast.status.code(), &fast.stdout, &fast.stderr),
+                            (other.status.code(), &other.stdout, &other.stderr),
+                            "{mode} {expanded} {args:?}"
+                        );
+                    }
+                    fast
+                };
+                let vector = |values: &[u32]| json!({"kind":"construct","value":{"ty":"vector<U32>","name":"vector","fields":values.iter().map(|n|json!({"kind":"u32","value":n})).collect::<Vec<_>>()}});
+                for (values, target) in [
+                    (vec![], 1),
+                    (vec![1; 32], 1),
+                    (vec![1; 32], 32),
+                    (vec![1; 32], 33),
+                    (vec![4, 7, 0, 99], 20),
+                    (vec![4294967294, 3], u32::MAX),
+                    (vec![1, 0], 0),
+                ] {
+                    let args = vec![vector(&values).to_string(), target.to_string()];
+                    let fails = mode == "terminal_fault" && values == vec![4, 7, 0, 99];
+                    assert_eq!(compare(&args).status.success(), !fails);
+                    assert_eq!(
+                        compare(&[vec!["--json".into()], args].concat())
+                            .status
+                            .success(),
+                        !fails
+                    );
+                }
+                let values = vector(&[1, 1, 0]);
+                for fuel in 0..45 {
+                    compare(&[
+                        "--fuel".into(),
+                        fuel.to_string(),
+                        values.to_string(),
+                        "9".into(),
+                    ]);
+                }
+                // The first scripted weight jumps straight to the terminal step.
+                let scenario = f.root.join("jump.json");
+                fs::write(&scenario,json!({"entry":"main","arguments":[values,{"kind":"u32","value":9}],"calls":[{"operation":"checked_add","outcome":"sum","fields":[{"kind":"u32","value":99}]}]}).to_string()).unwrap();
+                assert!(
+                    compare(&[
+                        "--scenario".into(),
+                        scenario.to_str().unwrap().into(),
+                        "--json".into()
+                    ])
+                    .status
+                    .success()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn native_checked_arithmetic_matches_all_boundaries_and_fallbacks() {
         let f = Fixture::new(
             r#"

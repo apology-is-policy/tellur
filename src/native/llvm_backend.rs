@@ -5,6 +5,8 @@ use super::*;
 
 #[path = "llvm_adapter.rs"]
 mod adapters;
+#[path = "llvm_fold.rs"]
+mod fold;
 #[path = "llvm_map_scan.rs"]
 mod map_scan;
 #[path = "llvm_search.rs"]
@@ -86,6 +88,7 @@ declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
 declare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)
 declare { i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)
 declare i64 @tellur_rt_v1_collection(ptr, ptr, i64, ptr, i64)
+declare void @tellur_rt_v1_fold_prefix(ptr, i64, i64, i64, i64, i64, i64)
 declare void @tellur_rt_v1_search_prefix(ptr, i64, i64, i64, i64, i64)
 declare i32 @tellur_rt_v1_search_candidate(ptr, i64, i64, i64, i64, i64, ptr, ptr)
 declare i64 @tellur_rt_v1_search_loan(ptr, i64, i64, i64)
@@ -600,6 +603,7 @@ struct ScopeTarget {
 struct Emitter {
     optimize_loops: bool,
     predicates: BTreeMap<String, search::Predicate>,
+    reducers: BTreeMap<String, fold::Reducer>,
     map_wrappers: BTreeMap<String, map_scan::Wrapper>,
     frame_types: String,
     retained: bool,
@@ -2094,6 +2098,14 @@ impl Emitter {
                         );
                     }
                     if self.optimize_loops
+                        && !self.retained
+                        && let Some(fold) = fold::analyze(i, &self.reducers)
+                    {
+                        self.effect(format!("call void @tellur_rt_v1_fold_prefix(ptr %ctx, i64 {}, i64 {}, i64 {}, i64 {}, i64 {}, i64 {})",
+                            self.layout.slots[&fold.vector], self.layout.slots[&fold.rule], values[0], values[1], fold.reducer.field,
+                            fold.reducer.stop.map(u64::from).unwrap_or(u64::MAX)));
+                    }
+                    if self.optimize_loops
                         && let Some(transfer) = vector_transfer::analyze(i)
                     {
                         let limit = transfer.limit.map_or_else(|| "0".into(), |e| self.expr(e));
@@ -2320,6 +2332,10 @@ impl CheckedProgram {
             predicates: self
                 .regions()
                 .filter_map(|r| Some((r.name.clone(), search::predicate(r)?)))
+                .collect(),
+            reducers: self
+                .regions()
+                .filter_map(|r| Some((r.name.clone(), fold::reducer(r)?)))
                 .collect(),
             map_wrappers: self
                 .regions()

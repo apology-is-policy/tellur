@@ -1,0 +1,15 @@
+case,runtime,allocations,reallocations,frees,bytes
+empty,vn,536,14,492,98221
+empty,rs,131,0,85,12021
+early,vn,561,24,517,192643
+early,rs,133,6,87,14564
+last,vn,561,24,517,192649
+last,rs,133,6,87,14566
+exhausted,vn,537,20,493,182159
+exhausted,rs,133,6,87,14566
+offline,vn,559,24,515,192641
+offline,rs,133,6,87,14566
+overflow,vn,559,18,515,109407
+overflow,rs,133,0,87,12058
+early_one,vn,561,18,517,109309
+early_one,rs,133,0,87,12038

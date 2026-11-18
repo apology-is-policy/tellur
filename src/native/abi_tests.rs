@@ -2787,3 +2787,79 @@ fn arithmetic_operand_guard_preserves_fallbacks_and_manifest_mutations() {
         }
     }
 }
+
+#[test]
+fn scalar_fold_prefix_updates_only_complete_advances_and_preserves_owners() {
+    for (items, limit, start, initial, end, total) in [
+        (vec![1, 2, 3], 10, 0, 0, 3, 6),
+        (vec![1, 2, 3], 3, 0, 0, 1, 1),
+        (vec![1, 0, 3], 10, 0, 0, 1, 1),
+        (vec![u32::MAX - 1, 3], u32::MAX, 0, 0, 1, u32::MAX - 1),
+        (vec![1, 2, 3], 10, 1, 4, 3, 9),
+        (vec![], 10, 0, 4, 0, 4),
+        (vec![1], 10, u32::MAX, 4, u32::MAX, 4),
+    ] {
+        for mode in ["live", "trace", "script", "fuel", "contract"] {
+            let mut host = Host::new(
+                primitive_manifest(),
+                None,
+                mode == "trace",
+                if mode == "fuel" { Some(100) } else { None },
+            );
+            if mode == "script" {
+                host.script = Some(vec![]);
+            }
+            if mode == "contract" {
+                host.manifest["primitives"][0]["effects"] = json!(["changed"]);
+            }
+            let mut c = context(&mut host);
+            let owner = V::Construct {
+                ty: "vector<U32>".into(),
+                name: "vector".into(),
+                fields: items.iter().copied().map(V::U32).collect(),
+            };
+            unsafe {
+                tellur_rt_v1_frame(&mut c, 4);
+                let vector = c.put(owner.clone());
+                tellur_rt_v1_store(&mut c, 0, std::ptr::null(), 0, vector);
+                let rule = c.put(V::Construct {
+                    ty: "rule".into(),
+                    name: "rule".into(),
+                    fields: vec![V::U32(limit)],
+                });
+                tellur_rt_v1_store(&mut c, 1, std::ptr::null(), 0, rule);
+                for (slot, ty) in [(0, "&vector<U32>"), (1, "&rule")] {
+                    let reference = tellur_rt_v1_reference(
+                        &mut c,
+                        slot,
+                        std::ptr::null(),
+                        0,
+                        0,
+                        ty.as_ptr(),
+                        ty.len(),
+                    );
+                    tellur_rt_v1_store(&mut c, slot + 2, std::ptr::null(), 0, reference);
+                }
+                let position = c.put(V::U32(start));
+                let state = c.put(V::U32(initial));
+                tellur_rt_v1_fold_prefix(&mut c, 2, 3, position, state, 0, 0);
+                assert_eq!(
+                    c.get(position).unwrap(),
+                    &V::U32(if mode == "live" { end } else { start })
+                );
+                assert_eq!(
+                    c.get(state).unwrap(),
+                    &V::U32(if mode == "live" { total } else { initial })
+                );
+                assert_eq!(
+                    super::super::slot(c.storage.values(), c.local(0).unwrap()).unwrap(),
+                    &owner
+                );
+                assert!(c.error.is_none());
+                // Invalid/speculative projections leave the checked path responsible for errors.
+                tellur_rt_v1_fold_prefix(&mut c, 2, 3, position, state, 99, 0);
+                assert!(c.error.is_none());
+            }
+        }
+    }
+}

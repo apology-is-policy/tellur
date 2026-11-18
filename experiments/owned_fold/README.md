@@ -84,3 +84,28 @@ python3 -B experiments/owned_fold/measure.py ./bin/vnc \
   "$LLVM_SYS_221_PREFIX/bin" /tmp/owned-fold.csv \
   --previous-vnc /path/to/0.295/vnc
 ```
+
+## Scalar advancing prefixes in 0.297
+
+Optimized LLVM builds recognize an effect-free advancing path for a borrowed u32 vector and a u32 accumulator. A single runtime call checks the live arithmetic contract, then carries the index and total as native scalars while reading the existing vector in place. The scalar loop lives in the precompiled Rust runtime. The first sentinel, threshold hit or overflowing addition still executes the authored reducer. Other reducers, resource states, advancing effects, scripts, tracing and fuel limits retain checked execution. Completed child frame and activation identities are accounted for even when their execution is skipped.
+
+| Case | 0.296 | 0.297 | Rust, batched |
+| --- | ---: | ---: | ---: |
+| Empty | 4.96 µs | 6.33 µs | 2.62 ns |
+| Target on first | 15.48 µs | 15.15 µs | 2.81 ns |
+| Target on last | 2.469 ms | 18.29 µs | 362 ns |
+| Exhausted | 2.430 ms | 6.67 µs | 348 ns |
+| Offline at item 128 | 1.254 ms | 15.31 µs | 209 ns |
+| Overflow at item 2 | 28.00 µs | 14.69 µs | 3.46 ns |
+
+The full exhausted fold improves **365×** within this paired run. It remains **19.2× slower than Rust**; the terminal-hit case remains 50.6× slower. Empty input regresses about 28%, and first-item termination has no material improvement. Both the previous compiler and Rust ran slower than in the earlier 0.296 experiment: compare variants within this run, not absolute times across runs. The machine was not idle. Compilation and local qualification had finished before the interleaved measurement. Each compiler uses its own IR and matching runtime. Twelve shuffled trials after one discarded trial verify all outcomes, totals and reasons; warm queries two through seven are retained. Rust batches 1,024 black-boxed folds. [Timings](results/0.297-paired.csv) · [Environment](results/0.297-environment.json)
+
+The exhausted fold falls from **7,694 allocations and 513 reallocations to 14 allocations and no reallocations**, with requested bytes falling from 847,397 to 2,021. The advancing-prefix helper allocates nothing. A last-item stop still uses the ordinary terminal reducer and makes 38 allocations plus three reallocations, requesting 5,984 bytes. Rust makes no requests inside these folds. [Per-operation allocation counts](results/0.297-allocations.csv) · [Whole-process counts](results/0.297-process.csv)
+
+Peak extra allocator-usable storage falls from 4,144 to 1,600 bytes on exhaustion. It remains 4,144 bytes for the last-item stop. The probe measures storage above the entry baseline, including allocator size classes; it excludes preexisting input, allocator-internal reallocation transients and RSS. Separate peak-enabled runs reproduce request counts and outcomes. The logical input is still 1,024 bytes and each generic runtime value is still 136 bytes. The prefix reads values in place and removes per-item argument, reference and result materialization; this pass does not compact the input representation. [Peak storage](results/0.297-peaks.csv)
+
+A separate 180,000-fold CPU profile captures only 30 samples inside the now-short fold: 16 in the prefix helper and eight in collection dispatch. This is too small a sample to rank fine-grained costs. The emitted code and runtime disassembly confirm the single helper and scalar loop. Fixed contract/entry/return work, generic storage width and the retained terminal path remain performance targets. The next library checkpoint is consuming stable partition, followed by stable ordering, representation qualification and fresh-project adoption. [CPU counts](results/0.297-cpu.json)
+
+Regressions compare original and expanded controls across optimized LLVM, unoptimized LLVM and Rust. They exercise projected owners, empty/first/last/full scans, sentinel failure, arithmetic overflow, advancing and terminal effects, terminal faults with preserved activation identity, 45 fuel budgets and a scripted sum override. ABI tests additionally cover nonzero state/index, index exhaustion, invalid speculative projections, changed contracts and unchanged owners. Existing must-complete resource folds retain their checked path. The runnable caller remains `./bin/vnc exec examples/batch_fold/main.vn -- 20 0`.
+
+For a paired rerun, use the command above with `--previous-vnc /path/to/0.296/vnc`.

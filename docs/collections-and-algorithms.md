@@ -66,7 +66,7 @@ The scale example commits a successful reading before testing the target. A zero
 
 With 0.292, a full fold over 256 u32 readings requests 1.06 MB across 9,742 allocations and 513 reallocations. The same fold on 0.291 requested 3.25 MB across 32,270 allocations and 513 reallocations. Stopping after the first reading costs the same 6,403 requested bytes for a one-item vector and a 256-item vector. [Profile by outcome](../experiments/owned_fold/README.md#checked-primitive-dispatch-in-0292)
 
-Compiler 0.296 emits native checked arithmetic for live u32 calls while retaining scripted, traced and fuel-limited dispatch. The full 256-item fold improves 18% to 0.830 ms; its additions allocate nothing. Generic per-item execution still leaves a substantial gap to Rust's 166 ns. The next experiment keeps a proven scalar fold segment in LLVM values while preserving the ordinary path for other reducers and resource-bearing states. [Comparison and memory measurements](../experiments/owned_fold/README.md#direct-checked-arithmetic-in-0296)
+Compiler 0.297 carries proven effect-free advancing fold steps in native scalars inside the precompiled runtime. The full 256-item fold takes 6.67 µs against Rust at 348 ns in the paired run; requests fall to 14 allocations and 2,021 bytes. Terminal steps and unsupported/resource-bearing reducers retain checked execution. The remaining 19.2× gap and empty-input regression are documented. Next: consuming stable partition and stable ordering, then representation qualification and supported-library adoption. [Comparison and memory measurements](../experiments/owned_fold/README.md#scalar-advancing-prefixes-in-0297)
 
 ## Proposed algorithm contracts
 

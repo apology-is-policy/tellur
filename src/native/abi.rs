@@ -4002,6 +4002,100 @@ fn search_prefix(
     Ok(candidate)
 }
 
+/// Skip only fully advancing scalar reducer calls. Stop before the first
+/// sentinel, arithmetic failure or threshold hit so its authored path executes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tellur_rt_v1_fold_prefix(
+    ctx: *mut Context<'_>,
+    vector: usize,
+    rule: usize,
+    position: u64,
+    state: u64,
+    field: usize,
+    stop: u64,
+) {
+    unsafe { &mut *ctx }.perform(|c| {
+        if c.host.trace || c.host.script.is_some() || c.host.fuel.is_some() || position == state {
+            return Ok(());
+        }
+        let (Ok(pos), Ok(acc)) = (c.value_index(position), c.value_index(state)) else {
+            return Ok(());
+        };
+        let (Some(V::U32(start)), Some(V::U32(initial))) = (&c.values[pos], &c.values[acc]) else {
+            return Ok(());
+        };
+        let (start, initial) = (*start, *initial);
+        let borrowed = |slot| {
+            let storage = c.storage.values();
+            let V::Reference { root, fields, .. } =
+                super::slot(storage, c.local(slot).ok()?).ok()?
+            else {
+                return None;
+            };
+            super::project_ref(super::slot(storage, *root).ok()?, fields).ok()
+        };
+        let Some(V::Construct { ty, name, fields }) = borrowed(vector) else {
+            return Ok(());
+        };
+        if ty != "vector<U32>" || name != "vector" {
+            return Ok(());
+        }
+        let Some(V::Construct {
+            fields: rule_fields,
+            ..
+        }) = borrowed(rule)
+        else {
+            return Ok(());
+        };
+        let Some(V::U32(limit)) = rule_fields.get(field) else {
+            return Ok(());
+        };
+        let Ok(primitive) = declared_primitive(&c.host.manifest, "checked_add") else {
+            return Ok(());
+        };
+        if primitive["rust"].is_object()
+            || primitive["pure"] == true
+            || primitive["async"] == true
+            || primitive["returns"] != true
+            || c.host.check_contract("checked_add", primitive) != Ok(true)
+        {
+            return Ok(());
+        }
+        let mut total = initial;
+        let mut steps = 0u32;
+        for value in fields
+            .get(start as usize..)
+            .unwrap_or_default()
+            .iter()
+            .take((u32::MAX - start) as usize)
+        {
+            let V::U32(value) = value else {
+                break;
+            };
+            if u64::from(*value) == stop {
+                break;
+            }
+            let Some(sum) = total.checked_add(*value) else {
+                break;
+            };
+            if sum >= *limit {
+                break;
+            }
+            total = sum;
+            steps += 1;
+        }
+        if steps != 0
+            && c.storage
+                .values_mut()
+                .skip_completed(u64::from(steps), &c.host.activations)
+        {
+            c.values[pos] = Some(V::U32(start + steps));
+            c.values[acc] = Some(V::U32(total));
+        }
+        Ok(())
+    })
+}
+
 /// Consume the checked source reborrow. On a proven hit, project its formation
 /// into the original owner and account for the elided predicate activation.
 /// On fallback the loop still owns its position and creates the ordinary loan.

@@ -112,6 +112,11 @@ checks the current primitive contract before this path; scripts, tracing, fuel
 limits and custom adapters retain ordinary checked dispatch. This changes no
 source arithmetic or outcome syntax.
 
+Since 0.297, a proven effect-free advancing prefix of a borrowed u32-vector fold
+with a u32 accumulator can execute in a native scalar loop. The first threshold
+hit, sentinel or overflowing step still executes its authored control. Other
+reducers, resource-bearing states and observed execution retain checked steps.
+
 Path masks have their own precedence: parentheses, then `&`, then `|`.
 Their operands are established path atoms or aliases, not boolean values. There
 is no executable path complement. `&&`/`||` operate on bool; `&`/`|` combine paths.

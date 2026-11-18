@@ -2,6 +2,10 @@
 
 ## Active checkpoint queue
 
+### Scalar fold prefixes, 18 November 2026
+
+Compiler 0.297 skips proven effect-free advancing steps using a native scalar loop in the precompiled runtime. The first terminal step and all observed or unsupported paths retain checked execution. The paired M2 full fold improves from 2.430 ms to 6.67 µs, versus Rust at 348 ns; allocations fall from 7,694 to 14. Empty input regresses 28%, and Rust parity remains open. Compare these timings only within this run because machine load differs from earlier runs. Next: consuming stable partition, stable ordering, representation qualification and supported-library adoption, with further measured performance passes. [Measurements and limits](../experiments/owned_fold/README.md#scalar-advancing-prefixes-in-0297)
+
 ### Direct checked arithmetic, 18 November 2026
 
 Compiler 0.296 lowers proven live u32 addition, subtraction, multiplication and division to LLVM arithmetic, preserving the declared failure outcomes. Scripts, tracing, fuel and custom contracts retain ordinary dispatch. On M2 the full 256-reading fold improves 18% to 0.830 ms, versus Rust at 166 ns. The 512 additions allocate nothing; whole-fold allocations fall from 9,742 to 7,694. The large remaining gap comes from repeated guards and generic per-item execution. Next, prove a scalar fold segment that can keep its state in LLVM values, then continue consuming partition, stable ordering and supported library adoption. [Measurements and regression coverage](../experiments/owned_fold/README.md#direct-checked-arithmetic-in-0296)

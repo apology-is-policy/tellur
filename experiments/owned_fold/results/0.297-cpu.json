@@ -1,0 +1,16 @@
+{
+  "in_fold": 30,
+  "innermost_abi": {
+    "tellur_rt_v1_fold_prefix": 16,
+    "tellur_rt_v1_collection": 8,
+    "tellur_rt_v1_store": 1,
+    "tellur_rt_v1_release_local": 1,
+    "tellur_rt_v1_route": 1,
+    "generated_or_other": 1,
+    "tellur_rt_v1_complete": 1,
+    "tellur_rt_v1_evidence": 1
+  },
+  "fold_symbol": "control_0",
+  "folds": 180000,
+  "method": "500-us CPU samples; whole stacks retained; counts include ABI callees"
+}
