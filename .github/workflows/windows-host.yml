@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/windows-host.yml
+      - .gitattributes
       - ci/check-native-parity.py
       - ci/check-windows-host.py
       - ci/prepare-windows-crt.py
