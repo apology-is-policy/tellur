@@ -1,0 +1,52 @@
+import "../../library/json_file.vn" as json_file;
+
+// Domain policy. The host exposes file/JSON/text mechanisms as extern contracts.
+pub outcome storage_error {
+    invalid_file { string message },
+    storage_failed { string message },
+    too_large
+}
+
+pub control load(ref string path)
+    exits loaded { map<string, string> values }, ..storage_error
+{
+    exit delta json_file.load(path, 1048576) {
+        loaded,
+        too_large,
+        missing                 => loaded { map {} },
+        invalid { message }     => invalid_file { message },
+        read_failed { message } => storage_failed { message },
+    };
+}
+
+function valid_key(ref string key) -> bool {
+    key != "" && key == key.trim()
+}
+
+pub control set(ref string path, string key, string value)
+    exits saved, invalid_key, commit_uncertain { string message }, ..storage_error
+{
+    if !valid_key(key) { exit invalid_key; }
+    delta load(path) { loaded { mutable values }, ..storage_error => exit }
+
+    delta values.insert(key, value) { inserted, replaced }
+    exit delta json_file.replace(path, values, 1048576) {
+        saved,
+        commit_uncertain,
+        too_large,
+        encode_failed { message } => storage_failed { message },
+        write_failed { message }  => storage_failed { message },
+    };
+}
+
+pub control get(ref string path, ref string key)
+    exits found { string value }, missing, invalid_key, ..storage_error
+{
+    if !valid_key(key) { exit invalid_key; }
+    delta load(path) { loaded { values }, ..storage_error => exit }
+
+    exit delta values.get(key) {
+        found { value } => found { clone(value) },
+        missing,
+    };
+}

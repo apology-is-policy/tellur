@@ -1,0 +1,68 @@
+import "ordering.vn" as ordering;
+
+// The source must already be sorted under the same consistent total preorder.
+// The checker validates the comparator interface, not the ordering laws.
+pub control lower_bound<order: ordering.comparator>(
+    ref vector<ordering.comparator<order>.item> source,
+    ref order rule,
+    ref ordering.comparator<order>.item needle
+) exits position { u32 index } {
+    forward bound<order>(source, rule, needle, false);
+}
+
+pub control upper_bound<order: ordering.comparator>(
+    ref vector<ordering.comparator<order>.item> source,
+    ref order rule,
+    ref ordering.comparator<order>.item needle
+) exits position { u32 index } {
+    forward bound<order>(source, rule, needle, true);
+}
+
+control bound<order: ordering.comparator>(
+    ref vector<ordering.comparator<order>.item> source,
+    ref order rule,
+    ref ordering.comparator<order>.item needle,
+    bool upper
+) exits position { u32 index } {
+    loop search(u32 start = 0, u32 count = vector_length(source)) {
+        delta (count == 0) {
+            true => exit position { start },
+            false => halve
+        }
+        [halve]: delta checked_div(count, 2) {
+            quotient { u32 half } => offset,
+            zero_divisor => exit position { start }
+        }
+        [offset]: delta checked_add(start, half) {
+            sum { u32 middle } => read,
+            overflow => exit position { start }
+        }
+        [read]: delta vector_get(source, middle) {
+            found { auto value } => compare,
+            out_of_bounds => exit position { start }
+        }
+        [compare]: delta ordering.comparator<order>.compare(rule, value, needle) {
+            before => less,
+            equal => equality,
+            after => greater
+        }
+        [equality]: delta upper {
+            true => equal_high,
+            false => equal_low
+        }
+        [greater | equal_low]: again search(start, half);
+        [less | equal_high]: delta checked_add(middle, 1) {
+            sum { u32 next } => remaining,
+            overflow => exit position { start }
+        }
+        [remaining]: delta checked_sub(count, half) {
+            difference { u32 tail } => shrink,
+            underflow => exit position { start }
+        }
+        [shrink]: delta checked_sub(tail, 1) {
+            difference { u32 rest } => advanced,
+            underflow => exit position { start }
+        }
+        [advanced]: again search(next, rest);
+    }
+}

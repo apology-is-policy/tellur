@@ -1,0 +1,29 @@
+import "../../library/search.vn" as search;
+
+control usable(ref u32 value) exits matched, skipped, failed { string reason } {
+    if value == 0  { exit failed { "sensor offline" }; }
+    if value >= 25 { exit matched; }
+    exit skipped;
+}
+
+control main() exits done, unexpected {
+    vector<u32> readings = [3, 17, 29, 0];
+    u32 limit = 10;
+
+    delta search.first(readings, (value) => value >= limit) {
+        found { value },
+        missing => exit unexpected,
+    }
+    emit("{value}");
+
+    delta search.try_first(readings, usable) {
+        found { reading },
+        missing => exit unexpected,
+        failed { reason } => {
+            emit(reason);
+            exit unexpected;
+        },
+    }
+    emit("{reading}");
+    exit done;
+}

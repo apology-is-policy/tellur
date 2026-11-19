@@ -1,0 +1,31 @@
+┄ Paths are relative to the VS Code workspace. This fixture is read-only.
+control main() ■ process_result
+│ Δ show_file("playground/message.txt"): done │ missing │ failed
+│
+╞═ done:    ■ done
+╞═ missing: emit("The file does not exist."); ■ missing
+╞═ failed:  emit("Reading or closing the file failed."); ■ failed
+╵
+
+control show_file(filename: string) ■ auto
+│ Δ open(filename)
+│ ├ opened {file}
+│ ├ not_found → ■ missing
+│ └ denied    → ■ failed
+│ Δ read(file): data {contents} │ failed
+│
+│ ┄ Always attempt close, even if reading failed.
+│ Δ close(▾file): closed │ failed
+│
+╞═ data
+│ ┆ Δ decode_utf8(contents): text {text} → decoded │ invalid
+│
+╞═ decoded ∧ closed
+│ ┆ emit(text)
+│ ┆ ■ done
+╞═ read.failed ∨ close.failed ∨ invalid
+│ ┆ ■ failed
+╵
+
+┄ Process status policy for this runnable example.
+outcome process_result: done ↦ 0 │ missing ↦ 3 │ failed ↦ 1

@@ -1,0 +1,71 @@
+import "http.vn" as http;
+import "../../library/loopback_http.vn" as transport;
+
+pub outcome service_result {
+    @exit 0 completed,
+    @exit 0 idle,
+    @exit 0 stopped,
+    @exit 1 failed { string message },
+    @exit 2 invalid_configuration
+}
+
+pub control start(ref string path, u32 port, u32 max_connections, u32 idle_ms)
+    exits service_result
+{
+    if port > 65535
+        || max_connections == 0 || max_connections > 1000000
+        || idle_ms == 0 || idle_ms > 60000
+    {
+        exit invalid_configuration;
+    }
+    delta transport.listen(port) {
+        listening { listener, authority },
+        failed => exit,
+    }
+    emit("http://{authority}");
+    auto result = capture run serve(path, listener, authority, max_connections, idle_ms);
+    transport.release(move listener);
+    exit result;
+}
+
+// One global budget and idle timeout. Accepted connections run as members of one
+// task set, at most 64 at a time. Admission ends on the budget, an idle accept,
+// an accept failure or cancellation; then the set drains. With
+// `launch.serve.signals = "cancel"`, SIGINT or SIGTERM cancels the entry: the
+// accept stops, waiting members reply 503 and finish, and the service stops.
+async control serve(
+    ref string path, ref http_listener listener, ref string authority,
+    u32 limit, u32 idle_ms
+) exits completed, idle, stopped, failed { string message }
+{
+    mutable tasks<serve_connection> active = tasks();
+
+    loop admit(u32 remaining = limit) {
+        if active.count() >= 64 {
+            delta await next active { handled, empty => impossible }
+            again admit(remaining);
+        }
+        if remaining == 0 { leave exhausted; }
+
+        delta await transport.accept_cancellable(listener, idle_ms) {
+            accepted { connection },
+            idle               => leave quiet,
+            cancelled          => leave stopped,
+            failed { message } => leave broken { message },
+        }
+        spawn serve_connection(move connection, clone(path), clone(authority)) into active;
+        again admit(remaining - 1);
+    }
+
+    [stopped]:
+        cancel active;
+
+    loop drain {
+        delta await next active { handled => again drain, empty => leave }
+    }
+
+    [exhausted]: exit completed;
+    [quiet]:     exit idle;
+    [stopped]:   exit stopped;
+    [broken]:    exit failed { message };
+}

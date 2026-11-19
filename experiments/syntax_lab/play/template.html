@@ -1,0 +1,431 @@
+<title>Villanelle Rails Playground</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/*FONTS*/
+/* Layout: editor on the left taking most of the width; a side column with the
+   glyph roles and the palette. One column on narrow screens. */
+:root {
+  --bg: #f5f6f9; --surface: #ffffff; --surface-2: #eceff4;
+  --ink: #1b2130; --muted: #586174; --line: #dadfe7; --accent: #b0246a;
+  --kw: #5a3fd0; --out: #08756d; --path: #b0246a; --proof: #a45700; --own: #1a6a8a;
+  --type: #2360a6; --str: #87560f; --com: #6c7587; --call: #35527c; --arrow: #6f788c; --rail: #838ca0;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "VN Mono", Menlo, "DejaVu Sans Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141b; --surface: #181c26; --surface-2: #212736;
+    --ink: #e3e7f0; --muted: #9aa3b6; --line: #2a3142; --accent: #ff8cc0;
+    --kw: #b6a4ff; --out: #5fd3c7; --path: #ff8cc0; --proof: #ffb65c; --own: #74cbe6;
+    --type: #7fb2f5; --str: #e3b574; --com: #8089a0; --call: #a9c1e6; --arrow: #939cb3; --rail: #6d7891;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141b; --surface: #181c26; --surface-2: #212736;
+  --ink: #e3e7f0; --muted: #9aa3b6; --line: #2a3142; --accent: #ff8cc0;
+  --kw: #b6a4ff; --out: #5fd3c7; --path: #ff8cc0; --proof: #ffb65c; --own: #74cbe6;
+  --type: #7fb2f5; --str: #e3b574; --com: #8089a0; --call: #a9c1e6; --arrow: #939cb3; --rail: #6d7891;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.5 var(--sans); }
+.wrap {
+  max-width: 1640px; margin: 0 auto;
+  padding-left: max(clamp(16px, 3vw, 36px), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(16px, 3vw, 36px), env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px; display: flex; flex-direction: column; gap: 22px;
+}
+h1, h2, p { margin: 0; }
+h1 { font-size: clamp(1.5rem, 2.6vw, 1.9rem); line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 0.76rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { max-width: 72ch; color: var(--muted); }
+.head { display: flex; flex-direction: column; gap: 8px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.work { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (min-width: 1080px) { .work { grid-template-columns: minmax(0, 1fr) 372px; } }
+.main, aside { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+aside { gap: 22px; }
+aside section { display: flex; flex-direction: column; gap: 8px; }
+.hint { font-size: 0.86rem; color: var(--muted); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; }
+.toolbar label { display: flex; align-items: center; gap: 8px; font-size: 0.86rem; color: var(--muted); min-width: 0; }
+select, .btn, .seg button {
+  font: 500 0.84rem/1 var(--sans); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 7px; padding: 8px 11px; cursor: pointer;
+}
+select { max-width: 100%; }
+.btn:hover, .seg button:hover { background: var(--surface-2); }
+.seg { display: flex; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 7px 0 0 7px; }
+.seg button:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+.editor {
+  --lh: 16px; height: min(72vh, 780px); min-height: 380px;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface);
+}
+#monaco { height: 100%; }
+.fb { height: 100%; overflow: auto; }
+.fb-inner { display: grid; min-width: 100%; width: max-content; min-height: 100%; }
+.fb-inner > * {
+  grid-area: 1 / 1; margin: 0; padding: 12px 14px; border: 0; white-space: pre; overflow: hidden;
+  font: 400 13.74px/var(--lh) var(--mono); font-variant-ligatures: none; tab-size: 2; letter-spacing: 0;
+}
+#fb-text { color: transparent; caret-color: var(--ink); background: transparent; resize: none; outline: none; width: 100%; height: 100%; }
+#fb-text::selection { background: color-mix(in srgb, var(--kw) 28%, transparent); color: transparent; }
+#fb-pre { color: var(--ink); pointer-events: none; }
+.status { font-size: 0.84rem; color: var(--muted); min-height: 1.3em; }
+
+.t-g, .t-sym { color: var(--kw); } .t-g { font-weight: 700; }
+.t-kw { color: var(--kw); }
+.t-proof { color: var(--proof); font-weight: 700; }
+.t-own { color: var(--own); font-weight: 700; }
+.t-out { color: var(--out); }
+.t-path { color: var(--path); font-weight: 700; }
+.t-labelop, .t-spread { color: var(--arrow); }
+.t-arrow { color: var(--arrow); font-weight: 700; }
+.t-type { color: var(--type); }
+.t-str, .t-num { color: var(--str); }
+.t-com { color: var(--com); }
+.t-call { color: var(--call); }
+.t-rail { color: var(--rail); }
+
+.roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.roles label { display: flex; flex-direction: column; gap: 3px; font-size: 0.74rem; color: var(--muted); min-width: 0; }
+.roles input {
+  width: 100%; font: 400 16px/1.2 var(--mono); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+}
+.roles input.armed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.group { display: flex; flex-direction: column; gap: 4px; }
+.group + .group { margin-top: 8px; }
+.group span { font-size: 0.74rem; color: var(--muted); }
+.glyphs { display: flex; flex-wrap: wrap; gap: 3px; }
+.gl {
+  width: 30px; height: 30px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  font: 400 16px/1 var(--mono); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 5px;
+}
+.gl:hover { background: var(--surface-2); border-color: var(--muted); }
+</style>
+<style>
+/*MONACO_CSS*/
+</style>
+
+<div class="wrap">
+  <header class="head">
+    <h1>Villanelle Rails Playground</h1>
+    <p class="lede">An editor with Rails highlighting. Load one of the six programs, then change glyphs: edit a role to swap it everywhere, or click a palette glyph to insert it at the cursor. Your text and roles are remembered in this browser.</p>
+  </header>
+
+  <div class="work">
+    <div class="main">
+      <div class="toolbar">
+        <label for="example">Program <select id="example"></select></label>
+        <button type="button" class="btn" id="reset">Reload program</button>
+        <button type="button" class="btn" id="copy">Copy text</button>
+        <div class="seg" role="group" aria-label="Line height">
+          <button type="button" id="lh-16" data-lh="16" aria-pressed="true">Rails joined</button>
+          <button type="button" id="lh-20" data-lh="20" aria-pressed="false">Relaxed</button>
+        </div>
+      </div>
+      <div class="editor" id="editor">
+        <div class="fb" id="fb"><div class="fb-inner"><pre id="fb-pre" aria-hidden="true"></pre><textarea id="fb-text" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="Villanelle source"></textarea></div></div>
+        <div id="monaco" hidden></div>
+      </div>
+      <p class="status" id="status" role="status">Simple editor active while the full editor loads.</p>
+    </div>
+
+    <aside>
+      <section>
+        <h2>Glyph roles</h2>
+        <p class="hint">Change a glyph and every occurrence in the editor changes with it, along with the highlighting. Click a field, then a palette glyph, to assign it.</p>
+        <div class="roles" id="roles"></div>
+        <div><button type="button" class="btn" id="roles-reset">Default roles</button></div>
+      </section>
+      <section>
+        <h2>Palette</h2>
+        <p class="hint">Every glyph here exists in the embedded font at cell width. Click to insert at the cursor.</p>
+        <div id="palette"></div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script>
+(function () {
+"use strict";
+var EXAMPLES = /*EXAMPLES*/[];
+var PALETTE = /*PALETTE*/[];
+var ROLES = [
+  ["decide", "decide", "Δ"], ["route", "route", "→"], ["exit", "exit", "■"], ["leave", "leave loop", "□"],
+  ["loop", "loop", "↻"], ["again", "again", "↑"], ["each", "for each", "∀"], ["isin", "in / from", "∈"],
+  ["test", "test", "?"], ["prove", "must prove", "⊢"], ["when", "when", "⇐"], ["never", "cannot occur", "⊥"],
+  ["ref", "reference", "&"], ["mut", "mutable", "~"], ["move", "move", "▾"], ["maps", "maps to", "↦"],
+  ["mapType", "map type", "⇀"], ["group", "group", "…"], ["bind", "bind", ":="],
+  ["rail", "body rail", "│"], ["railLoop", "loop rail", "║"], ["railPath", "path rail", "┆"],
+  ["branch", "branch", "├"], ["branchLast", "last branch", "└"],
+  ["junction", "path label", "╞═"], ["junctionLoop", "label in loop", "╠═"], ["end", "end of body", "╵"], ["comment", "comment", "┄"]
+];
+var KW = {}; "control function outcome import as pub async extern resource protocol uses emit spawn into await next cancel capture run forward auto clone on fault release".split(" ").forEach(function (w) { KW[w] = 1; });
+var TYPES = {}; "u8 u16 u32 u64 i32 i64 bool string bytes unit tasks option slice box".split(" ").forEach(function (w) { TYPES[w] = 1; });
+var OPS = { "=": 1, "≠": 1, "≤": 1, "≥": 1, "∧": 1, "∨": 1, "¬": 1, "÷": 1 };
+var INLINE = ["decide", "route", "exit", "leave", "loop", "again", "each", "isin", "test", "prove", "when", "never", "ref", "mut", "move", "maps", "mapType", "group", "rail"];
+
+var R = {};
+function defaults() { var r = {}; ROLES.forEach(function (x) { r[x[0]] = x[2]; }); return r; }
+
+// One tokenizer for both editors. Returns [{start, cls}] for a single line.
+function tokenizeLine(line) {
+  var out = [], i = 0, n = line.length;
+  function put(cls, len) { if (len > 0) { out.push({ start: i, cls: cls }); i += len; } }
+  function at(s) { return !!s && line.substr(i, s.length) === s; }
+  var structure = [[R.junction, "label"], [R.junctionLoop, "label"], [R.branch, "arm"], [R.branchLast, "arm"], [R.rail, "stmt"], [R.railLoop, "stmt"], [R.railPath, "stmt"], [R.end, "stmt"]]
+    .filter(function (x) { return x[0]; }).sort(function (a, b) { return b[0].length - a[0].length; });
+  var kind = "stmt", m, k;
+  for (;;) {
+    if (line[i] === " ") { put("", 1); continue; }
+    m = null;
+    for (k = 0; k < structure.length; k++) if (at(structure[k][0])) { m = structure[k]; break; }
+    if (!m) break;
+    kind = m[1]; put("rail", m[0].length);
+  }
+  if (at(R.comment) || at("//")) { put("com", n - i); return out; }
+  var expectOut = false, expectPath = false, expectGroup = false, expectCall = false, depth = 0, alt = false;
+  if (kind === "label") {
+    while (i < n && line[i] !== ":") {
+      if (line[i] === " ") put("", 1);
+      else if ((m = /^[A-Za-z_][\w.]*/.exec(line.slice(i)))) put("path", m[0].length);
+      else put("labelop", 1);
+    }
+  } else if (kind === "arm") expectOut = true;
+  var roles = INLINE.filter(function (key) { return R[key]; }).sort(function (a, b) { return R[b].length - R[a].length; });
+  while (i < n) {
+    var ch = line[i], rest = line.slice(i);
+    if (ch === " ") { put("", 1); continue; }
+    if (ch === '"') { m = /^"(?:[^"\\]|\\.)*"?/.exec(rest); put("str", m[0].length); continue; }
+    if ((m = /^\d+/.exec(rest))) { put("num", m[0].length); expectOut = expectPath = false; continue; }
+    if ((m = /^[A-Za-z_]\w*/.exec(rest))) {
+      var w = m[0], after = line.slice(i + w.length), cls = "";
+      if (expectGroup) cls = "out";
+      else if (w === "true" || w === "false") cls = "num";
+      else if (KW[w] === 1 && !(expectOut && w !== "auto")) cls = "kw";
+      else if (expectOut) cls = "out";
+      else if (expectPath) cls = TYPES[w] === 1 ? "type" : /^\s*\{/.test(after) ? "out" : "path";
+      else if (expectCall) cls = "call";
+      else if (TYPES[w] === 1) cls = "type";
+      else if (after[0] === "(") cls = "call";
+      put(cls, w.length);
+      expectGroup = expectPath = false;
+      expectOut = cls === "kw" && w === "outcome";
+      expectCall = cls === "kw" && (w === "control" || w === "function");
+      if (expectOut) alt = true;
+      continue;
+    }
+    if (at(R.bind)) { put("", R.bind.length); continue; }
+    var role = null;
+    for (k = 0; k < roles.length; k++) if (at(R[roles[k]])) { role = roles[k]; break; }
+    if (role) {
+      var len = R[role].length;
+      if (role === "decide") { put("g", len); alt = true; expectOut = false; }
+      else if (role === "exit" || role === "leave") { put("g", len); expectOut = true; }
+      else if (role === "route") { put("arrow", len); expectPath = true; expectOut = false; }
+      else if (role === "prove" || role === "when" || role === "never") { put("proof", len); expectOut = expectPath = false; }
+      else if (role === "ref" || role === "mut" || role === "move") put("own", len);
+      else if (role === "maps" || role === "mapType") put("arrow", len);
+      else if (role === "group") { put("spread", len); expectGroup = true; }
+      else if (role === "rail") { put("rail", len); expectOut = true; }
+      else { put("g", len); expectOut = expectPath = false; }
+      continue;
+    }
+    if (ch === ":" && depth === 0 && alt && line[i + 1] === " ") { put("", 1); expectOut = true; continue; }
+    if ("([{".indexOf(ch) >= 0) depth++; else if (")]}".indexOf(ch) >= 0) depth = Math.max(0, depth - 1);
+    if (OPS[ch] === 1) { put("op", 1); continue; }
+    if (ch === "∅") { put("num", 1); continue; }
+    put(ch.charCodeAt(0) > 127 ? "sym" : "", 1);
+  }
+  return out;
+}
+window.__vnTokenize = function (line, roles) { R = roles || defaults(); return tokenizeLine(line); };
+
+// ---------------------------------------------------------------- page state
+var $ = function (id) { return document.getElementById(id); };
+var store = { get: function () { try { return JSON.parse(localStorage.getItem("vn-rails-play") || "null"); } catch (e) { return null; } }, set: function (v) { try { localStorage.setItem("vn-rails-play", JSON.stringify(v)); } catch (e) {} } };
+var saved = store.get() || {};
+R = defaults();
+if (saved.roles) Object.keys(R).forEach(function (key) { if (typeof saved.roles[key] === "string" && saved.roles[key]) R[key] = saved.roles[key]; });
+var state = { example: typeof saved.example === "number" && EXAMPLES[saved.example] ? saved.example : 0, lh: saved.lh === 20 ? 20 : 16 };
+var text = typeof saved.text === "string" && saved.text ? saved.text : (EXAMPLES[state.example] || { text: "" }).text;
+function save() { store.set({ text: ed.getValue(), roles: R, example: state.example, lh: state.lh }); }
+function status(msg) { $("status").textContent = msg; }
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+// ------------------------------------------------- simple editor (always works)
+var fbText = $("fb-text"), fbPre = $("fb-pre");
+function paint() {
+  var lines = fbText.value.split("\n"), html = [];
+  for (var a = 0; a < lines.length; a++) {
+    var line = lines[a], toks = tokenizeLine(line), s = "";
+    for (var b = 0; b < toks.length; b++) {
+      var piece = esc(line.slice(toks[b].start, b + 1 < toks.length ? toks[b + 1].start : line.length));
+      s += toks[b].cls ? '<span class="t-' + toks[b].cls + '">' + piece + "</span>" : piece;
+    }
+    html.push(s);
+  }
+  fbPre.innerHTML = html.join("\n") + "\n ";
+}
+var simple = {
+  getValue: function () { return fbText.value; },
+  setValue: function (v) { fbText.value = v; paint(); },
+  replaceAll: function (v) { var p = fbText.selectionStart; fbText.value = v; fbText.selectionStart = fbText.selectionEnd = Math.min(p, v.length); paint(); },
+  insert: function (g) { var a = fbText.selectionStart, b = fbText.selectionEnd, v = fbText.value; fbText.value = v.slice(0, a) + g + v.slice(b); fbText.selectionStart = fbText.selectionEnd = a + g.length; paint(); fbText.focus(); },
+  retokenize: paint,
+  lineHeight: function (px) { $("editor").style.setProperty("--lh", px + "px"); },
+  focus: function () { fbText.focus(); }
+};
+var ed = simple;
+fbText.addEventListener("input", function () { paint(); save(); });
+fbText.addEventListener("focus", function () { arm(null); });
+ed.setValue(text); ed.lineHeight(state.lh);
+
+// ------------------------------------------------------------------ roles
+var armed = null;
+function arm(input) { if (armed) armed.classList.remove("armed"); armed = input; if (armed) armed.classList.add("armed"); }
+function setRole(key, value) {
+  var old = R[key];
+  if (!value || value === old) return;
+  var v = ed.getValue();
+  if (old) v = v.split(old).join(value);
+  R[key] = value; ed.replaceAll(v); ed.retokenize(); save();
+}
+function buildRoles() {
+  $("roles").innerHTML = ROLES.map(function (x) { return '<label for="role-' + x[0] + '">' + esc(x[1]) + '<input id="role-' + x[0] + '" data-key="' + x[0] + '" maxlength="3" autocomplete="off" autocapitalize="off" spellcheck="false"></label>'; }).join("");
+  ROLES.forEach(function (x) {
+    var input = $("role-" + x[0]); input.value = R[x[0]];
+    input.addEventListener("focus", function () { arm(input); });
+    input.addEventListener("input", function () { setRole(x[0], input.value.trim()); });
+  });
+}
+buildRoles();
+$("roles-reset").addEventListener("click", function () {
+  var d = defaults(), v = ed.getValue();
+  // swap through private-use placeholders so glyphs that traded places do not collide
+  ROLES.forEach(function (x, n) { if (R[x[0]] && R[x[0]] !== d[x[0]]) v = v.split(R[x[0]]).join(String.fromCharCode(0xE000 + n)); });
+  ROLES.forEach(function (x, n) { v = v.split(String.fromCharCode(0xE000 + n)).join(d[x[0]]); });
+  R = d; ROLES.forEach(function (x) { $("role-" + x[0]).value = R[x[0]]; });
+  ed.replaceAll(v); ed.retokenize(); save(); status("Roles reset to the Rails defaults.");
+});
+
+// ---------------------------------------------------------------- palette
+$("palette").innerHTML = PALETTE.map(function (g) {
+  return '<div class="group"><span>' + esc(g[0]) + '</span><div class="glyphs">' + Array.from(g[1]).map(function (c) {
+    var hex = c.codePointAt(0).toString(16).toUpperCase(); return '<button type="button" class="gl" data-g="' + esc(c) + '" title="U+' + ("0000" + hex).slice(-4) + '">' + esc(c) + "</button>";
+  }).join("") + "</div></div>";
+}).join("");
+$("palette").addEventListener("mousedown", function (e) { if (e.target.closest(".gl")) e.preventDefault(); });   // keep focus where it is
+$("palette").addEventListener("click", function (e) {
+  var b = e.target.closest(".gl"); if (!b) return;
+  var g = b.getAttribute("data-g");
+  if (armed) { armed.value = g; setRole(armed.getAttribute("data-key"), g); armed.focus(); }
+  else { ed.insert(g); save(); }
+});
+
+// ---------------------------------------------------------------- toolbar
+var select = $("example");
+select.innerHTML = EXAMPLES.map(function (x, n) { return '<option value="' + n + '">' + esc(x.title) + "</option>"; }).join("");
+select.value = String(state.example);
+function loadExample() {
+  var d = defaults(), v = EXAMPLES[state.example].text;
+  ROLES.forEach(function (x) { if (R[x[0]] !== d[x[0]]) v = v.split(d[x[0]]).join(R[x[0]]); });   // keep the current role glyphs
+  ed.setValue(v); save();
+}
+select.addEventListener("change", function () { state.example = Number(select.value); loadExample(); status("Loaded: " + EXAMPLES[state.example].title + "."); });
+$("reset").addEventListener("click", function () { loadExample(); status("Program reloaded with the current roles."); });
+$("copy").addEventListener("click", function () {
+  var v = ed.getValue();
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(function () { status("Copied."); }, function () { status("Copy was refused here. Select the text and copy it."); });
+  else status("Copy is unavailable here. Select the text and copy it.");
+});
+function setLh(px) {
+  state.lh = px; ed.lineHeight(px);
+  ["16", "20"].forEach(function (v) { $("lh-" + v).setAttribute("aria-pressed", String(Number(v) === px)); });
+  save();
+}
+$("lh-16").addEventListener("click", function () { setLh(16); });
+$("lh-20").addEventListener("click", function () { setLh(20); });
+setLh(state.lh);
+
+// ------------------------------------------------------------- full editor
+var BASE = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min";
+function dark() { var t = document.documentElement.getAttribute("data-theme"); return t ? t === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches; }
+function startMonaco() {
+  if (typeof window.require !== "function" || !window.require.config) { status("Simple editor: the full editor could not load here."); return; }
+  window.MonacoEnvironment = { getWorkerUrl: function () {
+    var code = "self.MonacoEnvironment={baseUrl:'" + BASE + "/'};importScripts('" + BASE + "/vs/base/worker/workerMain.js');";
+    return URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+  } };
+  window.require.config({ paths: { vs: BASE + "/vs" }, "vs/css": { disabled: true } });
+  window.require(["vs/editor/editor.main"], function () {
+    var monaco = window.monaco, ST = { clone: function () { return ST; }, equals: function () { return true; } };
+    monaco.languages.register({ id: "vn-rails" });
+    function provide() {
+      monaco.languages.setTokensProvider("vn-rails", { getInitialState: function () { return ST; }, tokenize: function (line) {
+        return { tokens: tokenizeLine(line).map(function (t) { return { startIndex: t.start, scopes: t.cls || "" }; }), endState: ST };
+      } });
+    }
+    provide();
+    monaco.languages.setLanguageConfiguration("vn-rails", { brackets: [["{", "}"], ["(", ")"], ["[", "]"]], autoClosingPairs: [{ open: "{", close: "}" }, { open: "(", close: ")" }, { open: "[", close: "]" }, { open: '"', close: '"' }] });
+    function theme(name, base, c) {
+      var bold = function (tok, col) { return { token: tok, foreground: col, fontStyle: "bold" }; }, plain = function (tok, col) { return { token: tok, foreground: col }; };
+      monaco.editor.defineTheme(name, { base: base, inherit: true, rules: [bold("g", c.kw), plain("sym", c.kw), plain("kw", c.kw), bold("proof", c.proof), bold("own", c.own), plain("out", c.out), bold("path", c.path), plain("labelop", c.arrow), plain("spread", c.arrow), bold("arrow", c.arrow), plain("type", c.type), plain("str", c.str), plain("num", c.str), plain("com", c.com), plain("call", c.call), plain("rail", c.rail), plain("op", c.ink), plain("", c.ink)],
+        colors: { "editor.background": "#" + c.bg, "editor.foreground": "#" + c.ink, "editorLineNumber.foreground": "#" + c.rail, "editorCursor.foreground": "#" + c.ink, "editor.lineHighlightBackground": "#" + c.hl, "editor.lineHighlightBorder": "#00000000" } });
+    }
+    theme("vn-light", "vs", { kw: "5a3fd0", proof: "a45700", own: "1a6a8a", out: "08756d", path: "b0246a", arrow: "6f788c", type: "2360a6", str: "87560f", com: "6c7587", call: "35527c", rail: "838ca0", ink: "1b2130", bg: "ffffff", hl: "f3f5f9" });
+    theme("vn-dark", "vs-dark", { kw: "b6a4ff", proof: "ffb65c", own: "74cbe6", out: "5fd3c7", path: "ff8cc0", arrow: "939cb3", type: "7fb2f5", str: "e3b574", com: "8089a0", call: "a9c1e6", rail: "6d7891", ink: "e3e7f0", bg: "181c26", hl: "1e2330" });
+    var host = $("monaco"); host.hidden = false; $("fb").hidden = true;
+    var editor = monaco.editor.create(host, {
+      value: ed.getValue(), language: "vn-rails", theme: dark() ? "vn-dark" : "vn-light", automaticLayout: true,
+      fontFamily: '"VN Mono", Menlo, monospace', fontSize: 13.74, lineHeight: state.lh, letterSpacing: 0, fontLigatures: false,
+      minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: "off", tabSize: 2, insertSpaces: true, autoIndent: "keep",
+      lineNumbersMinChars: 3, lineDecorationsWidth: 10, glyphMargin: false, folding: false, renderWhitespace: "none",
+      guides: { indentation: false, bracketPairs: false, highlightActiveIndentation: false }, bracketPairColorization: { enabled: false }, matchBrackets: "never",
+      unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false, nonBasicASCII: false },
+      quickSuggestions: false, suggestOnTriggerCharacters: false, wordBasedSuggestions: "off", parameterHints: { enabled: false },
+      stickyScroll: { enabled: false }, occurrencesHighlight: "off", selectionHighlight: false, links: false, codeLens: false,
+      scrollbar: { alwaysConsumeMouseWheel: false }, padding: { top: 10, bottom: 10 }
+    });
+    var model = editor.getModel();
+    ed = {
+      getValue: function () { return model.getValue(); },
+      setValue: function (v) { model.setValue(v); },
+      replaceAll: function (v) { editor.pushUndoStop(); editor.executeEdits("roles", [{ range: model.getFullModelRange(), text: v }]); editor.pushUndoStop(); },
+      insert: function (g) { editor.trigger("palette", "type", { text: g }); editor.focus(); },
+      retokenize: provide,
+      lineHeight: function (px) { editor.updateOptions({ lineHeight: px }); },
+      focus: function () { editor.focus(); }
+    };
+    model.onDidChangeContent(save);
+    editor.onDidFocusEditorText(function () { arm(null); });
+    // Enter continues the rails of the current line.
+    editor.addCommand(monaco.KeyCode.Enter, function () {
+      var pos = editor.getPosition(), line = model.getLineContent(pos.lineNumber), prefix = "", a = 0;
+      var map = [[R.junction, R.rail + " " + R.railPath + " "], [R.junctionLoop, R.railLoop + " " + R.railPath + " "], [R.branch, R.rail + " "], [R.branchLast, "  "], [R.rail, R.rail], [R.railLoop, R.railLoop], [R.railPath, R.railPath], [" ", " "]];
+      outer: while (a < line.length) { for (var k = 0; k < map.length; k++) if (map[k][0] && line.substr(a, map[k][0].length) === map[k][0]) { prefix += map[k][1]; a += map[k][0].length; if (k < 2) break outer; continue outer; } break; }
+      editor.trigger("keyboard", "type", { text: "\n" + (pos.column - 1 < a ? "" : prefix.replace(/\s+$/, " ")) });
+    });
+    if (document.fonts && document.fonts.load) Promise.all([document.fonts.load('13.74px "VN Mono"'), document.fonts.load('700 13.74px "VN Mono"')]).then(function () { monaco.editor.remeasureFonts(); });
+    var applyTheme = function () { monaco.editor.setTheme(dark() ? "vn-dark" : "vn-light"); };
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+    new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    status("Full editor loaded. Find and replace: Cmd or Ctrl + F. Column selection: Shift + Alt + drag.");
+  }, function () { status("Simple editor: the full editor could not load here."); });
+}
+try { startMonaco(); } catch (e) { status("Simple editor: the full editor could not start here."); }
+})();
+</script>

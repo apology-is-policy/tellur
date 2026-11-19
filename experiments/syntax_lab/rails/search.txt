@@ -1,0 +1,19 @@
+┄ The first element the test accepts, as a loan into the source.
+pub control first<item>(source: &[item], accepts: &item → bool)
+    ■ found {value: &item ∈ source} │ missing
+│ ∀ value ∈ source
+│ ║ ? accepts(value) → ■ found {value}
+│ ■ missing
+╵
+
+┄ A test with its own failure. The first failure stops the scan and is returned.
+pub control try_first<item, error>(
+    source: &[item], test: (&item) ■ matched │ skipped │ failed {reason: error}
+) ■ found {value: &item ∈ source} │ missing │ failed {reason: error}
+│ ∀ value ∈ source
+│ ║ Δ test(value)
+│ ║ ├ matched → ■ found {value}
+│ ║ ├ skipped
+│ ║ └ failed  → ■
+│ ■ missing
+╵

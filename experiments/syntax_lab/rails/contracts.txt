@@ -1,0 +1,16 @@
+┄ Each outcome states when it occurs, so a caller can prove one away.
+extern control checked_sub(a: u32, b: u32)
+    ■ difference {value: u32} ⇐ a ≥ b
+    ■ underflow ⇐ a < b
+
+┄ A connection is must-complete. Its protocol gives the permitted order of use.
+extern resource http_connection
+    protocol http_receive? ;
+              (http_send │ http_reply_failure)? ;
+              (http_connection_finish │ http_connection_close)
+    on fault release
+
+extern async control http_send(
+    connection: &http_connection, status: u32, body: string, media: string, allow: string
+) ■ sent │ failed {message: string}
+    uses net.write

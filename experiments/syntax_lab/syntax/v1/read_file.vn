@@ -1,0 +1,43 @@
+// Paths are relative to the VS Code workspace. This fixture is read-only.
+control main() exits process_result {
+    [entry]:
+        delta show_file("playground/message.txt") {
+            done => done,
+            missing => missing,
+            failed => failed,
+        }
+    [done]: exit done;
+    [missing]: emit("The file does not exist."); exit missing;
+    [failed]: emit("Reading or closing the file failed."); exit failed;
+}
+
+control show_file(string filename) exits auto {
+    [entry]:
+        delta open(filename) {
+            opened { handle file } => open,
+            not_found => missing,
+            denied => blocked,
+        }
+    [open]:
+        delta read(borrow file) {
+            data { bytes contents } => read,
+            failed { read_error problem } => read_bad,
+        }
+    // Always attempt close, even if reading failed.
+    [open]:
+        delta close(file) {
+            closed => closed,
+            failed { close_error close_problem } => close_bad,
+        }
+    [read]:
+        delta decode_utf8(contents) {
+            text { string text } => decoded,
+            invalid => bad_encoding,
+        }
+    [decoded & closed]: emit(text); exit done;
+    [read_bad | close_bad | bad_encoding | blocked]: exit failed;
+    [missing]: exit missing;
+}
+
+// Process status policy for this runnable example.
+outcome process_result { @exit 0 done, @exit 3 missing, @exit 1 failed }

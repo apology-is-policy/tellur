@@ -1,0 +1,86 @@
+import "../../library/json_file.vn" as json_file;
+
+// Domain policy. The host exposes file/JSON/text mechanisms through the manifest.
+pub outcome loaded_settings {
+    loaded { map<string, string> values },
+    invalid_file { string message },
+    storage_failed { string message },
+    too_large
+}
+pub outcome update_result {
+    saved,
+    invalid_key,
+    invalid_file { string message },
+    storage_failed { string message },
+    commit_uncertain { string message },
+    too_large
+}
+pub control load(ref string path) exits loaded_settings {
+    exit delta json_file.load(path, 1048576) {
+        loaded { map<string, string> values } => loaded { values },
+        missing => loaded { map {} },
+        invalid { string message } => invalid_file { message },
+        read_failed { string message } => storage_failed { message },
+        too_large => too_large {}
+    };
+}
+
+control validate_key(ref string key) exits valid, invalid {
+    delta text_trim(key) {
+        trimmed { string normalized } => trimmed
+    }
+    [trimmed]: exit delta (deref key == normalized && normalized != "") {
+        true => valid {},
+        false => invalid {}
+    };
+}
+pub control set(ref string path, string key, string value) exits update_result {
+    delta validate_key(borrow key) {
+        valid => valid,
+        invalid => exit invalid_key
+    }
+    [valid]:
+        delta load(path) {
+            loaded { map<string, string> loaded_values } => loaded,
+            invalid_file { string message } => exit invalid_file { message },
+            storage_failed { string message } => exit storage_failed { message },
+            too_large => exit too_large
+        }
+    [loaded]:
+        mutable map<string, string> values = loaded_values;
+        delta map_insert(borrow mutable values, key, value) {
+            inserted => changed,
+            replaced { string previous } => replaced
+        }
+    [changed | replaced]: exit delta json_file.replace(path, borrow values, 1048576) {
+        saved => saved {},
+        encode_failed { string message } => storage_failed { message },
+        write_failed { string message } => storage_failed { message },
+        commit_uncertain { string message } => commit_uncertain { message },
+        too_large => too_large {}
+    };
+}
+
+pub control get(ref string path, ref string key)
+    exits found { string value },
+    missing,
+    invalid_key,
+    invalid_file { string message },
+    storage_failed { string message },
+    too_large
+{
+    delta validate_key(key) {
+        valid => valid,
+        invalid => exit invalid_key
+    }
+    [valid]:
+        exit delta load(path) {
+            loaded { map<string, string> values } => [loaded]: delta map_get(borrow values, key) {
+                found { ref string value } => found { clone(value) },
+                missing => missing {}
+            },
+            invalid_file { string message } => invalid_file { message },
+            storage_failed { string message } => storage_failed { message },
+            too_large => too_large {}
+        };
+}

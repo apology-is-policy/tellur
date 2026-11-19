@@ -1,0 +1,59 @@
+import "http.vn" as http
+import "../../library/loopback_http.vn" as transport
+
+pub outcome service_result
+├ completed ↦ 0
+├ idle ↦ 0
+├ stopped ↦ 0
+├ failed {message: string} ↦ 1
+└ invalid_configuration ↦ 2
+
+pub control start(path: &string, port: u32, max_connections: u32, idle_ms: u32) ■ service_result
+│ ? port > 65535
+│   ∨ max_connections = 0 ∨ max_connections > 1000000
+│   ∨ idle_ms = 0 ∨ idle_ms > 60000 →
+│ ┆ ■ invalid_configuration
+│ Δ transport.listen(port)
+│ ├ listening {listener, authority}
+│ └ failed → ■
+│ emit("http://{authority}")
+│ result := capture run serve(path, listener, authority, max_connections, idle_ms)
+│ transport.release(▾listener)
+│ ■ result
+╵
+
+┄ One global budget and idle timeout. Accepted connections run as members of one
+┄ task set, at most 64 at a time. Admission ends on the budget, an idle accept,
+┄ an accept failure or cancellation; then the set drains. With
+┄ `launch.serve.signals = "cancel"`, SIGINT or SIGTERM cancels the entry: the
+┄ accept stops, waiting members reply 503 and finish, and the service stops.
+async control serve(
+    path: &string, listener: &http_listener, authority: &string, limit: u32, idle_ms: u32
+) ■ completed │ idle │ stopped │ failed {message: string}
+│ ~active: tasks<serve_connection> := tasks()
+│
+│ ↻ admit(remaining: u32 := limit)
+│ ║ ? active.count() ≥ 64 →
+│ ║ ┆ Δ await next active: handled │ empty → ⊥
+│ ║ ┆ ↑ admit(remaining)
+│ ║ ? remaining = 0 → □ exhausted
+│ ║
+│ ║ Δ await transport.accept_cancellable(listener, idle_ms)
+│ ║ ├ accepted {connection}
+│ ║ ├ idle             → □ quiet
+│ ║ ├ cancelled        → □ stopped
+│ ║ └ failed {message} → □ broken {message}
+│ ║ spawn serve_connection(▾connection, clone(path), clone(authority)) into active
+│ ║ ↑ admit(remaining - 1)
+│
+╞═ stopped
+│ ┆ cancel active
+│
+│ ↻ drain
+│ ║ Δ await next active: handled → ↑ drain │ empty → □
+│
+╞═ exhausted: ■ completed
+╞═ quiet:     ■ idle
+╞═ stopped:   ■ stopped
+╞═ broken:    ■ failed {message}
+╵

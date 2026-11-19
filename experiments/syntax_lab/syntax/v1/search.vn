@@ -1,0 +1,60 @@
+// A predicate implementation selects the element type and its closed outcomes.
+pub trait predicate {
+    type item;
+    control test(ref self rule, ref item value) exits matched,
+    skipped;
+}
+
+pub trait fallible_predicate {
+    type item;
+    type error;
+    control test(ref self rule, ref item value) exits matched,
+    skipped,
+    failed { error reason };
+}
+
+pub control first<rule_type: predicate>(
+    ref vector<predicate<rule_type>.item> source,
+    ref rule_type rule
+) exits found { ref predicate<rule_type>.item value from source }, missing {
+    loop scan(u32 index = 0) {
+        delta vector_get(source, index) {
+            found { auto value } => inspect,
+            out_of_bounds => exit missing
+        }
+        [inspect]: delta predicate<rule_type>.test(rule, value) {
+            matched => exit found { value },
+            skipped => advance
+        }
+        [advance]: delta checked_add(index, 1) {
+            sum { u32 next } => advanced,
+            overflow => exit missing
+        }
+        [advanced]: again scan(next);
+    }
+}
+
+pub control try_first<rule_type: fallible_predicate>(
+    ref vector<fallible_predicate<rule_type>.item> source,
+    ref rule_type rule
+) exits found { ref fallible_predicate<rule_type>.item value from source },
+    missing,
+    failed { fallible_predicate<rule_type>.error reason }
+{
+    loop scan(u32 index = 0) {
+        delta vector_get(source, index) {
+            found { auto value } => inspect,
+            out_of_bounds => exit missing
+        }
+        [inspect]: delta fallible_predicate<rule_type>.test(rule, value) {
+            matched => exit found { value },
+            skipped => advance,
+            failed { auto reason } => exit failed { reason }
+        }
+        [advance]: delta checked_add(index, 1) {
+            sum { u32 next } => advanced,
+            overflow => exit missing
+        }
+        [advanced]: again scan(next);
+    }
+}

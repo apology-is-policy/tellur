@@ -152,6 +152,39 @@ the current release evidence and needs no version bump or reinstall.
 7. Update the roadmap and handoff records so the next session, in any agent, can
    resume from them.
 
+## Context economy and handoff
+
+Adapted from the Thylacine operational contract.
+
+- **The compaction line is 400k tokens** (`.claude/ctx-thresholds`, read by the
+  context hook). Below it, run through checkpoints without stopping. At the
+  line, carry the current step to a clean boundary and hand off.
+- **Checkpoint contract.** At every resting point: account for every shell,
+  monitor and background task, or say nothing is running; keep the handoff
+  already written, not offered, so the author can compact at any moment; and say
+  what is next in one `Next` line and one `Ahead` line.
+- **Handoff.** At every session boundary update the state and the pickup pointer
+  (in `CLAUDE.local.md`, plus the shared records it names), including a
+  **Working set**: the files to load first, in order, one `- path` each
+  (`path:A-B` for a window). Commit the updates. Do not land partial work just
+  to close a chunk.
+- **Resume note.** Make the last message before a compaction the resume note:
+  what is in flight, what must not be redone, and the working set, in at most
+  8,000 characters. It is re-injected after the compaction.
+- **After a compaction** load the working set first, and decide what else is
+  needed only then. Do not re-survey the project.
+- **Every call re-reads the whole context.** Batch independent calls and
+  bookkeeping writes; never poll a background job; cap output (count before
+  dumping, read windows not whole files); load deferred tools once.
+- **Compact before researching the next chunk**, not after, when a chunk closes
+  within about 100k of the line. Do not leave a session idle at high context.
+- **Stopping versus finishing.** A full summary is for stopping: the compaction
+  line, a design fork, a real block, or the author asking. At a checkpoint that
+  is run through, give three lines (what landed, what is running, what is next)
+  and continue.
+- Self-compaction from inside the session is not set up for this repository.
+  At the line, write the resume note and recommend `/compact` to the author.
+
 ## Code map
 
 | Location | Responsibility |

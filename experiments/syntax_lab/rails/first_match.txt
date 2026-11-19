@@ -1,0 +1,26 @@
+import "../../library/search.vn" as search
+
+control usable(value: &u32) ■ matched │ skipped │ failed {reason: string}
+│ ? value = 0 → ■ failed {"sensor offline"}
+│ ? value ≥ 25 → ■ matched
+│ ■ skipped
+╵
+
+control main() ■ done │ unexpected
+│ readings: [u32] := [3, 17, 29, 0]
+│ limit: u32 := 10
+│
+│ Δ search.first(readings, value ↦ value ≥ limit)
+│ ├ found {value}
+│ └ missing → ■ unexpected
+│ emit("{value}")
+│
+│ Δ search.try_first(readings, usable)
+│ ├ found {reading}
+│ ├ missing         → ■ unexpected
+│ └ failed {reason} →
+│   ┆ emit(reason)
+│   ┆ ■ unexpected
+│ emit("{reading}")
+│ ■ done
+╵

@@ -1,0 +1,25 @@
+// The first element the test accepts, as a loan into the source.
+pub control first<item>(ref vector<item> source, function(ref item) -> bool accepts)
+    exits found { ref item value from source }, missing
+{
+    for value in source {
+        if accepts(value) { exit found { value }; }
+    }
+    exit missing;
+}
+
+// A test with its own failure. The first failure stops the scan and is returned.
+pub control try_first<item, error>(
+    ref vector<item> source,
+    control(ref item) exits matched, skipped, failed { error reason } test
+) exits found { ref item value from source }, missing, failed { error reason }
+{
+    for value in source {
+        delta test(value) {
+            matched => exit found { value },
+            skipped,
+            failed => exit,
+        }
+    }
+    exit missing;
+}

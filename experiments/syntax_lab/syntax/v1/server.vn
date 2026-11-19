@@ -1,0 +1,125 @@
+import "http.vn" as http;
+import "../../library/loopback_http.vn" as transport;
+
+pub outcome service_result {
+    @exit 0 completed,
+    @exit 0 idle,
+    @exit 0 stopped,
+    @exit 1 failed { string message },
+    @exit 2 invalid_configuration
+}
+
+pub control start(
+    ref string path,
+    u32 port,
+    u32 max_connections,
+    u32 idle_ms
+) exits service_result {
+    delta (port <= 65535
+        && max_connections > 0
+        && max_connections <= 1000000
+        && idle_ms > 0
+        && idle_ms <= 60000
+    ) {
+        true => valid,
+        false => invalid
+    }
+    [invalid]: exit invalid_configuration;
+    [valid]: delta transport.listen(port) {
+        listening { http_listener listener, string authority } => listening,
+        failed { string listen_message } => unavailable
+    }
+    [unavailable]: exit failed { listen_message };
+    [listening]:
+        emit(concat("http://", clone(borrow authority)));
+        auto result = capture run serve(
+            path,
+            borrow listener,
+            borrow authority,
+            max_connections,
+            idle_ms
+        );
+        transport.release(listener);
+        exit delta result {
+            completed => completed {},
+            idle => idle {},
+            stopped => stopped {},
+            failed { string message } => failed { message }
+        };
+}
+
+// Why the accept loop stopped admitting connections.
+variant admission {
+    open,
+    exhausted,
+    quiet,
+    stopped,
+    broken { string message }
+}
+
+// One global budget and idle timeout. Accepted connections run as members of one
+// task set, at most `width` at a time; the loop stops admitting after the budget,
+// an idle accept, an accept failure or cancellation, then drains the set. With
+// `launch.serve.signals = "cancel"`, SIGINT or SIGTERM cancels the entry: the
+// accept stops, waiting members reply 503 and finish, and the service stops.
+async control serve(
+    ref string path,
+    ref http_listener listener,
+    ref string authority,
+    u32 limit,
+    u32 idle_ms
+) exits completed, idle, stopped, failed { string message } {
+    loop serve_next(
+        mutable u32 remaining = limit,
+        admission state = admission.open {},
+        tasks<serve_connection> active = tasks()
+    ) {
+        delta borrow state {
+            open => admitting,
+            exhausted => exhausted,
+            quiet => quiet,
+            stopped => stopped,
+            broken { ref string reason } => broken
+        }
+        [admitting]: delta (count(borrow active) < 64) {
+            true => room,
+            false => full
+        }
+        [broken]: drop(reason);
+        [exhausted | quiet | stopped | broken | full]:
+            delta await next active {
+                handled => reaped,
+                empty => drained
+            }
+        [reaped]: again serve_next(remaining, state, active);
+        [drained]:
+            exit delta state {
+                open => completed {},
+                exhausted => completed {},
+                quiet => idle {},
+                stopped => stopped {},
+                broken { string message } => failed { message }
+            };
+        [room]:
+            delta checked_sub(remaining, 1) {
+                difference { u32 next } => available,
+                underflow => finished
+            }
+        [finished]: again serve_next(remaining, admission.exhausted {}, active);
+        [available]:
+            delta await transport.accept_cancellable(listener, idle_ms) {
+                accepted { http_connection connection } => accepted,
+                idle => idle,
+                failed { string accept_message } => unavailable,
+                cancelled => cancelled
+            }
+        [idle]: again serve_next(remaining, admission.quiet {}, active);
+        [cancelled]:
+            cancel active;
+            again serve_next(remaining, admission.stopped {}, active);
+        [unavailable]: again serve_next(remaining, admission.broken { accept_message }, active);
+        [accepted]:
+            spawn serve_connection(move connection, clone(path), clone(authority)) into active;
+            again serve_next(next, state, active);
+    }
+}

@@ -1,0 +1,204 @@
+<title>Villanelle Glyph Studies</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/*FONTS*/
+/* Layout: a short prose head, then one section per program holding a grid of
+   panels, one per rendering. A sticky bar jumps between programs and hides or
+   shows renderings. The vocabulary table and findings close the page. */
+:root {
+  --bg: #f5f6f9; --surface: #ffffff; --surface-2: #eceff4;
+  --ink: #1b2130; --muted: #586174; --line: #dadfe7;
+  --accent: #b0246a;
+  --kw: #5a3fd0; --out: #08756d; --path: #b0246a; --proof: #a45700; --own: #1a6a8a;
+  --type: #2360a6; --str: #87560f; --com: #6c7587; --call: #35527c; --arrow: #6f788c; --rail: #838ca0;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "VN Mono", Menlo, "DejaVu Sans Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141b; --surface: #181c26; --surface-2: #212736;
+    --ink: #e3e7f0; --muted: #9aa3b6; --line: #2a3142;
+    --accent: #ff8cc0;
+    --kw: #b6a4ff; --out: #5fd3c7; --path: #ff8cc0; --proof: #ffb65c; --own: #74cbe6;
+    --type: #7fb2f5; --str: #e3b574; --com: #8089a0; --call: #a9c1e6; --arrow: #939cb3; --rail: #6d7891;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141b; --surface: #181c26; --surface-2: #212736;
+  --ink: #e3e7f0; --muted: #9aa3b6; --line: #2a3142;
+  --accent: #ff8cc0;
+  --kw: #b6a4ff; --out: #5fd3c7; --path: #ff8cc0; --proof: #ffb65c; --own: #74cbe6;
+  --type: #7fb2f5; --str: #e3b574; --com: #8089a0; --call: #a9c1e6; --arrow: #939cb3; --rail: #6d7891;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--sans); }
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; z-index: 10;
+  height: env(safe-area-inset-top, 0px); background: var(--bg);
+}
+.wrap {
+  max-width: 1720px; margin: 0 auto;
+  padding-left: max(clamp(16px, 3vw, 40px), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(16px, 3vw, 40px), env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+  display: flex; flex-direction: column; gap: 44px;
+}
+h1, h2, h3, p, ul, dl, dd, figure { margin: 0; }
+h1 { font-size: clamp(1.7rem, 3.2vw, 2.3rem); line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 1.3rem; line-height: 1.25; font-weight: 600; text-wrap: balance; }
+h3 { font-size: 0.74rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.intro { display: flex; flex-direction: column; gap: 16px; }
+.eyebrow { font: 500 0.8rem/1.4 var(--sans); color: var(--accent); letter-spacing: 0.02em; }
+.lede { max-width: 70ch; font-size: 1.05rem; }
+.styles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 18px 28px; margin-top: 10px; }
+.style { min-width: 0; padding-left: 14px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.style dt { font-weight: 600; }
+.style dd { color: var(--muted); font-size: 0.94rem; }
+
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  padding-block: 10px; display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between;
+}
+.jump { min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.jump::-webkit-scrollbar { display: none; }
+.jump a { flex: none; text-decoration: none; font-size: 0.86rem; color: var(--muted); padding: 5px 10px; border-radius: 6px; white-space: nowrap; }
+.jump a:hover { color: var(--ink); background: var(--surface-2); }
+.switch { flex: none; display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--surface); }
+.switch button { font: 500 0.8rem/1 var(--sans); color: var(--muted); background: transparent; border: 0; padding: 8px 11px; cursor: pointer; }
+.switch button + button { border-left: 1px solid var(--line); }
+.switch button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+main { display: flex; flex-direction: column; gap: 60px; }
+section { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 76px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; align-items: start; }
+.pane { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.pane figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+.tag { font-size: 0.74rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.pane.words .tag { color: var(--muted); }
+.meta { font: 400 0.76rem/1.4 var(--sans); color: var(--muted); font-variant-numeric: tabular-nums; }
+.file { font: 400 0.74rem/1.4 var(--sans); color: var(--muted); padding: 10px 14px 0; overflow-wrap: anywhere; }
+.code + .file { border-top: 1px solid var(--line); margin-top: 4px; }
+.code {
+  --lh: 20px; margin: 0; padding: 10px 14px 14px; overflow-x: auto;
+  font: 400 12.885px/var(--lh) var(--mono); font-variant-ligatures: none; tab-size: 4;
+}
+.code code { font: inherit; background: none; padding: 0; border-radius: 0; }
+/* Box characters only join when the line box equals the font's own height (1.164 em). */
+.pane.rails .code { --lh: 15px; }
+.l { display: block; white-space: pre; min-height: var(--lh); }
+.wrap[data-hide~="words"] .pane.words, .wrap[data-hide~="notation"] .pane.notation,
+.wrap[data-hide~="flow"] .pane.flow, .wrap[data-hide~="rails"] .pane.rails,
+.wrap[data-hide~="glyph"] .pane.glyph { display: none; }
+
+.t-g { color: var(--kw); font-weight: 700; }
+.t-kw { color: var(--kw); }
+.t-proof { color: var(--proof); font-weight: 700; }
+.t-own { color: var(--own); font-weight: 700; }
+.t-mod, .t-attr { color: var(--own); }
+.t-out, .t-group { color: var(--out); }
+.t-path, .t-label { color: var(--path); font-weight: 700; }
+.t-labelop, .t-spread { color: var(--arrow); }
+.t-arrow { color: var(--arrow); font-weight: 700; }
+.t-type { color: var(--type); }
+.t-str, .t-num, .t-bool { color: var(--str); }
+.t-com { color: var(--com); }
+.t-call { color: var(--call); }
+.t-rail { color: var(--rail); }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 860px; }
+th, td { text-align: left; padding: 7px 14px; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+tr:last-child th, tr:last-child td { border-bottom: 0; }
+thead th { font-size: 0.74rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+tbody th { font-weight: 400; font-size: 0.92rem; color: var(--muted); white-space: nowrap; }
+td { font: 400 13px/1.5 var(--mono); white-space: nowrap; }
+td.same { color: var(--rail); }
+
+.prose { display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
+.prose ul { padding-left: 1.1em; display: flex; flex-direction: column; gap: 8px; }
+.prose li::marker { color: var(--rail); }
+</style>
+
+<div class="wrap">
+  <header class="intro">
+    <p class="eyebrow">Redesign proposal · glyph studies · 19 November 2026</p>
+    <h1>Villanelle in glyphs</h1>
+    <p class="lede">The six programs from the previous page, re-rendered in four glyph styles. A small transpiler reads the word version and prints each style, so every panel below is the same program and the styles are applied uniformly. Nothing here compiles yet.</p>
+    <dl class="styles">
+      <!--STYLES-->
+    </dl>
+  </header>
+
+  <nav class="bar" aria-label="Programs and renderings">
+    <div class="jump"><!--NAV--><a href="#vocabulary">Vocabulary</a><a href="#findings">Findings</a></div>
+    <div class="switch" role="group" aria-label="Renderings shown"><!--TOGGLES--></div>
+  </nav>
+
+  <main>
+  <!--SECTIONS-->
+  </main>
+
+  <section id="vocabulary">
+    <h2>Vocabulary</h2>
+    <p class="prose">Each row is one concept. A dimmed cell repeats the cell to its left. The word in the first column is also what you would type: the formatter stores the glyph.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th scope="col">Concept</th><th scope="col">Words</th><th scope="col">Notation</th><th scope="col">Flow</th><th scope="col">Rails</th><th scope="col">Glyph</th></tr></thead>
+        <tbody>
+        <!--VOCAB-->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="findings">
+    <h2>What rendering them showed</h2>
+    <div class="prose">
+      <ul>
+        <li><strong>Arrows are faint, shapes are strong.</strong> At code size, thin arrows such as ⇥ and ≔ nearly vanish. Squares, circles, diamonds and the logic signs carry well. The first draft used ⇥ for exit and ≔ for binding; both were replaced after the first render.</li>
+        <li><strong>Mathematical angle brackets read as parentheses,</strong> so generics keep <code>&lt; &gt;</code>.</li>
+        <li><strong>Font coverage is the real cost.</strong> Of the fonts on this Mac, DejaVu Sans Mono covers every glyph used here and Menlo lacks only ⊢ and ⊥. SF Mono, Cascadia Code, Monaco and Courier New miss most of the arrows and logic signs. This page embeds a DejaVu subset. A glyph syntax needs a blessed font, as Julia, APL and BQN have.</li>
+        <li><strong>Some characters turn into emoji.</strong> ▶ ↩ ▪ ↔ and others have emoji variants that certain platforms draw in color. None are used here.</li>
+        <li><strong>Stored rails are fragile.</strong> Box characters only join at one exact line height, which is why the Rails panels are set tighter than the rest. They also re-prefix every line when nesting changes. An editor can draw the same rails from plain indentation.</li>
+        <li><strong>Words remain the input.</strong> Every glyph has a word spelling. A person or an agent can type <code>exit</code>; the formatter stores ■.</li>
+      </ul>
+    </div>
+    <h2>What I would pick</h2>
+    <div class="prose">
+      <p>Flow's layout with Notation's restraint: about twenty glyphs for flow, logic, proof and ownership; words for declarations and rare operations; indentation for blocks; and rails drawn by the editor from that indentation, not stored in the file.</p>
+      <p>Glyphs earn their place where the reader recognizes structure by shape and position. Names and rare concepts must be recalled, and for those a word is faster than a symbol seen twice a month.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var wrap = document.querySelector(".wrap");
+  var buttons = Array.prototype.slice.call(document.querySelectorAll(".switch button"));
+  var hidden = [];
+  try { hidden = JSON.parse(localStorage.getItem("vn-glyph-hide") || "[]"); } catch (e) {}
+  if (!Array.isArray(hidden)) hidden = [];
+  function apply() {
+    wrap.setAttribute("data-hide", hidden.join(" "));
+    buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(hidden.indexOf(b.getAttribute("data-style")) < 0)); });
+  }
+  apply();
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var id = b.getAttribute("data-style"), at = hidden.indexOf(id);
+      if (at < 0) { if (hidden.length < buttons.length - 1) hidden.push(id); } else hidden.splice(at, 1);
+      apply();
+      try { localStorage.setItem("vn-glyph-hide", JSON.stringify(hidden)); } catch (e) {}
+    });
+  });
+})();
+</script>
