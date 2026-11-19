@@ -22,8 +22,8 @@ rule of its own. It gives:
   verdict and the clause that decides it;
 - **what is rejected**, and what to write instead (section 9);
 - **the tag semantics** traced on one example (section 10);
-- what the fact logic knows about a lent place (section 11), and the
-  requirement on tasks (section 12).
+- what the fact logic knows about a lent place (section 11), and what a task
+  may borrow (section 12).
 
 Where this text and the core differ, the core governs and the difference is a
 defect here. The verdicts are binding in one sense: every example is a
@@ -35,7 +35,8 @@ something unsaid, and one case that calls for a rule. Section 13 lists them;
 they have been applied to those documents. Two questions for the author are in
 section 14.
 
-Draft 1 covers the synchronous language. Statements of the model carry
+Draft 1 covers the synchronous language and, in section 12, tasks as the
+core's draft 2 defines them. Statements of the model carry
 identifiers of the family **RM**. A verdict is marked **Accepted** or
 **Rejected**.
 
@@ -1035,24 +1036,69 @@ logic, section 3.1).
 
 ## 12. Tasks
 
-Tasks are the subject of the core's draft 2. This section restates the
-requirement it must meet; none of it is a rule yet.
+Tasks have their rules in the core's draft 2 (sections 6.12 and 7.8). For
+borrows they add one statement, [TK3]: a borrow given to a child by
+`spawn … into set` is held by the set, and so is every borrow that comes back
+from `await next`. A set is of kind `must` and is consumed only by the
+alternative `empty` ([TK2]), so the loans last until the set is drained.
 
-- A borrow given to a child by `spawn … into set` is a loan held by `set`. It
-  is live for as long as the set may have members.
-- A task set is a local of kind `must`, and its scope cannot end while it has
-  members. A lender that is declared outside the set's scope therefore
-  outlives every child. A lender that an inner scope owns is written by the
-  end of that scope while the set still holds the loan, which [L3] rejects
-  with no rule of its own.
-- A shared loan may go to many children. An exclusive loan goes to one, and
-  the parent cannot touch the place until the set has been drained.
-- Nothing else about borrows changes: a child is checked as a control whose
-  borrow parameters have origins that last as long as it runs.
+### 12.1 Children that borrow from their parent
+
+```text
+async control shout(text: &string) ■ done
+│ emit(text)
+│ ■ done
+╵
+
+async control chorus(line: &string) ■ done
+│ ~voices: tasks<shout> := tasks()
+│ spawn shout(line) into voices
+│ spawn shout(line) into voices
+│ ↻ drain
+│ ║ Δ await next voices: done → ↑ drain │ empty → □ drained
+│ ■ done
+╵
+```
+
+```text
+1  ⊤ ▷ ~voices : tasks⟨shout⟩ := tasks⟨shout⟩()
+2  ⊤ ▷ spawn shout(line) into voices
+3  ⊤ ▷ spawn shout(line) into voices
+4  ⊤ ▷ drain : ↻ drain()
+           1  ⊤           ▷ next : Δ await next(voices) ▸ done {} │ empty {}
+           2  next.done   ▷ ↑ drain()
+           3  next.empty  ▷ □ drained {}
+         ▸ drained {}
+5  ⊤ ▷ ■ done {}
+```
+
+**Accepted.** Both children hold the shared borrow `line`, through `voices`
+([TK3]). The loop leaves only on `empty`, which consumes the set ([TK2],
+[O6]), so nothing is owed at statement 5 ([O5]). A shared loan may go to many
+children. An exclusive loan goes to one, and the parent cannot touch the place
+until the set is drained: a read of it between the `spawn` and the loop is
+rejected by [L3], because the loop mentions `voices`.
+
+### 12.2 A lender that an inner scope owns
+
+```text
+│ ~voices: tasks<shout> := tasks()
+│ ↻ each(next: usize := 0)
+│ ║ ⊢ next ≤ len(lines)
+│ ║ ? next = len(lines) → □ started
+│ ║ copy: string := clone(lines[next])
+│ ║ spawn shout(copy) into voices
+│ ║ ↑ each(next + 1)
+```
+
+**Rejected** at the `↑`, by [L3]: it ends the scope that owns `copy` while
+`voices`, a name of the enclosing body, holds a loan on it. No rule about
+tasks is involved. `spawn shout(lines[next]) into voices` is accepted, since
+the vector outlives the set.
 
 In the service of the Rails reference programs, `serve` clones `path` and
-`authority` for every connection. Under this requirement it may lend them,
-since both outlive the set `active`.
+`authority` for every connection. Under these rules it may lend them: both
+outlive the set `active`.
 
 ## 13. What this document asked of the core and of the surface
 
@@ -1153,3 +1199,5 @@ if the recommendation were taken.
 | 8.5 | A view that holds an exclusive borrow | Accepted | [C1], [L5] |
 | 9 | One bind on each of two paths | Accepted | [O1], [O2], [W4] |
 | 10 | The tag trace of 5.4 | Stuck at step 6; rejected at statement 5 | [B1], [B2], [L3] |
+| 12.1 | Two children that borrow from their parent | Accepted | [TK2], [TK3], [O6] |
+| 12.2 | A child that borrows what an iteration owns | Rejected | [L3], [TK3] |

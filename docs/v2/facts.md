@@ -325,7 +325,8 @@ apply to (section 6).
   fixed further, so a proof holds on every target whose addresses have between
   32 and 64 bits.
 - **[A3] Measures.** `len` applies to vectors, strings and maps, and
-  `0 ≤ len(t) ≤ usize.max`. Different string literals are different values.
+  `0 ≤ len(t) ≤ usize.max`. `count` applies to task sets, with the same
+  bounds; the core says how the task forms change it ([TK6]). Different string literals are different values.
   What `len` counts in a string is for the text library to say, and the logic
   does not know the length of a literal.
 
@@ -642,15 +643,15 @@ extern async control next⟨t⟩(set : &~tasks⟨t⟩)
       │ empty {}   ⇐ count(old(set)) = 0 }
 
 1  ⊤          ▷ k : ? count(active) ≥ 64
-2  k.true     ▷ n : Δ next(&~active) ▸ handled {} │ empty {}
+2  k.true     ▷ n : Δ await next(active) ▸ handled {} │ empty {}
 3  n.empty    ▷ ⊥
 4  n.handled  ▷ ↑ admit(remaining)
 ```
 
-`count` is the measure of a task set; tasks and their operations are the
-subject of the core's draft 2, and this example uses them only as an operation
-with a contract. `next` is `async`, so it is not pure ([I10]). Lending `&~active` renames it ([I9]): `old(set)` is `active`
-and `set` is the fresh `active′`. The facts are
+`count` is the measure of a task set. The core gives `await next` these facts
+directly ([TK6]); the contract above is one way to read them. An awaited
+operation is never pure ([I10]). The decision renames the set: `old(set)` is
+`active` and `set` is the fresh `active′`. The facts are
 
 ```text
 k.true     ⇒ count(active) ≥ 64
@@ -783,7 +784,7 @@ Applied to `core.md` together with the repairs from its second review:
    that a term without a defined value has a value of its type that depends
    only on its operands.
 5. `len` applies to maps as well as to vectors and strings ([A3]). The measure
-   of a task set belongs to draft 2.
+   of a task set, `count`, came with the core's draft 2 ([TK6]).
 6. The largest `usize` is the constant of [A2].
 7. [E-Host]: a faithful host answers a pure extern control with the same
    alternative and payload on equal arguments ([I10]).

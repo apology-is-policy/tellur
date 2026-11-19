@@ -24,10 +24,10 @@ document gives it three things the reference programs cannot give by example.
 
 It also fixes the input spelling for people who type words (section 9).
 
-Draft 1 covers what the core's draft 1 covers: the synchronous language. Tasks,
-fault boundaries, callable parameters, modules and process entry are listed in
-section 11 with the syntax the reference programs already use for them; their
-rules follow the core's draft 2.
+Draft 1 covers the synchronous language and the task forms of the core's
+draft 2 ([U19]). Fault boundaries, callable parameters, modules and process
+entry are listed in section 11 with the syntax the reference programs already
+use for them.
 
 Clause identifiers here use the families **Y** (layout), **G** (grammar) and
 **U** (elaboration).
@@ -166,8 +166,8 @@ Decl      ::= import "path" as name
             | [pub] view struct name [Generics] { Field,* }
             | [pub] function name [Generics] ( Param,* ) [⊢ Formula] : Type := Expr
             | extern resource name [on fault release]
-            | extern control name ( Param,* ) Sig
-            | [pub] control name [Generics] ( Param,* ) Sig {Body}
+            | extern [async] control name ( Param,* ) Sig
+            | [pub] [async] control name [Generics] ( Param,* ) Sig {Body}
 Sig       ::= [⊢ Formula] ■ Contract [faults] [uses QName,*]
 Contract  ::= auto | name | Entry (│ Entry)*
 Entry     ::= name [{ Field,* }] [⇐ Formula] | …name
@@ -178,7 +178,7 @@ Param     ::= name : Type
 Generics  ::= < (name [: QName]),* >
 QName     ::= name (. name)*
 Type      ::= bool | uN | iN | usize | string | name [< Type,* >] | name . name
-            | [ Type ] | Type ⇀ Type | & Type | &~ Type
+            | [ Type ] | Type ⇀ Type | & Type | &~ Type | tasks < QName >
 ```
 
 - **[G1]** A contract with conditions may put each entry on a line of its own,
@@ -206,14 +206,16 @@ Mask     ::= Path | ¬ Path | Mask ∧ Mask | Mask ∨ Mask | ( Mask )
 Path     ::= name | name . name
 
 Stmt     ::= [~] name [: Type] := Arg                       bind
-           | [~] name := capture Call                       capture a completed outcome
+           | [~] name := capture [await | run] Call         capture a completed outcome
            | name { name,* } := Expr                        take a struct apart
            | Place ← Expr                                   assign
            | ⊢ Formula                                      obligation
            | ? Expr → (Simple | {Stmt*})                    test
            | [name :] Δ Operand Arms                        decision
            | ■ Δ Operand Arms                               exit by adapting a decision
-           | forward Call                                   exit with the callee's outcome
+           | forward [await | run] Call                     exit with the callee's outcome
+           | spawn Call into name                           start a member of a task set
+           | cancel name                                    ask the members of a set to stop
            | Call                                           call with one outcome
            | ↻ name [( LoopParam,* )] {[⊢ Formula] Stmt*}   loop
            | ∀ name ∈ Place {Stmt*}                         for each element
@@ -224,7 +226,7 @@ Simple   ::= a statement with no block and no vertical arms
 LoopParam ::= [~] name : Type := Arg
 Out      ::= name | name : Arg
 
-Operand  ::= Call | [▾ | ~] Place
+Operand  ::= [await | run] Call | await next name | [▾ | ~] Place
 Call     ::= QName ( Arg,* ) | Place . name ( Arg,* )
 Arg      ::= Expr | ~ Place | ▾ Place
 Arms     ::= : Arm (│ Arm)*   |   one line for each, marked ├ and └
@@ -238,11 +240,13 @@ Target   ::= name | Terminator | ■ | {Stmt*}
   applies to a single path and not to a parenthesis.
 - **[G6]** A `⊢` line that is the first statement of a loop body is the loop's
   invariant. Anywhere else it is an obligation at that point.
-- **[G7]** `fault` and `forward` are words. Everything else in a statement has
-  a glyph.
+- **[G7]** `fault` and `forward` are words, and so are the task words of
+  [G7b]. Everything else in a statement has a glyph.
 - **[G7a]** `Arg` stands wherever a value is kept. The marked forms `~ place`
   and `▾ place` are accepted as [U11] says for the type of the slot, and the
   fields of a view constructor take `Arg` as well.
+- **[G7b]** `async`, `await`, `next`, `run`, `spawn`, `into`, `cancel` and
+  `capture` are words.
 
 ### 4.3 Expressions
 
@@ -400,6 +404,22 @@ block around it, because `d.a` implies that `d` ran ([K4]).
   of `a` in the contract. Conditions `⇐ φ` of the caller's contract are proof
   obligations at each exit the elaboration produces ([P4]), including those of
   an adapter and of `forward`.
+
+- **[U19] Tasks.** The task forms are the core's own (core, sections 6.12 and
+  7.8), with arguments passed as [U11] says:
+
+  | Surface | Core |
+  | --- | --- |
+  | `Δ await f(ā) arms` | `d : Δ await f(ā′) ▸ …`; the site is named after `f` |
+  | `Δ await next x arms` | `d : Δ await next(x) ▸ …`, with the alternatives of the producer and `empty`; the site is named `next` |
+  | `Δ run f(ā) arms` | `d : Δ run f(ā′) ▸ …` |
+  | `capture`, `forward` and `■ Δ` on `await f(ā)` or `run f(ā)` | The same forms on that operation |
+  | `spawn f(ā) into x`, `cancel x` | The same commands |
+  | `~x: tasks<f> := tasks()` | `~x : tasks⟨f⟩ := tasks⟨f⟩()`; the producer comes from the written type |
+  | `x.count()` | `count(x)` |
+
+  [U7] applies to `await next`: `empty` is named like any other alternative,
+  and so is `cancelled` on an operation that lists it.
 
 The rule [U14] is what keeps `forward` from absorbing a new alternative
 silently. A new alternative in a callee's own list has no entry in the caller
@@ -561,8 +581,7 @@ their rules come with the core's draft 2 or with phase 5.
 
 | Form | Example | Comes with |
 | --- | --- | --- |
-| Tasks | `async control`, `Δ await f(…)`, `spawn f(…) into set`, `cancel set`, `capture run f(…)` | Core draft 2 |
-| Fault boundaries | `fault boundary` and its contingency, as in v1 | Core draft 2, with a Rails drawing |
+| Fault boundaries | `fault boundary` and its contingency, as in v1 | Draft 2 of this document, with a Rails drawing |
 | Callable parameters and function values | `accepts: &item → bool`, `value ↦ value ≥ limit`, `test: (&item) ■ matched │ skipped` | Phase 5 |
 | Resource protocols | `protocol a? ; (b │ c)` | Phase 6 |
 | Modules and visibility | `import "…" as name`, `pub` | Draft 2 of this document |
