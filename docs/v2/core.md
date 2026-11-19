@@ -4,13 +4,18 @@ Status: **draft 1**, 19 November 2026. Phase 1, deliverable 1 of the
 [redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
 normative when it is. Nothing here is implemented.
 
-An independent review of the first version of this draft found seven programs
-that its checking rules accepted and its semantics left stuck, most of them in
-the loan rules. The rules below include the repairs. The repaired text has not
-been reviewed again. The author has answered the five questions the draft
-raised (section 11).
+Two independent reviews have been folded in. The first found seven programs
+that the checking rules accepted and the semantics left stuck, most of them in
+the loan rules. The second, of the repaired rules, found twelve further
+problems, seven of them confirmed: accepted programs that get stuck or lose a
+resource, a grammar that could not write the borrows the rules speak of, and
+an ambiguity in what a borrow name stands for. The rules below include both
+sets of repairs; choices 11 and 13 to 18 of section 11 come from the second.
+The latest repairs have not been reviewed again. The author has answered the
+five questions the draft raised (section 11).
 
-[Index of the v2 design](README.md) · [Plan](../redesign-plan.md) ·
+[Index of the v2 design](README.md) · [Fact logic](facts.md) ·
+[Surface](surface.md) · [Plan](../redesign-plan.md) ·
 [Rails reference programs](../../experiments/syntax_lab/rails/)
 
 ## 1. Purpose and scope
@@ -42,8 +47,9 @@ and is not compiled.
 Draft 1 specifies the synchronous language completely: scalars, decisions, loops
 and calls (slice 1), data, ownership, resources and faults (slice 2), borrows and
 views (slice 3). Tasks (slice 4) are stated as requirements in section 10 and get
-their rules in draft 2. The theory behind `⊨`, the certificate format, the Rails
-grammar and the elaboration are the subjects of the companion documents.
+their rules in draft 2. The theory behind `⊨` and the certificates are the
+subject of the [fact logic](facts.md); the Rails grammar and the elaboration
+into this core are the subject of the [surface](surface.md) document.
 
 ## 2. The core in one example
 
@@ -124,7 +130,7 @@ counterexample. Lengths and indices have the type `usize` (section 11, Q3).
 Metavariables: `x`, `y` variables; `d` decision sites; `a`, `b` alternatives; `f`
 controls; `fn` functions; `ℓ` loops; `S`, `V`, `W`, `R`, `O` declared type names;
 `α` type parameters; `ε` effect labels; `φ` logical formulas (section 7.2); `n`
-integer literals. An overbar is a sequence.
+integer literals; `o` operands. An overbar is a sequence.
 
 ```text
 Program       P ::= D̄
@@ -148,23 +154,23 @@ Type          τ ::= bool | uN | iN | usize | string
 Body          B ::= s₁ … sₙ
 Statement     s ::= g ▷ c
 Selector      g ::= ⊤ | d.a | g ∧ g | g ∨ g | ¬g
-Command       c ::= [~]x [: τ] := e                     bind
+Command       c ::= [~]x [: τ] := o                     bind
                   | S {x̄} := e                           take a struct apart
-                  | [~]x := capture ω(ā)                 capture a completed outcome
+                  | [~]x := capture ω(ō)                 capture a completed outcome
                   | p ← e                                assign
                   | ⊢ φ                                  obligation
                   | d : ? e                              test
-                  | d : Δ ω(ā) ▸ a₁ {x̄₁} │ … │ aₙ {x̄ₙ}    decision
-                  | d : ↻ ℓ(x̄ : τ̄ := ē) [⊢ φ] {B} ▸ a₁ {x̄₁} │ … │ aₙ {x̄ₙ}    loop
-                  | ↑ ℓ(ē)                               again        (terminator)
-                  | □ a {ē}                              leave        (terminator)
-                  | ■ a {ē}                              exit         (terminator)
+                  | d : Δ ω(ō) ▸ a₁ {x̄₁} │ … │ aₙ {x̄ₙ}    decision
+                  | d : ↻ ℓ(x̄ : τ̄ := ō) [⊢ φ] {B} ▸ a₁ {x̄₁} │ … │ aₙ {x̄ₙ}    loop
+                  | ↑ ℓ(ō)                               again        (terminator)
+                  | □ a {ō}                              leave        (terminator)
+                  | ■ a {ō}                              exit         (terminator)
                   | fault e                              fault        (terminator)
                   | ⊥                                    impossible   (terminator)
 Operation     ω ::= f⟨τ̄⟩ | α.m | op | outcome | V
-Arguments     ā ::= a sequence, each one of  e | &p | &~p
+Operand       o ::= e | &p | &~p
 Expression    e ::= n | true | false | "…" | x | e.x | S {ē} | V.c {ē}
-                  | fn⟨τ̄⟩(ē) | e ⊕ e | ⊖ e | len(p) | p[e] | clone(p) | W {ā}
+                  | fn⟨τ̄⟩(ē) | e ⊕ e | ⊖ e | len(p) | p[e] | clone(p) | W {ō}
 Place         p ::= x | p.x | p[e]
 ```
 
@@ -172,7 +178,10 @@ Place         p ::= x | p.x | p[e]
 several outcomes or an effect. `outcome` decides a captured outcome value and `V`
 decides which constructor a variant has, given the variant or a borrow of it.
 `⊕` ranges over arithmetic, comparison and Boolean operators. `p[e]` indexes a
-vector; a map is reached only through operations.
+vector; a map is reached only through operations. `len(p)` applies to vectors,
+strings and maps. An **operand** stands where a value is kept: it is an
+expression, or a borrow `&p` or `&~p` of a place. Borrows are written nowhere
+else.
 
 Faults also arise from `fault boundary` and its contingency, which are carried
 over from v1 and described in section 6.9.
@@ -190,24 +199,35 @@ Well-formedness:
   body. Nested blocks of the surface do not open scopes. A loop body sees the
   names of the bodies around it. A name is never bound in two nested bodies, and
   all binders of one name in one body give it the same type and mutability.
+  The parameters of a control are not mutable: a parameter is never assigned
+  or lent exclusively, though what is behind an `&~` parameter is.
 - **[W5]** Expressions have no effect, cannot fault and always terminate.
   Functions are not recursive. Everything with an effect or several outcomes is
   an operation, and occurs only in a decision or a capture.
+- **[W5a]** A function reads its arguments and keeps nothing. Its parameters
+  have types of kind `copy`, or shared borrow types `&τ`. The argument for a
+  borrow parameter is a place, which the function reads where it is; no borrow
+  value is made. Its result is not a borrow or a view.
 - **[W6]** Borrow types `&τ`, `&~τ` and view types occur only as the types of
   parameters, locals, loop parameters and payload fields, and as fields of view
   structs. They never occur inside `S`, `V`, `[τ]`, `⇀` or `outcome⟨K⟩`, never
-  as a type argument, and never as what a borrow refers to.
+  as a type argument, and never as what a borrow refers to. The fields of a
+  view struct have borrow types, view types and types of kind `copy` only, so
+  a view never owns anything that must be completed.
 - **[W7]** A contract lists each alternative once. A formula `⇐ φ` mentions only
   the parameters and the fields of its own alternative. For an `&~` parameter
   `y`, `y` means the value at completion and `old(y)` the value at entry.
-- **[W8]** A name of borrow type stands for the value it refers to wherever a
-  value of that type is expected, and for the borrow itself wherever a borrow
-  is expected. Since no borrow refers to a borrow, the two never compete.
-  `r ← e` writes through `r` when `e` has the type `r` refers to, and makes `r`
-  borrow something else when `e` is a borrow.
+- **[W8]** A name of borrow type stands for the borrow itself where a borrow
+  is expected: as an operand for a parameter, a payload field or a loop
+  parameter of borrow type, and as the value of a bind whose written type is a
+  borrow type. Everywhere else it stands for the value it refers to; an
+  untyped bind expects a value. `r ← e` writes the value of `e` through `r`. A
+  name of borrow or view type is never assigned: it borrows the same place for
+  as long as it lives.
 - **[W9]** A loop statement lists the alternatives that the `□` statements of
-  its body use, with a name for each payload field. A payload field of borrow
-  or view type always has `∈`.
+  its body use, with a name for each payload field. A payload field of a
+  contract that has a borrow or view type always has `∈`. A payload name of a
+  loop has none; it holds the loans of the value that leaves ([L1]).
 
 A decision with one alternative and no payload is how the core writes a plain
 call such as `emit(e)`.
@@ -351,27 +371,40 @@ tag. Neither is an access.
 `e ⇓ v` evaluates an expression in the current activation. It can change slots
 (a move) and tags (an access), and nothing else.
 
+An expression is **consumed** when its value is kept: as the value of a bind,
+the source of an assignment, an operand given by value, a payload field, a
+field of a constructor, or the value of a loop parameter. Every other
+occurrence is a **read**: an operand of an operator, an argument of a
+function, the base of a field or an index, the place of `len` or `clone`, a
+term of a formula.
+
 - **[E-Var]** `x` looks up the slot of `x`. If `x` has no slot, or the slot is
-  `◌`, evaluation is stuck. If the type of `x` has kind `copy`, the result is
-  the value, after a read access. Otherwise the result is the value, after a
-  write access, and the slot becomes `◌`. Where [W8] makes a borrow name stand
-  for what it refers to, that value is read through the borrow's tag.
-- **[E-Field]**, **[E-Index]** `e.x` and `p[e]` read a component of kind `copy`
-  after a read access to its place, through the owner tag or, when the path
-  passes through a borrow, through that borrow's tag. An indexed place, wherever
-  it is evaluated (read, borrowed or assigned), is stuck when the index is not
-  less than the length.
+  `◌`, evaluation is stuck. A read, and a consumed `x` whose type has kind
+  `copy`, yield the value after a read access and leave the slot as it is. A
+  consumed `x` of any other kind yields the value after a write access, and
+  the slot becomes `◌`. Where [W8] makes a borrow name stand for what it
+  refers to, that value is read through the borrow's tag.
+- **[E-Field]**, **[E-Index]** `e.x` and `p[e]` read a component after a read
+  access to its place, through the owner tag or, when the path passes through
+  a borrow, through that borrow's tag. A consumed component has kind `copy`
+  ([O3]). An indexed place, wherever it is evaluated (read, borrowed or
+  assigned), is stuck when the index is not less than the length.
 - **[E-Arith]** `e₁ ⊕ e₂` on integers of type `τ` is stuck when the mathematical
-  result is not a value of `τ`, and for division when the divisor is zero. The
-  wrapping and saturating operators are total and never stuck.
+  result is not a value of `τ`, and for division when the divisor is zero.
+  Division truncates toward zero, and the remainder has the sign of the
+  dividend. The wrapping and saturating operators are total and never stuck.
 - **[E-Fn]** `fn⟨τ̄⟩(ē)` evaluates the arguments left to right and then the body
-  of `fn` with its parameters bound. It is stuck when the precondition of `fn`
-  is false for them.
-- **[E-Borrow]** An argument `&p` or `&~p` resolves `p` to a place and creates a
+  of `fn` with its parameters bound. A place given for a borrow parameter is
+  read where it is ([W5a]). It is stuck when the precondition of `fn` is false
+  for them.
+- **[E-Borrow]** An operand `&p` or `&~p` resolves `p` to a place and creates a
   borrow of it by [B3].
-- **[E-Build]** `S {ē}`, `V.c {ē}`, `W {ā}` and `clone(p)` build values. `clone` reads its
-  place and requires a type whose components are all clonable; resources,
-  captured outcomes and exclusive borrows are not.
+- **[E-Build]** `S {ē}`, `V.c {ē}`, `W {ō}` and `clone(p)` build values. `clone`
+  reads its place and requires a type whose components are all clonable;
+  resources, captured outcomes and exclusive borrows are not.
+- **[E-Temp]** A value that was read and not consumed, and that no slot holds
+  (the result of a constructor, a function or `clone`), is destroyed when its
+  reader is done. If it contains an obligation (section 6.8), stuck.
 
 There are no partial moves: a component of kind `drop` or `must` leaves its
 owner only when the owner moves as a whole or is taken apart, a struct by
@@ -387,7 +420,7 @@ Let the innermost scope be at statement `g ▷ c`. If the mode is `run`:
 
 Otherwise `c` runs:
 
-- **[E-Bind]** `[~]x : τ := e`. Evaluate `e` to `v`. If `x` already has a slot in
+- **[E-Bind]** `[~]x : τ := o`. Evaluate `o` to `v`. If `x` already has a slot in
   this scope, stuck. Otherwise `x` gets the slot `v` and an owner tag.
 - **[E-Unpack]** `S {x̄} := e`. Evaluate `e` to `S {v̄}` and bind each name to its
   component, as in [E-Bind].
@@ -401,19 +434,24 @@ Otherwise `c` runs:
   changes no tag. In a contract condition a parameter stands for the value it
   had at entry, which the instrumented semantics keeps; an `&~` parameter
   stands for the value at completion, and `old(y)` for the value at entry. A
-  term that divides by zero or indexes out of range has an unspecified value.
+  term that indexes out of range has a value of the element type, and a term
+  that divides by zero has an integer value. This document does not fix those
+  values, but each depends only on the operands of its term: the same term on
+  equal operands has the same value wherever it is evaluated.
 - **[E-Test]** `d : ? e`. Evaluate `e`; add `d.true` or `d.false` to the scope's
   history.
-- **[E-Decide]** `d : Δ ω(ā) ▸ …`. Evaluate the arguments left to right and run
+- **[E-Decide]** `d : Δ ω(ō) ▸ …`. Evaluate the operands left to right and run
   `ω` (sections 6.6 and 6.7). When it completes with `a` and payload `v̄`: if `a`
   is not among the listed alternatives, stuck. Otherwise add `d.a` to the
   history and bind the names of that alternative to `v̄`, as in [E-Bind].
-- **[E-Capture]** `x := capture ω(ā)`. As [E-Decide], but no atom is added: `x`
+- **[E-Capture]** `x := capture ω(ō)`. As [E-Decide], but no atom is added: `x`
   is bound to `out(a, v̄)`.
 - **[E-Outcome]** The operation `outcome` takes a captured outcome by value and
   completes with its alternative and payload. The operation `V` takes a variant
   value and completes with its constructor and fields. Given a borrow of a
-  variant, it completes with borrows of the fields, in the mode of that borrow.
+  variant, it completes with borrows of the fields, in the mode of that borrow:
+  each is a reborrow of its field through the argument, as if a contract said
+  `∈` the argument for every field.
 - **[E-Impossible]** `⊥`. Stuck.
 
 The remaining commands end scopes and are given in sections 6.7 to 6.9.
@@ -425,7 +463,7 @@ The remaining commands end scopes and are given in sections 6.7 to 6.9.
 - **[E-Call]** If `f` has a precondition and it is false for `v̄`, stuck.
   Otherwise push a new activation of `f` with its parameters bound to `v̄`. The
   caller waits at its decision.
-- **[E-Exit]** `■ a {ē}` in an activation of `f`. Evaluate `ē` to `v̄`. If the
+- **[E-Exit]** `■ a {ō}` in an activation of `f`. Evaluate `ō` to `v̄`. If the
   condition `φₐ` of the contract is false for the parameters and `v̄`, stuck. End
   every scope of the activation (section 6.8) and pop it. The waiting decision
   completes with `a` and `v̄`. If there is no caller, the configuration is final
@@ -442,9 +480,11 @@ world, an alternative and a payload.
   the host returns in a field `∈ ȳ` is a reborrow, by [B3], of a place within
   one of the arguments `ȳ`.
 - **[E-Host]** If the host yields an alternative outside the contract, a payload
-  of the wrong type, a borrow that is not such a reborrow, or a payload for
-  which `φₐ` is false, the configuration
-  ends in `host-violation`. This is a fault of the trusted host and not a stuck
+  of the wrong type, a borrow that is not such a reborrow, payload borrows that
+  are not all alive together when it completes (an exclusive one overlaps no
+  other), or a payload for which `φₐ` is false, the configuration
+  ends in `host-violation`. So it does when the host answers an extern control
+  that is pure ([fact logic](facts.md), [I10]) differently on equal arguments. This is a fault of the trusted host and not a stuck
   state: the claims of section 8 assume a host that respects its contracts.
 - **[E-Resource]** A resource value `res(r)` is created only by the host, which
   records `r` as open. An extern control that takes a resource by value
@@ -462,13 +502,13 @@ its control declares.
 
 ### 6.7 Loops
 
-- **[E-Loop]** `d : ↻ ℓ(x̄ := ē) ⊢ φ {B}`. Evaluate `ē` to `v̄`. If `φ` is false
+- **[E-Loop]** `d : ↻ ℓ(x̄ := ō) ⊢ φ {B}`. Evaluate `ō` to `v̄`. If `φ` is false
   for `v̄`, stuck. Push a scope for `B` with `x̄` bound to `v̄` and an empty
   history. The enclosing scope waits at site `d`.
-- **[E-Again]** `↑ ℓ(ē)`. Evaluate `ē` to `v̄` in the current scope. End every
+- **[E-Again]** `↑ ℓ(ō)`. Evaluate `ō` to `v̄` in the current scope. End every
   scope up to and including the scope of `ℓ` (section 6.8). If `φ` is false for
   `v̄`, stuck. Push a fresh scope for the body of `ℓ` with `x̄` bound to `v̄`.
-- **[E-Leave]** `□ a {ē}`. Evaluate `ē` to `v̄`. End the innermost loop scope.
+- **[E-Leave]** `□ a {ō}`. Evaluate `ō` to `v̄`. End the innermost loop scope.
   In the scope that contains the loop statement, add `d.a` to the history and
   bind the payload names of `a` to `v̄`. That scope resumes after the loop.
 
@@ -535,8 +575,8 @@ excludes.
 | **X1** | A body reaches its end with the history undisposed | [E-End] | Coverage [K7] |
 | **X2** | A name is read, moved or borrowed where it is unbound or moved | [E-Var] | Availability [O2] |
 | **X3** | A name is bound twice in one run | [E-Bind] | [O1] |
-| **X4** | An access goes through a dead tag, or writes through a shared one | [B1] | Loans [L3] |
-| **X5** | A value that contains an obligation is destroyed or overwritten | [E-Scope], [E-Assign] | Obligations [O5] |
+| **X4** | An access goes through a dead tag, or writes through a shared one | [B1] | Loans [L3], mutable places [C1] |
+| **X5** | A value that contains an obligation is destroyed or overwritten | [E-Scope], [E-Assign], [E-Temp] | Obligations [O4], [O5], temporaries [O3a] |
 | **X6** | `⊥` runs | [E-Impossible] | [P6] |
 | **X7** | A stated or implied condition is false: `⊢`, an invariant, a precondition, an outcome condition, an arithmetic range, a divisor, an index | [E-Oblige], [E-Arith], [E-Index], [E-Call], [E-Exit], [E-Loop], [E-Again] | Proof obligations [P1] to [P5] |
 | **X8** | A fault occurs or arrives where it is not permitted, or meets an obligation that is not fault-releasable | [E-Fault], [E-Unwind] | Fault permission [F1], [F2] |
@@ -586,8 +626,10 @@ The **structure** `Ω` of a body says how atoms relate:
 ```
 
 - **[K6]** A loop body is checked for one generic iteration. Its own `L₁` is
-  `⊤`, and every formula inside it is taken under the assumption that the loop
-  statement runs.
+  `R_d`, the condition on which the loop statement at site `d` runs. That is a
+  formula over the atoms of the enclosing bodies, which do not change while
+  the loop runs ([H4]). Every `Rᵢ`, every fact and every atom of the body
+  therefore implies that the loop ran.
 - **[K7] Coverage.** `Θ ⊨ ¬Lₙ₊₁`: no feasible history is live at the end of the
   body.
 - **[K8]** After a loop statement at site `d`, the enclosing body keeps the
@@ -610,7 +652,8 @@ outside the interpreted fragment denotes an uninterpreted symbol applied to the
 terms of its operands, so two evaluations on equal operands are equal. A place
 read through a shared borrow denotes the value it refers to. The interpreted
 fragment (linear integer arithmetic, equality, constructor tests, collection
-length) and its decision procedure are fixed in the fact-logic document.
+length), the denotation of every expression and the axioms are fixed in the
+[fact logic](facts.md).
 
 An **interpretation** is a truth assignment `h` to the atoms and a valuation `ν`
 of the logical names. It is **admissible** for `Θ` when `h` satisfies `Ω` and,
@@ -620,26 +663,31 @@ for every `G ⇒ φ` in `Ψ`, `h ⊨ G` implies `ν ⊨ φ`.
   interpretation.
 - **[N2]** `Θ; G ⊨ φ` when `ν ⊨ φ` in every admissible interpretation with
   `h ⊨ G`.
-- **[N3]** The checker may decide these by any procedure that answers yes only
-  when the entailment holds. Every yes carries a certificate that an independent
-  kernel validates. When the procedure cannot answer yes, the program is
-  rejected, with a counterexample interpretation where there is one and
-  otherwise with the statement that the formula is outside the fragment. There
-  are no timeouts.
+- **[N3]** The checker decides these exactly: it answers yes when the
+  entailment holds and only then, by any procedure it likes. Every yes carries
+  a certificate that an independent kernel validates. Every no rejects the
+  program and carries a counterexample interpretation, with a remark where the
+  interpretation depends on an operator the logic does not interpret. The
+  answer does not depend on time or on the machine. A compiler may bound its
+  work by a count of steps, and reports exceeding the bound as its own limit,
+  never as an answer. The fact logic fixes the entailment ([J4] to [J6]), the
+  certificates and the counterexamples.
 - **[N4]** `Ψ` receives:
 
   | From | Fact |
   | --- | --- |
   | A bind `x := e` at statement `i` | `Rᵢ ⇒ x = e` |
   | An assignment `x ← e` at statement `i` | `Rᵢ ⇒ x′ = e`, for the fresh name `x′` of [N5] |
-  | A write to a component of `x` | The fresh name agrees with the old one on its length and on every component other than the one written |
+  | A write to a place `x.π`, or an exclusive loan of it, at statement `i` | `Rᵢ ⇒ x′ =` the old `x` with that place replaced: a functional update, so every other part keeps its facts (fact logic, [I9]) |
   | A test `d : ? e` | `d.true ⇒ e` and `d.false ⇒ ¬e` |
   | A decision at site `d` on an operation with `a … ⇐ φₐ` | `d.a ⇒ φₐ`, over the arguments and the payload names |
   | A decision on a captured outcome | As for the captured operation, over the logical names its arguments had at the capture |
+  | A decision at site `d` on a variant `x` | `d.c ⇒ x = V.c {ȳ}`, for the payload names `ȳ` of constructor `c` |
+  | A decision at site `d` on a pure operation | `d.a ⇒` the alternative and the payload are functions of the arguments (fact logic, [I10]) |
   | An obligation proved at statement `i` | `Rᵢ ⇒ φ` |
   | The precondition of the control being checked | `⊤ ⇒ φ` |
-  | The invariant of the loop whose body is being checked | `⊤ ⇒ φ` |
-  | The type of a logical name | Its range, and `0 ≤ len(x) ≤` the largest `usize` |
+  | The invariant of the loop whose body is being checked | `R_d ⇒ φ`, for the loop statement at site `d` |
+  | The type of a logical name | Its range, and `0 ≤ len(x) ≤ usize.max`. The largest `usize` is a constant that the fact logic bounds and does not fix ([A2]). |
 
 - **[N5]** A value that changes gets a new logical name, on the histories
   concerned. A borrow and the place it borrows denote the same value, so a
@@ -647,8 +695,9 @@ for every `G ⇒ φ` in `Ψ`, `h ⊨ G` implies `ν ⊨ φ`.
   borrow, and an operation that receives `&~p` or an exclusive borrow, give a
   fresh name to the root of every place written or lent, and to the root of
   every place on which the borrow used holds a loan. Entry to a loop gives
-  fresh names to the loop's parameters and to every outer name that its body
-  can change in these ways. Facts stated earlier keep referring to the earlier
+  fresh names to the loop's parameters and to every outer name that its body,
+  nested loops included, can change in these ways; the parts of a name that
+  the body cannot change keep their facts (fact logic, [I9]). Facts stated earlier keep referring to the earlier
   name. When a name has several binders, its logical name on a history is that
   of the binder that ran.
 
@@ -657,18 +706,20 @@ causes an error, and every reported error comes with a feasible history.
 
 ### 7.3 Typing
 
-- **[C1]** Expressions, arguments, payloads and assignments are typed in the
-  ordinary way. An argument is passed by value, as `&p` or as `&~p`, as the
-  parameter's type says. An assignment needs a place whose root was bound with
-  `~` or that passes through an exclusive borrow.
+- **[C1]** Expressions, operands, payloads and assignments are typed in the
+  ordinary way. An operand is given by value, as `&p` or as `&~p`, as the type
+  expected there says ([W8]). An assignment, an exclusive borrow `&~p` and an
+  operation that changes a collection's shape each need a **mutable place**:
+  one whose root was bound with `~`, or that passes through an exclusive
+  borrow.
 - **[C2] Acknowledgement.** A decision lists exactly the alternatives of its
   operation's contract, each once, with one name for each payload field. An
   alternative that is missing, unknown or repeated is an error. The surface
   rules for outcome groups and `forward` expand to this.
-- **[C3]** `■ a {ē}` names an alternative of the control's contract. A loop
+- **[C3]** `■ a {ō}` names an alternative of the control's contract. A loop
   statement lists exactly the alternatives that the `□` statements of its body
   use, each once, and all `□ a` of one loop agree on the payload types of `a`.
-- **[C4]** `x := capture ω(ā)` gives `x` the type `outcome⟨K⟩` for the contract
+- **[C4]** `x := capture ω(ō)` gives `x` the type `outcome⟨K⟩` for the contract
   `K` of `ω`.
 
 ### 7.4 Ownership
@@ -687,11 +738,17 @@ has been bound, and `M(x)`, on which it has been moved. `x` is **available** on
   `Rᵢ`, or `d.a` for a payload name.
 - **[O2] Use.** Reading, moving or borrowing `x` at statement `i` requires
   `Θ ⊨ Rᵢ → D(x) ∧ ¬M(x)`. A formula reads the names it mentions and moves
-  none.
-- **[O3] Move.** Reading by value a name whose type is not `copy` moves it:
-  `M(x)` afterwards includes `Rᵢ`. Only a whole name owned by the current body
-  or an enclosing one moves; a component does not, and nothing moves out
-  through a borrow.
+  none. A parameter in a contract condition is not a use: it denotes the value
+  at entry ([P4]).
+- **[O3] Move.** A consumed expression ([E-Var]) that is a name whose type is
+  not `copy` moves it: `M(x)` afterwards includes `Rᵢ`. Only a whole name owned
+  by the current body or an enclosing one moves. A consumed expression that is
+  a component, an element or a place behind a borrow must have a type of kind
+  `copy`: there are no partial moves, and nothing moves out through a borrow.
+  `clone`, a borrow, or taking the owner apart are the alternatives. A read
+  moves nothing, whatever the kind.
+- **[O3a] Temporaries.** A value that is read and not consumed, and that no
+  name holds ([E-Temp]), must not have kind `must`.
 - **[O4] Assign.** `x ← e` requires `Θ ⊨ Rᵢ → D(x)` and afterwards removes `Rᵢ`
   from `M(x)`. If the type of `x` has kind `must`, it also requires
   `Θ ⊨ Rᵢ → M(x)`: nothing may be overwritten. An assignment to a component, or
@@ -729,14 +786,16 @@ every index of one collection overlaps every other.
 - **[L1] Creation.** `&p` or `&~p` at statement `i` creates a loan on `p` with
   `G = Rᵢ`. A borrow bound to a name is held by that name. A borrow passed as an
   argument is held by the operation, and by the payload names that the contract
-  derives from that parameter with `∈`. Whenever a borrow flows into a name, by
-  a bind, a copy, an assignment or a derived payload, that name becomes a holder
-  of every loan its source holds. A borrow made through a borrow `r` is a loan
+  derives from that parameter with `∈`. A decision on a variant through a
+  borrow derives every payload name from that borrow ([E-Outcome]). Whenever a
+  borrow flows into a name, by a bind, a copy, a loop parameter or a derived
+  payload, that name becomes a holder of every loan its source holds. A borrow made through a borrow `r` is a loan
   on `*r`, and its holder also becomes a holder of every loan that `r` holds.
 - **[L2] Liveness.** A statement evaluates its expressions left to right and
   then runs its command, which uses every borrow among their values: an
   operation its arguments, a loop statement its initial arguments, `↑` its
-  arguments, `□` and `■` their payloads, a bind its value. A holder is **used
+  arguments, `□` and `■` their payloads, a bind its value, an assignment the
+  borrows through which its target is reached. A holder is **used
   after** an access when the command of the same statement uses it, or a later
   part of the statement or a later statement mentions it; a loop statement
   mentions what its body mentions. The condition is a history formula: the
@@ -755,16 +814,17 @@ every index of one collection overlaps every other.
   statement after the loop does.
 - **[L3] Conflict.** These are **accesses**. Reading a place and borrowing it
   shared are reads. Assigning to it, moving it, borrowing it exclusively and
-  changing a collection's shape are writes. Using a borrow name `r` in any way
-  (reading or writing through it, passing it, moving it) is an access to `*r`:
-  a write when `r` is exclusive, a read when it is shared. Ending a scope is a
+  changing a collection's shape are writes. Reading or writing a place `r.π`
+  through a borrow name `r` is a read or a write of `*r.π`. Passing, moving or
+  copying `r` itself is an access to all of `*r`: a write when `r` is
+  exclusive, a read when it is shared. Ending a scope is a
   write to every name of that scope that owns its value. An access **goes
   through** a loan when it is made through one of the loan's holders. For an
   access at statement `i` to place `p′`, and every loan `⟨p, m, G, H⟩` with `p`
   overlapping `p′` that the access does not go through, if the access is a
   write or `m` is exclusive: `Θ ⊨ ¬(Rᵢ ∧ L)`, where `L` is the condition on
   which the loan is live after the access.
-- **[L4] Escape.** A borrow or view in a payload field of `■ a {ē}` holds loans
+- **[L4] Escape.** A borrow or view in a payload field of `■ a {ō}` holds loans
   only on places behind the parameters that the field names with `∈`, and
   loans that those parameters hold. Loans on the control's own names cannot be
   live there, because the exit ends their scope ([L3]); the same holds for `□`
@@ -792,16 +852,21 @@ Each of these is an entailment by [N2], on the histories that run the statement.
   is assumed by [N4].
 - **[P3]** A decision or capture on an operation with a precondition: the
   precondition, with the arguments.
-- **[P4]** `■ a {ē}`: the condition `φₐ` of the contract, with the parameters
-  and `ē`.
+- **[P4]** `■ a {ō}`: the condition `φₐ` of the contract, with the payload `ō`
+  and with each parameter as [W7] reads it: its value at entry, or for an `&~`
+  parameter the value behind it at the exit, with `old` for the value at
+  entry.
 - **[P5]** A partial primitive: the result of integer arithmetic lies in its
   type; a divisor is not zero; an index is less than the length, wherever an
-  indexed place is read, borrowed or assigned; a narrowing conversion fits.
+  indexed place is read, borrowed or assigned; a conversion fits its target
+  type, unless every value of the source type is a value of the target type.
 - **[P6]** `⊥` at statement `i`: `Θ ⊨ ¬Rᵢ`. No feasible history runs it.
-- **[P7]** A proved obligation is a fact afterwards, by [N4].
+- **[P7]** A proved obligation is a fact afterwards, by [N4]. The obligations of
+  one statement are proved in the order of evaluation, each a fact for the next.
 - **[P8]** A function body is checked as one expression under the function's
-  precondition, with [P5] for its primitives. A call of a function is checked
-  by [P3], wherever it occurs.
+  precondition, with [P5] for its primitives and with [O3] and [O3a]; by
+  [W5a] it owns nothing. A call of a function is checked by [P3], wherever it
+  occurs.
 
 ### 7.7 Faults and effects
 
@@ -953,11 +1018,28 @@ They are recorded for the author's acceptance of phase 1.
 10. **Borrows never instantiate type parameters, and no borrow refers to a
     borrow** ([W6]). A type parameter has kind `must` unless its bounds say
     otherwise ([T1a]).
-11. **Using an exclusive borrow at all is a write to what is behind it**
-    ([L3]). The semantics is more permissive, since moving a borrow touches no
-    tag; the checker's rule is what keeps two payload borrows from aliasing.
+11. **Passing or moving an exclusive borrow is a write to all that is behind
+    it** ([L3]); reading or writing through it touches only the place reached.
+    The semantics is more permissive, since moving a borrow touches no tag; the
+    checker's rule is what keeps two payload borrows from aliasing.
 12. **Functions may state preconditions**, and their bodies are checked under
     them ([P8]).
+13. **Reading does not move** ([E-Var], [O3]). Operators, functions, `len`,
+    `clone` and formulas read their operands where they are. A value moves
+    only where it is kept: a bind, an assignment, an operand given by value, a
+    payload, a constructor field, a loop parameter.
+14. **Functions own nothing** ([W5a]). Their parameters are `copy` values or
+    shared borrows read in place.
+15. **A borrow name is never re-pointed** ([W8]). `r ← e` always writes
+    through `r`. A borrow that changes from one iteration to the next is a
+    loop parameter.
+16. **A view holds borrows and `copy` values only** ([W6]), so no view carries
+    an obligation.
+17. **A term of a formula always has a value** ([E-Formula]). An index out of
+    range or a zero divisor yields a value that depends only on the operands.
+    Formulas carry no obligations of their own.
+18. **Parameters are not mutable** ([W4]), so a parameter in a contract
+    condition has one value, the one at entry.
 
 The author answered the five questions of this draft on 19 November 2026 and
 took the recommendation in each case:
