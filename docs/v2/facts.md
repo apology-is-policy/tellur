@@ -326,9 +326,11 @@ apply to (section 6).
   32 and 64 bits.
 - **[A3] Measures.** `len` applies to vectors, strings and maps, and
   `0 ≤ len(t) ≤ usize.max`. `count` applies to task sets, with the same
-  bounds; the core says how the task forms change it ([TK6]). Different string literals are different values.
+  bounds; the core says how the task forms change it ([TK6]). A vector
+  literal has the length it shows, `len([t₁, …, tₙ]) = n`, and the empty map
+  has none, `len(∅) = 0`. Different string literals are different values.
   What `len` counts in a string is for the text library to say, and the logic
-  does not know the length of a literal.
+  does not know the length of a string literal.
 
 ### 5.2 Structs, variants and vectors
 
@@ -784,7 +786,9 @@ Applied to `core.md` together with the repairs from its second review:
    that a term without a defined value has a value of its type that depends
    only on its operands.
 5. `len` applies to maps as well as to vectors and strings ([A3]). The measure
-   of a task set, `count`, came with the core's draft 2 ([TK6]).
+   of a task set, `count`, came with the core's draft 2 ([TK6]). The lengths
+   of a vector literal and of the empty map came with the [corpus](corpus.md),
+   which needs `len([]) = 0` for every invariant over a vector it builds.
 6. The largest `usize` is the constant of [A2].
 7. [E-Host]: a faithful host answers a pure extern control with the same
    alternative and payload on equal arguments ([I10]).

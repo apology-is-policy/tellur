@@ -256,9 +256,11 @@ Well-formedness:
   parameter, a payload field, a field or an element. A task set is never
   moved, lent or assigned. `spawn … into x`, `await next(x)`, `cancel x` and
   `count(x)` name it directly.
-- **[W12]** The alternative `cancelled` is reserved. Only an
-  `extern async control` may list it, without a payload, and such an operation
-  is **cancellable**. The contract of a producer has no alternative `empty`.
+- **[W12]** The alternative `cancelled` never has a payload. An
+  `extern async control` that lists it is **cancellable**. In the contract of
+  a defined control it is an alternative like any other: the body exits with
+  it, in practice to pass on the `cancelled` of an operation it awaited. The
+  contract of a producer has no alternative `empty`.
 
 A decision with one alternative and no payload is how the core writes a plain
 call such as `emit(e)`.
@@ -602,6 +604,21 @@ meaning ([reference](../reference/contingency.md)). In core terms:
   the parameters it had when the boundary was entered; with `escalate`, which
   continues the original fault outward; with a new `fault`, which carries the
   original as its cause; or, in the entry control only, with `terminate n`.
+- **[E-Supervise]** A **named boundary** is a declaration
+  `boundary b(x̄ : τ̄) retains ȳ {B₁} contingency(m : string) {B₂}`, with `ȳ`
+  among `x̄`. Its parameters own what they hold: no borrow and no view crosses
+  into it. `supervise b(ō)` evaluates and moves the operands and runs `B₁` as
+  a boundary of its own, with `faults` permitted inside. Every history of
+  `B₁` ends with `terminate`. When a fault unwinds to it, the scope of `B₁`
+  is ended by [E-Unwind] except for the retained `ȳ`, and `B₂` runs with `ȳ`
+  and the message; a retained name is therefore available at every statement
+  of `B₁` that may fault. Every history of `B₂` ends with `terminate`, with
+  `escalate` or with a new `fault`. After `terminate` in either body the
+  supervising control continues with its next statement. It learns nothing:
+  `supervise` has no alternatives, no payload and no fact, and it may not
+  fault unless `B₂` can end otherwise than by `terminate`. This is the one
+  form in which a control goes on after a fault below it, and the control
+  cannot tell that there was one.
 
 ### 6.10 Stuck states
 
@@ -680,7 +697,10 @@ do: the activation that started a run waits at its `run` decision.
   cancelled. Nothing else happens at the `cancel`. A cancelled task learns of
   it only as the alternative `cancelled` of an operation it awaits
   ([E-AwaitHost]), and it ends by its own exits. The host may set the flag of
-  a root, which is how a launch policy turns a signal into a request.
+  a root, which is how a launch policy turns a signal into a request. The root
+  of a run that a cancelled task starts, or is waiting for, is cancelled too,
+  so a request reaches the operations that synchronous code awaits through
+  `run`.
 - **[E-Done]** `■ a {ō}` in the last activation of a task is [E-Exit], and the
   task is `done(a, v̄)`. A member that is done keeps its payload until
   [E-Next] delivers it.
@@ -1160,10 +1180,12 @@ carried over from v1's accepted decisions:
 - The borrow rules extend to tasks without a new mechanism: what a child
   captures is a loan held by the set ([TK3]).
 
-Still outside this draft: capability declarations and coherence, modules and
-visibility, callable parameters and closures, numeric conversions, text views,
-`∀` loops (sugar over a loop with an index and a generated invariant), process
-entry and launch declarations.
+Still outside this draft: the rules of trait declarations and coherence (the
+core's capabilities; their surface form is [G11] of the surface document, and
+their rules are v1's), modules and visibility, callable parameters and
+closures, numeric conversions, text views, process entry and launch
+declarations. Recursion and `box⟨τ⟩` belong to phase 5; the
+[corpus](corpus.md) states what two of its programs assume of them.
 
 ## 11. Choices made in this draft
 

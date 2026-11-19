@@ -1,0 +1,84 @@
+┄ A client that retries transient failures with a doubling, capped delay.
+┄ Every attempt closes its connection, whatever the request did.
+extern resource connection on fault release
+
+extern async control connect(host: &string, port: u16, timeout_ms: u32)
+    ■ connected {link: connection} │ refused │ timed_out │ unreachable {reason: string}
+    │ cancelled
+    uses net.connect
+extern async control exchange(link: &connection, request: &string, timeout_ms: u32)
+    ■ replied {status: u32, body: string} │ timed_out │ reset │ cancelled
+    uses net.read, net.write
+extern async control close(link: connection) ■ closed uses net.write
+extern async control sleep(ms: u32) ■ elapsed │ cancelled uses clock.sleep
+
+pub struct policy {attempts: u32, first_delay_ms: u32, max_delay_ms: u32, timeout_ms: u32}
+
+┄ What `fetch` asks of a policy.
+pub function sound(rules: &policy): bool :=
+    rules.attempts ≥ 1 ∧ rules.first_delay_ms ≤ rules.max_delay_ms
+
+pub async control fetch(host: &string, port: u16, request: &string, rules: &policy)
+    ⊢ sound(rules)
+    ■ fetched {status: u32, body: string}
+    ■ rejected {status: u32, body: string}
+    ■ exhausted {attempts: u32, last: string} ⇐ attempts = rules.attempts
+    ■ cancelled
+    uses clock.sleep, net.connect, net.read, net.write
+│ ↻ attempt(tried: u32 := 0, delay: u32 := rules.first_delay_ms)
+│ ║ ⊢ tried < rules.attempts ∧ delay ≤ rules.max_delay_ms
+│ ║ Δ await once(host, port, request, rules.timeout_ms)
+│ ║ ├ replied {status, body}
+│ ║ ├ transient {reason}
+│ ║ └ cancelled → ■
+│ ║
+│ ╠═ replied
+│ ║ ┆ ? status ≥ 200 ∧ status < 300 → ■ fetched {status, body}
+│ ║ ┆ ? status < 500 ∧ status ≠ 429 → ■ rejected {status, body}
+│ ║ ┆ reason := "the server answered {status}"
+│ ║
+│ ║ ? tried + 1 = rules.attempts → ■ exhausted {tried + 1, reason}
+│ ║ Δ await sleep(delay): elapsed │ cancelled → ■
+│ ║
+│ ║ ┄ Double the delay up to the limit, without leaving the range of u32.
+│ ║ ~next: u32 := rules.max_delay_ms
+│ ║ ? delay ≤ rules.max_delay_ms ÷ 2 → next ← delay * 2
+│ ║ ↑ attempt(tried + 1, next)
+╵
+
+┄ One attempt. A failure that another attempt may cure is `transient`.
+async control once(host: &string, port: u16, request: &string, timeout_ms: u32)
+    ■ replied {status: u32, body: string} │ transient {reason: string} │ cancelled
+│ Δ await connect(host, port, timeout_ms)
+│ ├ connected {link}
+│ ├ refused              → ■ transient {"connection refused"}
+│ ├ timed_out            → ■ transient {"connecting timed out"}
+│ ├ unreachable {reason} → ■ transient {reason}
+│ └ cancelled            → ■
+│ Δ await exchange(link, request, timeout_ms)
+│ ├ replied {status, body}
+│ ├ timed_out → slow
+│ ├ reset
+│ └ cancelled
+│ await close(▾link)
+│
+╞═ replied:   ■ replied {status, body}
+╞═ slow:      ■ transient {"the request timed out"}
+╞═ reset:     ■ transient {"the connection was reset"}
+╞═ cancelled: ■ cancelled
+╵
+
+outcome process_result: done ↦ 0 │ unavailable ↦ 1 │ refused ↦ 2 │ interrupted ↦ 130
+
+control main(host: string) ■ process_result
+│ rules := policy {4, 200, 5000, 3000}
+│ Δ run fetch(host, 8080, "ping", rules)
+│ ├ fetched {status, body}
+│ ├ rejected {status, body}
+│ ├ exhausted {attempts, last}
+│ └ cancelled → ■ interrupted
+│
+╞═ fetched:   emit(body); ■ done
+╞═ rejected:  emit("The server refused the request with status {status}."); ■ refused
+╞═ exhausted: emit("Gave up after {attempts} attempts: {last}"); ■ unavailable
+╵

@@ -1,0 +1,29 @@
+┄ Split before index. An invalid index returns the whole input to its owner.
+pub control split_at<item>(source: [item], index: usize)
+    ■ split {prefix: [item], suffix: [item]} │ out_of_bounds {original: [item]}
+│ ? index > len(source) → ■ out_of_bounds {source}
+│ ? index = len(source) → ■ split {source, []}
+│ forward split_prefix(source, index)
+╵
+
+control split_prefix<item>(source: [item], index: usize) ⊢ index < len(source)
+    ■ split {prefix: [item], suffix: [item]}
+│ total: usize := len(source)
+│ ~taken: [item] := []
+│ ↻ carve(rest: [item] := source)
+│ ║ ⊢ len(taken) ≤ index ∧ len(taken) + len(rest) = total
+│ ║ ? len(taken) = index → ■ split {taken, rest}
+│ ║ Δ take(rest): item {next, tail} │ empty → ⊥
+│ ║ taken.push(next)
+│ ║ ↑ carve(tail)
+╵
+
+pub control join<item>(left: [item], right: [item]) ■ joined {values: [item]}
+│ ~result: [item] := left
+│ ↻ append(rest: [item] := right)
+│ ║ Δ take(rest)
+│ ║ ├ item {next, tail}
+│ ║ └ empty → ■ joined {result}
+│ ║ result.push(next)
+│ ║ ↑ append(tail)
+╵

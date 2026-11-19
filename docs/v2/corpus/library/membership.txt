@@ -1,0 +1,3 @@
+pub control contains_key<item>(values: &string ⇀ item, key: &string) ■ present │ absent
+│ ■ Δ values.get(key): found → present │ missing → absent
+╵

@@ -1,0 +1,82 @@
+import "sequence_batches.vn" as batches
+
+pub trait comparator
+│ type item
+│ control compare(rule: &self, left: &item, right: &item) ■ before │ equal │ after
+╵
+
+┄ Equal items come from the left run first, preserving stability across passes.
+pub control merge<order: comparator>(left: [order.item], right: [order.item], rule: &order)
+    ■ merged {values: [order.item]}
+│ ~result: [order.item] := []
+│ ↻ choose(a: [order.item] := left, b: [order.item] := right)
+│ ║ ? len(a) = 0 ∨ len(b) = 0 →
+│ ║ ┆ Δ batches.join(result, a): joined {all}
+│ ║ ┆ ■ Δ batches.join(all, b): joined {values} → merged {values}
+│ ║ Δ rule.compare(a[0], b[0]): before → from_left │ equal → from_left │ after → from_right
+│ ║
+│ ╠═ from_left
+│ ║ ┆ Δ take(a): item {value, tail} │ empty → ⊥
+│ ║ ┆ result.push(value)
+│ ║ ┆ ↑ choose(tail, b)
+│ ╠═ from_right
+│ ║ ┆ Δ take(b): item {value, tail} │ empty → ⊥
+│ ║ ┆ result.push(value)
+│ ║ ┆ ↑ choose(a, tail)
+╵
+
+pub control sort<order: comparator>(source: [order.item], rule: &order)
+    ■ sorted {values: [order.item]}
+│ Δ singletons(source): ready {runs}
+│ ↻ passes(current: [[order.item]] := runs)
+│ ║ ? len(current) ≤ 1 → forward flatten(current)
+│ ║ Δ merge_pass(current, rule): merged {next}
+│ ║ ↑ passes(next)
+╵
+
+control singletons<item>(source: [item]) ■ ready {runs: [[item]]}
+│ ~runs: [[item]] := []
+│ ↻ collect(rest: [item] := source)
+│ ║ Δ take(rest)
+│ ║ ├ item {head, tail}
+│ ║ └ empty → ■ ready {runs}
+│ ║ runs.push([head])
+│ ║ ↑ collect(tail)
+╵
+
+┄ Reverse headers once, then pop from the end in the original left-to-right order.
+control reverse_runs<item>(source: [[item]]) ■ reversed {values: [[item]]}
+│ ~rest: [[item]] := source
+│ ~result: [[item]] := []
+│ ↻ reverse
+│ ║ Δ rest.pop(): item {run} │ empty → □
+│ ║ result.push(run)
+│ ║ ↑ reverse
+│ ■ Δ batches.join(result, rest): joined {values} → reversed {values}
+╵
+
+control merge_pass<order: comparator>(source: [[order.item]], rule: &order)
+    ■ merged {runs: [[order.item]]}
+│ Δ reverse_runs(source): reversed {~rest}
+│ ~result: [[order.item]] := []
+│ ↻ pairs
+│ ║ Δ rest.pop(): item {first} │ empty → □
+│ ║ Δ rest.pop()
+│ ║ ├ item {second}
+│ ║ └ empty →
+│ ║   ┆ result.push(first)
+│ ║   ┆ □
+│ ║ Δ merge(first, second, rule): merged {combined}
+│ ║ result.push(combined)
+│ ║ ↑ pairs
+│ ■ Δ batches.join(result, rest): joined {values} → merged {values}
+╵
+
+control flatten<item>(source: [[item]]) ■ sorted {values: [item]}
+│ ↻ append(rest: [[item]] := source, result: [item] := [])
+│ ║ Δ take(rest)
+│ ║ ├ item {run, tail}
+│ ║ └ empty → ■ sorted {result}
+│ ║ Δ batches.join(result, run): joined {next}
+│ ║ ↑ append(tail, next)
+╵

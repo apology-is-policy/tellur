@@ -1,0 +1,26 @@
+┄ A checked half-open range. Its shared loan belongs to the source vector.
+pub view struct window<item> {values: &[item], start: usize, end: usize}
+
+┄ What `range` establishes and `get` relies on.
+pub function bounded<item>(view: window<item>): bool :=
+    view.start ≤ view.end ∧ view.end ≤ len(view.values)
+
+pub control range<item>(values: &[item], start: usize, end: usize)
+    ■ ready {view: window<item> ∈ values} ⇐ bounded(view)
+    ■ invalid
+│ ? start > end ∨ end > len(values) → ■ invalid
+│ ■ ready {window {values, start, end}}
+╵
+
+┄ A successful read borrows the original vector through the view's source.
+pub control get<item>(view: window<item>, offset: usize) ⊢ bounded(view)
+    ■ found {value: &item ∈ view} │ finished
+│ ? offset ≥ view.end - view.start → ■ finished
+│ ■ found {view.values[view.start + offset]}
+╵
+
+┄ Positions count entries in the current ordered map. Start a scan at zero.
+pub control entry_at<item>(values: &string ⇀ item, position: usize)
+    ■ item {key: &string ∈ values, value: &item ∈ values, next: usize} │ finished
+│ forward values.entry_at(position)
+╵

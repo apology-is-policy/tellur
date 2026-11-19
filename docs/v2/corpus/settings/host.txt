@@ -1,0 +1,60 @@
+┄ The signatures the settings application relies on and does not define. They
+┄ belong to the host and to two library modules outside the corpus
+┄ (`library/json_file.vn` and `library/loopback_http.vn` in v1). Bodies are
+┄ omitted, and this file is not counted.
+
+┄ Host primitives, which v1 declares in a JSON manifest.
+extern control json_encode(values: &string ⇀ string)
+    ■ encoded {text: string} │ encode_failed {message: string}
+extern control json_decode(text: string)
+    ■ decoded {values: string ⇀ string} │ invalid {message: string}
+
+extern resource http_listener
+extern resource http_connection on fault release
+
+┄ json_file
+pub outcome load_result
+├ loaded {values: string ⇀ string}
+├ missing
+├ invalid {message: string}
+├ read_failed {message: string}
+└ too_large
+
+pub outcome replace_result
+├ saved
+├ encode_failed {message: string}
+├ write_failed {message: string}
+├ commit_uncertain {message: string}
+└ too_large
+
+pub control load(path: &string, byte_limit: u32) ■ load_result uses file.read
+pub control replace(path: &string, values: &string ⇀ string, byte_limit: u32)
+    ■ replace_result uses file.read, file.write
+
+┄ loopback_http, imported as `transport`
+pub control listen(port: u32)
+    ■ listening {listener: http_listener, authority: string} │ failed {message: string}
+    uses net.listen
+pub async control accept_cancellable(listener: &http_listener, idle_ms: u32)
+    ■ accepted {connection: http_connection} │ idle │ failed {message: string} │ cancelled
+    uses net.accept
+pub async control receive_cancellable(connection: &http_connection)
+    ■ request {method: string, target: string, headers: string ⇀ string, body: string}
+    ■ malformed {message: string}
+    ■ headers_too_large │ body_too_large │ unsupported_transfer │ unsupported_expectation
+    ■ timed_out │ disconnected │ failed {message: string} │ cancelled
+    uses net.read
+pub async control send(
+    connection: &http_connection, status: u32, body: string, media: string, allow: string
+) ■ sent │ failed {message: string}
+    uses net.write
+pub async control finish(connection: http_connection) ■ closed │ failed {message: string}
+    uses net.write
+pub control release(listener: http_listener) ■ released
+
+┄ Available to a contingency (`@contingent` in v1).
+pub contingent control close(connection: http_connection)
+    ■ closed │ failed {message: string}
+pub contingent control reply_failure(connection: &http_connection)
+    ■ sent │ unavailable │ failed {message: string}
+    uses net.write

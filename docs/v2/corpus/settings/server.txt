@@ -1,0 +1,119 @@
+import "http.vn" as http
+import "../../library/loopback_http.vn" as transport
+
+pub outcome service_result
+├ completed ↦ 0
+├ idle ↦ 0
+├ stopped ↦ 0
+├ failed {message: string} ↦ 1
+└ invalid_configuration ↦ 2
+
+pub control start(path: &string, port: u32, max_connections: u32, idle_ms: u32) ■ service_result
+    uses console.write, file.read, file.write, net.accept, net.listen, net.read, net.write
+│ ? port > 65535
+│   ∨ max_connections = 0 ∨ max_connections > 1000000
+│   ∨ idle_ms = 0 ∨ idle_ms > 60000 →
+│ ┆ ■ invalid_configuration
+│ Δ transport.listen(port)
+│ ├ listening {listener, authority}
+│ └ failed → ■
+│ emit("http://{authority}")
+│ result := capture run serve(path, listener, authority, max_connections, idle_ms)
+│ transport.release(▾listener)
+│ ■ ▾result
+╵
+
+┄ One global budget and idle timeout. Accepted connections run as members of one
+┄ task set, at most 64 at a time. Admission ends on the budget, an idle accept,
+┄ an accept failure or cancellation; then the set drains. With
+┄ `launch.serve.signals = "cancel"`, SIGINT or SIGTERM cancels the entry: the
+┄ accept stops, waiting members reply 503 and finish, and the service stops.
+async control serve(
+    path: &string, listener: &http_listener, authority: &string, limit: u32, idle_ms: u32
+) ■ completed │ idle │ stopped │ failed {message: string}
+│ ~active: tasks<serve_connection> := tasks()
+│
+│ ↻ admit(remaining: u32 := limit)
+│ ║ ? active.count() ≥ 64 →
+│ ║ ┆ Δ await next active: handled │ empty → ⊥
+│ ║ ┆ ↑ admit(remaining)
+│ ║ ? remaining = 0 → □ exhausted
+│ ║
+│ ║ Δ await transport.accept_cancellable(listener, idle_ms)
+│ ║ ├ accepted {connection}
+│ ║ ├ idle             → □ quiet
+│ ║ ├ cancelled        → □ stopped
+│ ║ └ failed {message} → □ broken {message}
+│ ║ spawn serve_connection(▾connection, clone(path), clone(authority)) into active
+│ ║ ↑ admit(remaining - 1)
+│
+╞═ stopped
+│ ┆ cancel active
+│
+│ ↻ drain
+│ ║ Δ await next active: handled → ↑ drain │ empty → □
+│
+╞═ exhausted: ■ completed
+╞═ quiet:     ■ idle
+╞═ stopped:   ■ stopped
+╞═ broken:    ■ failed {message}
+╵
+
+┄ A member owns its connection and isolates its own request: a fault is handled
+┄ by the named boundary and never stops sibling connections.
+async control serve_connection(connection: http_connection, path: string, authority: string)
+    ■ handled
+│ supervise request(▾connection, path, authority)
+│ ■ handled
+╵
+
+boundary request(connection: http_connection, path: string, authority: string)
+    retains connection
+│ Δ exchange(path, authority, connection): sent │ disconnected │ failed {message}
+│ Δ run transport.finish(▾connection): closed │ failed {cleanup}
+│
+╞═ exchange.failed: emit(message)
+╞═ finish.failed:   emit(cleanup)
+│ terminate
+╵
+contingency(reason: string)
+│ emit(reason)
+│ Δ transport.reply_failure(connection): sent │ unavailable │ failed {message}
+│ Δ transport.close(▾connection): closed │ failed {cleanup}
+│
+╞═ reply_failure.failed: emit(message)
+╞═ close.failed:         emit(cleanup)
+│ terminate
+╵
+
+control exchange(path: &string, authority: &string, connection: &http_connection)
+    ■ sent │ disconnected │ failed {message: string} faults
+│ Δ prepare(path, authority, connection)
+│ ├ prepared {status, body, media, allow}
+│ ├ disconnected → ■
+│ └ failed       → ■
+│ ■ Δ run transport.send(connection, status, body, media, allow): sent │ failed
+╵
+
+control prepare(path: &string, authority: &string, connection: &http_connection)
+    ■ prepared {status: u32, body: string, media: string, allow: string}
+    ■ disconnected
+    ■ failed {message: string}
+    faults
+│ plain := "text/plain; charset=utf-8"
+│ Δ run transport.receive_cancellable(connection)
+│ ├ request {method, target, headers, body}
+│ ├ malformed {message}     → ■ prepared {400, message, plain, ""}
+│ ├ headers_too_large       → ■ prepared {431, "Request headers too large", plain, ""}
+│ ├ body_too_large          → ■ prepared {413, "Request body exceeds 1 MiB", plain, ""}
+│ ├ unsupported_transfer    → ■ prepared {501, "Transfer-Encoding is unsupported", plain, ""}
+│ ├ unsupported_expectation → ■ prepared {417, "Expect is unsupported", plain, ""}
+│ ├ timed_out               → ■ prepared {408, "Request deadline exceeded", plain, ""}
+│ ├ disconnected            → ■
+│ ├ failed                  → ■
+│ └ cancelled               → ■ prepared {503, "Service is shutting down", plain, ""}
+│ ■ Δ http.route(path, authority, method, target, headers, body)
+│ ├ json {status, content}     → prepared {status, content, "application/json", ""}
+│ ├ text {status, content}     → prepared {status, content, plain, ""}
+│ └ method_not_allowed {allow} → prepared {405, "Method not allowed", plain, allow}
+╵

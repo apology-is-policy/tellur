@@ -1,0 +1,26 @@
+┄ Each step owns the current accumulator. Every outcome gives one back.
+pub trait reducer
+│ type item
+│ type state
+│ type error
+│ control step(rule: &self, current: state, value: &item)
+│     ■ advanced {updated: state}
+│     ■ stopped {result: state}
+│     ■ failed {partial: state, reason: error}
+╵
+
+pub control fold<rule_type: reducer>(
+    source: &[rule_type.item], rule: &rule_type, initial: rule_type.state
+)
+    ■ finished {result: rule_type.state}
+    ■ stopped {result: rule_type.state}
+    ■ failed {partial: rule_type.state, reason: rule_type.error}
+│ ~current: rule_type.state := initial
+│ ∀ value ∈ source
+│ ║ Δ rule.step(current, value)
+│ ║ ├ advanced {updated}
+│ ║ ├ stopped → ■
+│ ║ └ failed  → ■
+│ ║ current ← updated
+│ ■ finished {current}
+╵

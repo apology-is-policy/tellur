@@ -1,0 +1,45 @@
+import "ordering.vn" as ordering
+
+┄ The source must already be sorted under the same consistent total preorder.
+┄ The checker validates the comparator interface, not the ordering laws.
+pub control lower_bound<order: ordering.comparator>(
+    source: &[order.item], rule: &order, needle: &order.item
+) ■ position {index: usize} ⇐ index ≤ len(source)
+│ forward bound(source, rule, needle, false)
+╵
+
+pub control upper_bound<order: ordering.comparator>(
+    source: &[order.item], rule: &order, needle: &order.item
+) ■ position {index: usize} ⇐ index ≤ len(source)
+│ forward bound(source, rule, needle, true)
+╵
+
+┄ Return the first equivalent element, or its insertion position on a miss.
+pub control first_equal<order: ordering.comparator>(
+    source: &[order.item], rule: &order, needle: &order.item
+) ■ found {index: usize, value: &order.item ∈ source} │ missing {insertion: usize}
+│ Δ lower_bound(source, rule, needle): position {index}
+│ ? index = len(source) → ■ missing {index}
+│ Δ rule.compare(source[index], needle): equal → ■ found {index, source[index]} │ before │ after
+│ ■ missing {index}
+╵
+
+control bound<order: ordering.comparator>(
+    source: &[order.item], rule: &order, needle: &order.item, upper: bool
+) ■ position {index: usize} ⇐ index ≤ len(source)
+│ ↻ search(start: usize := 0, count: usize := len(source))
+│ ║ ⊢ start + count ≤ len(source)
+│ ║ ? count = 0 → ■ position {start}
+│ ║
+│ ║ half: usize := count ÷ 2
+│ ║ middle: usize := start + half
+│ ║ Δ rule.compare(source[middle], needle): before │ equal │ after
+│ ║
+│ ╠═ equal
+│ ║ ┆ Δ upper: true → high │ false → low
+│ ║
+│ ╠═ after ∨ low
+│ ║ ┆ ↑ search(start, half)
+│ ╠═ before ∨ high
+│ ║ ┆ ↑ search(middle + 1, count - half - 1)
+╵

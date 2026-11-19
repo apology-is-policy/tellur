@@ -1,0 +1,118 @@
+┄ A recursive-descent parser for a small expression language:
+┄
+┄     expr   := "let" name "=" expr "in" expr | sum
+┄     sum    := term (("+" | "-") term)*
+┄     term   := factor (("*" | "/") factor)*
+┄     factor := number | name | "(" expr ")" | "-" factor
+┄
+┄ Every rule takes the position to read from and returns the position after
+┄ what it read. The contracts say that a rule never reads past the end and
+┄ always moves forward, and each caller's indices are proved from them.
+pub copy variant op: add │ subtract │ multiply │ divide
+
+pub copy variant punctuation: open │ close │ equals │ let_word │ in_word
+
+pub variant token
+├ number {value: i64}
+├ name {text: string}
+├ operator {which: op}
+└ mark {which: punctuation}
+
+pub variant expr
+├ literal {value: i64}
+├ variable {name: string}
+├ negate {operand: box<expr>}
+├ binary {operator: op, left: box<expr>, right: box<expr>}
+└ bind {name: string, value: box<expr>, body: box<expr>}
+
+pub outcome syntax_error
+├ unexpected {at: usize}
+├ unclosed {open_at: usize}
+└ ended
+
+pub control parse(tokens: &[token]) ■ parsed {tree: expr} │ trailing {at: usize} │ …syntax_error
+│ Δ expression(tokens, 0): parsed {tree, next} │ …syntax_error → ■
+│ ? next < len(tokens) → ■ trailing {next}
+│ ■ parsed {tree}
+╵
+
+function is_mark(tokens: &[token], at: usize, which: punctuation) ⊢ at < len(tokens) : bool :=
+    tokens[at] = token.mark {which}
+
+┄ The token at `at` is the given mark.
+control expect(tokens: &[token], at: usize, which: punctuation) ⊢ at ≤ len(tokens)
+    ■ found ⇐ at < len(tokens)
+    ■ …syntax_error
+│ ? at = len(tokens) → ■ ended
+│ ? ¬is_mark(tokens, at, which) → ■ unexpected {at}
+│ ■ found
+╵
+
+control expression(tokens: &[token], at: usize) ⊢ at ≤ len(tokens)
+    ■ parsed {tree: expr, next: usize} ⇐ at < next ∧ next ≤ len(tokens)
+    ■ …syntax_error
+│ ? at = len(tokens) → ■ ended
+│ ? ¬is_mark(tokens, at, punctuation.let_word) → forward sum(tokens, at)
+│ ? at + 1 = len(tokens) → ■ ended
+│ Δ tokens[at + 1]
+│ ├ name {text}
+│ ├ number   → ■ unexpected {at + 1}
+│ ├ operator → ■ unexpected {at + 1}
+│ └ mark     → ■ unexpected {at + 1}
+│ Δ expect(tokens, at + 2, punctuation.equals): found │ …syntax_error → ■
+│ Δ expression(tokens, at + 3): parsed {value, after} │ …syntax_error → ■
+│ Δ expect(tokens, after, punctuation.in_word): found │ …syntax_error → ■
+│ Δ expression(tokens, after + 1): parsed {body, next} │ …syntax_error → ■
+│ ■ parsed {expr.bind {clone(text), box(value), box(body)}, next}
+╵
+
+control sum(tokens: &[token], at: usize) ⊢ at ≤ len(tokens)
+    ■ parsed {tree: expr, next: usize} ⇐ at < next ∧ next ≤ len(tokens)
+    ■ …syntax_error
+│ Δ term(tokens, at): parsed {first, after} │ …syntax_error → ■
+│ ↻ more(left: expr := first, position: usize := after)
+│ ║ ⊢ at < position ∧ position ≤ len(tokens)
+│ ║ ? position = len(tokens) → ■ parsed {left, position}
+│ ║ Δ tokens[position]: operator {which} │ number → other │ name → other │ mark → other
+│ ║
+│ ╠═ other: ■ parsed {left, position}
+│ ║ ? which ≠ op.add ∧ which ≠ op.subtract → ■ parsed {left, position}
+│ ║ Δ term(tokens, position + 1): parsed {right, next} │ …syntax_error → ■
+│ ║ ↑ more(expr.binary {which, box(left), box(right)}, next)
+╵
+
+control term(tokens: &[token], at: usize) ⊢ at ≤ len(tokens)
+    ■ parsed {tree: expr, next: usize} ⇐ at < next ∧ next ≤ len(tokens)
+    ■ …syntax_error
+│ Δ factor(tokens, at): parsed {first, after} │ …syntax_error → ■
+│ ↻ more(left: expr := first, position: usize := after)
+│ ║ ⊢ at < position ∧ position ≤ len(tokens)
+│ ║ ? position = len(tokens) → ■ parsed {left, position}
+│ ║ Δ tokens[position]: operator {which} │ number → other │ name → other │ mark → other
+│ ║
+│ ╠═ other: ■ parsed {left, position}
+│ ║ ? which ≠ op.multiply ∧ which ≠ op.divide → ■ parsed {left, position}
+│ ║ Δ factor(tokens, position + 1): parsed {right, next} │ …syntax_error → ■
+│ ║ ↑ more(expr.binary {which, box(left), box(right)}, next)
+╵
+
+control factor(tokens: &[token], at: usize) ⊢ at ≤ len(tokens)
+    ■ parsed {tree: expr, next: usize} ⇐ at < next ∧ next ≤ len(tokens)
+    ■ …syntax_error
+│ ? at = len(tokens) → ■ ended
+│ Δ tokens[at]
+│ ├ number {value} → ■ parsed {expr.literal {value}, at + 1}
+│ ├ name {text}    → ■ parsed {expr.variable {clone(text)}, at + 1}
+│ ├ operator {sign}
+│ └ mark {kind}
+│
+╞═ operator
+│ ┆ ? sign ≠ op.subtract → ■ unexpected {at}
+│ ┆ Δ factor(tokens, at + 1): parsed {operand, next} │ …syntax_error → ■
+│ ┆ ■ parsed {expr.negate {box(operand)}, next}
+╞═ mark
+│ ┆ ? kind ≠ punctuation.open → ■ unexpected {at}
+│ ┆ Δ expression(tokens, at + 1): parsed {inner, after} │ …syntax_error → ■
+│ ┆ Δ expect(tokens, after, punctuation.close): found │ …syntax_error → ■ unclosed {at}
+│ ┆ ■ parsed {inner, after + 1}
+╵

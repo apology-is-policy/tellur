@@ -1,0 +1,60 @@
+import "../../library/json_file.vn" as json_file
+
+┄ Domain policy. The host exposes file/JSON/text mechanisms as extern contracts.
+pub outcome storage_error
+├ invalid_file {message: string}
+├ storage_failed {message: string}
+└ too_large
+
+pub control load(path: &string) ■ loaded {values: string ⇀ string} │ …storage_error
+    uses file.read
+│ ■ Δ json_file.load(path, 1048576)
+│ ├ loaded
+│ ├ too_large
+│ ├ missing               → loaded {∅}
+│ ├ invalid {message}     → invalid_file {message}
+│ └ read_failed {message} → storage_failed {message}
+╵
+
+function valid_key(key: &string): bool := key ≠ "" ∧ key = key.trim()
+
+pub control set(path: &string, key: string, value: string)
+    ■ saved │ invalid_key │ commit_uncertain {message: string} │ …storage_error
+    uses file.read, file.write
+│ ? ¬valid_key(key) → ■ invalid_key
+│ Δ load(path): loaded {~values} │ …storage_error → ■
+│
+│ Δ values.insert(key, value): inserted │ replaced
+│ ■ Δ json_file.replace(path, values, 1048576)
+│ ├ saved
+│ ├ commit_uncertain
+│ ├ too_large
+│ ├ encode_failed {message} → storage_failed {message}
+│ └ write_failed {message}  → storage_failed {message}
+╵
+
+pub control get(path: &string, key: &string)
+    ■ found {value: string} │ missing │ invalid_key │ …storage_error
+    uses file.read
+│ ? ¬valid_key(key) → ■ invalid_key
+│ Δ load(path): loaded {values} │ …storage_error → ■
+│
+│ ■ Δ values.get(key)
+│ ├ found {value} → found {clone(value)}
+│ └ missing
+╵
+
+pub control remove(path: &string, key: &string)
+    ■ removed │ missing │ invalid_key │ commit_uncertain {message: string} │ …storage_error
+    uses file.read, file.write
+│ ? ¬valid_key(key) → ■ invalid_key
+│ Δ load(path): loaded {~values} │ …storage_error → ■
+│
+│ Δ values.remove(key): removed │ missing → ■
+│ ■ Δ json_file.replace(path, values, 1048576)
+│ ├ saved → removed
+│ ├ commit_uncertain
+│ ├ too_large
+│ ├ encode_failed {message} → storage_failed {message}
+│ └ write_failed {message}  → storage_failed {message}
+╵

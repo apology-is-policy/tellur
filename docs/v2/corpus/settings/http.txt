@@ -1,0 +1,125 @@
+import "settings.vn" as settings
+
+┄ HTTP response policy stays in Villanelle; the host only frames/writes the reply.
+pub outcome response
+├ json {status: u32, body: string}
+├ text {status: u32, body: string}
+└ method_not_allowed {allow: string}
+
+pub control route(
+    path: &string, authority: &string, method: string, target: string,
+    headers: string ⇀ string, body: string
+) ■ response faults uses file.read, file.write
+│ Δ headers.get("host")
+│ ├ found {host}
+│ └ missing → ■ text {400, "Host header required"}
+│ ? host ≠ authority → ■ text {403, "Host must match the listening address"}
+│ Δ headers.get("origin")
+│ ├ found   → ■ text {403, "Browser-origin requests are unsupported"}
+│ └ missing
+│
+│ ? target = "/settings" →
+│ ┆ ? method = "GET" →
+│ ┆ ┆ ? body ≠ "" → ■ text {400, "GET must have an empty body"}
+│ ┆ ┆ forward list_settings(path)
+│ ┆ ? method = "PUT" → forward update_setting(path, headers, body)
+│ ┆ ■ method_not_allowed {"GET, PUT"}
+│ ? target = "/lookup" →
+│ ┆ ? method = "POST" → forward lookup_setting(path, headers, body)
+│ ┆ ■ method_not_allowed {"POST"}
+│ ? target = "/remove" →
+│ ┆ ? method = "POST" → forward remove_setting(path, headers, body)
+│ ┆ ■ method_not_allowed {"POST"}
+│ ■ text {404, "Unknown endpoint"}
+╵
+
+control list_settings(path: &string) ■ auto
+│ Δ settings.load(path)
+│ ├ loaded {values}
+│ ├ invalid_file {message}   → ■ text {500, message}
+│ ├ storage_failed {message} → ■ text {500, message}
+│ └ too_large                → ■ text {500, "Settings file exceeds 1 MiB"}
+│ ■ Δ json_encode(values)
+│ ├ encoded {body}          → json {200, body}
+│ └ encode_failed {message} → text {500, message}
+╵
+
+control object_body(headers: &string ⇀ string, body: string)
+    ■ decoded {values: string ⇀ string} │ invalid {message: string} │ wrong_media
+│ Δ headers.get("content-type")
+│ ├ found {media}
+│ └ missing → ■ wrong_media
+│ ? media ≠ "application/json" ∧ media ≠ "application/json; charset=utf-8" → ■ wrong_media
+│ forward json_decode(body)
+╵
+
+control key_body(headers: &string ⇀ string, body: string)
+    ■ key {value: string} │ invalid {message: string} │ wrong_media
+│ Δ object_body(headers, body)
+│ ├ decoded {~values}
+│ ├ invalid     → ■
+│ └ wrong_media → ■
+│ ? len(values) ≠ 1 → ■ invalid {"Expected exactly one string field: key"}
+│ ■ Δ values.remove("key")
+│ ├ removed {key} → key {key}
+│ └ missing       → invalid {"Expected exactly one string field: key"}
+╵
+
+control lookup_setting(path: &string, headers: &string ⇀ string, body: string) ■ auto
+│ Δ key_body(headers, body)
+│ ├ key {key}
+│ ├ invalid {message} → ■ text {400, message}
+│ └ wrong_media       → ■ text {415, "Content-Type must be application/json"}
+│ Δ settings.get(path, key)
+│ ├ found {value}
+│ ├ missing                  → ■ text {404, "Setting not found"}
+│ ├ invalid_key              → ■ text {400, "Invalid setting key"}
+│ ├ invalid_file {message}   → ■ text {500, message}
+│ ├ storage_failed {message} → ■ text {500, message}
+│ └ too_large                → ■ text {500, "Settings file exceeds 1 MiB"}
+│ forward encode_value(value)
+╵
+
+control encode_value(value: string) ■ auto
+│ ~result: string ⇀ string := ∅
+│ Δ result.insert("value", value): inserted │ replaced → ⊥
+│ ■ Δ json_encode(result)
+│ ├ encoded {content}       → json {200, content}
+│ └ encode_failed {message} → text {500, message}
+╵
+
+control update_setting(path: &string, headers: &string ⇀ string, body: string) ■ auto
+│ Δ object_body(headers, body)
+│ ├ decoded {values}
+│ ├ invalid {message} → ■ text {400, message}
+│ └ wrong_media       → ■ text {415, "Content-Type must be application/json"}
+│ ? len(values) ≠ 2 → ■ text {400, "Expected exactly two string fields: key and value"}
+│ Δ values.get("key")
+│ ├ found {key}
+│ └ missing → ■ text {400, "Missing key field"}
+│ Δ values.get("value")
+│ ├ found {value}
+│ └ missing → ■ text {400, "Missing value field"}
+│ ■ Δ settings.set(path, clone(key), clone(value))
+│ ├ saved                      → json {200, "\{\"saved\":true\}"}
+│ ├ invalid_key                → text {400, "Invalid setting key"}
+│ ├ invalid_file {message}     → text {500, message}
+│ ├ storage_failed {message}   → text {500, message}
+│ ├ commit_uncertain {message} → text {500, "commit_uncertain: reload before retrying; {message}"}
+│ └ too_large                  → text {413, "Settings size limit exceeded"}
+╵
+
+control remove_setting(path: &string, headers: &string ⇀ string, body: string) ■ auto
+│ Δ key_body(headers, body)
+│ ├ key {key}
+│ ├ invalid {message} → ■ text {400, message}
+│ └ wrong_media       → ■ text {415, "Content-Type must be application/json"}
+│ ■ Δ settings.remove(path, key)
+│ ├ removed                    → json {200, "\{\"removed\":true\}"}
+│ ├ missing                    → text {404, "Setting not found"}
+│ ├ invalid_key                → text {400, "Invalid setting key"}
+│ ├ invalid_file {message}     → text {500, message}
+│ ├ storage_failed {message}   → text {500, message}
+│ ├ commit_uncertain {message} → text {500, "commit_uncertain: reload before retrying; {message}"}
+│ └ too_large                  → text {413, "Settings size limit exceeded"}
+╵

@@ -1,0 +1,54 @@
+import "settings.vn" as settings
+import "server.vn" as server
+
+control serve(path: string, port: u32, max_connections: u32, idle_ms: u32)
+    ■ server.service_result
+│ forward server.start(path, port, max_connections, idle_ms)
+╵
+
+┄ The default entry prints the configuration. Other CLI entries reuse the same module.
+control main(path: string) ■ display_result
+│ Δ settings.load(path)
+│ ├ loaded {values}
+│ ├ invalid_file {message}
+│ ├ storage_failed {message}
+│ └ too_large
+│
+╞═ invalid_file ∨ storage_failed: emit(message); ■ failed
+╞═ too_large: emit("The settings file exceeds 1 MiB."); ■ failed
+│ Δ json_encode(values): encoded {text} │ encode_failed {message}
+│
+╞═ encoded:       emit(text); ■ done
+╞═ encode_failed: emit(message); ■ failed
+╵
+
+control get(path: string, key: string) ■ lookup_result
+│ Δ settings.get(path, key)
+│ ├ found {value}
+│ ├ missing
+│ ├ invalid_key
+│ ├ invalid_file {message}
+│ ├ storage_failed {message}
+│ └ too_large
+│
+╞═ found:   emit(value); ■ done
+╞═ missing: emit("No setting has that key."); ■ missing
+╞═ invalid_key
+│ ┆ emit("A key must be nonempty and have no surrounding whitespace.")
+│ ┆ ■ invalid_key
+╞═ invalid_file ∨ storage_failed: emit(message); ■ failed
+╞═ too_large: emit("The settings file exceeds 1 MiB."); ■ failed
+╵
+
+control set(path: string, key: string, value: string) ■ auto
+│ forward settings.set(path, key, value)
+╵
+
+control remove(path: string, key: string) ■ auto
+│ forward settings.remove(path, key)
+╵
+
+┄ Terminal policy belongs to these entry contracts; nested controls return normally.
+outcome display_result: done ↦ 0 │ failed ↦ 1
+
+outcome lookup_result: done ↦ 0 │ missing ↦ 3 │ invalid_key ↦ 2 │ failed ↦ 1

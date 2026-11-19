@@ -1,0 +1,29 @@
+┄ A predicate implementation selects the element type and its closed outcomes.
+pub trait predicate
+│ type item
+│ control test(rule: &self, value: &item) ■ matched │ skipped
+╵
+
+pub trait fallible_predicate
+│ type item
+│ type error
+│ control test(rule: &self, value: &item) ■ matched │ skipped │ failed {reason: error}
+╵
+
+pub control first<rule_type: predicate>(source: &[rule_type.item], rule: &rule_type)
+    ■ found {value: &rule_type.item ∈ source} │ missing
+│ ∀ value ∈ source
+│ ║ Δ rule.test(value): matched → ■ found {value} │ skipped
+│ ■ missing
+╵
+
+pub control try_first<rule_type: fallible_predicate>(
+    source: &[rule_type.item], rule: &rule_type
+) ■ found {value: &rule_type.item ∈ source} │ missing │ failed {reason: rule_type.error}
+│ ∀ value ∈ source
+│ ║ Δ rule.test(value)
+│ ║ ├ matched → ■ found {value}
+│ ║ ├ skipped
+│ ║ └ failed  → ■
+│ ■ missing
+╵

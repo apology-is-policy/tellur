@@ -1,0 +1,31 @@
+┄ Classify by shared borrow. The partition owns every element until transfer.
+pub trait classifier
+│ type item
+│ type error
+│ control classify(rule: &self, value: &item) ■ left │ right │ stopped {reason: error}
+╵
+
+pub control partition<rule_type: classifier>(source: [rule_type.item], rule: &rule_type)
+    ■ split {left: [rule_type.item], right: [rule_type.item]}
+    ■ stopped {
+          left: [rule_type.item],
+          right: [rule_type.item],
+          current: rule_type.item,
+          remaining: [rule_type.item],
+          reason: rule_type.error
+      }
+│ ~left: [rule_type.item] := []
+│ ~right: [rule_type.item] := []
+│ ↻ each(rest: [rule_type.item] := source)
+│ ║ Δ take(rest)
+│ ║ ├ item {current, tail}
+│ ║ └ empty → ■ split {left, right}
+│ ║ Δ rule.classify(current)
+│ ║ ├ left    → to_left
+│ ║ ├ right   → to_right
+│ ║ └ stopped {reason} → ■ stopped {left, right, current, tail, reason}
+│ ║
+│ ╠═ to_left:  left.push(current)
+│ ╠═ to_right: right.push(current)
+│ ║ ↑ each(tail)
+╵

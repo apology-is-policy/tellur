@@ -3,7 +3,9 @@
 Status: **draft 1**, 19 November 2026. Phase 1, part of deliverable 2 of the
 [redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
 normative when it is. Nothing here is implemented. This draft has not been
-reviewed independently.
+reviewed independently. Writing the [corpus](corpus.md) amended it: traits,
+named boundaries, `copy` types, the move mark and five smaller points of
+grammar (section 12).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Reference model](references.md) ·
@@ -145,6 +147,13 @@ or indentation.
 - **[Y10]** A line whose prefix does not fit the blocks open at that point is an
   error. The compiler does not guess; the formatter draws rails, and a person
   does not have to (section 9).
+- **[Y11] Traits and implementations.** The items of a `trait` or of an
+  `implement` stand on a rail `│ ` of the declaration, which ends with `╵` in
+  the first column. A control inside an `implement` has its own body rail
+  after that segment, and its own `╵` in the third column.
+- **[Y12] Named boundaries.** The body of a `boundary` is drawn as the body of
+  a control. Its `contingency` follows at once, starting in the first column,
+  with a body and a `╵` of its own.
 
 The formatter chooses line breaks, aligns the arrows of a group of arms and
 the bodies of a run of short labels, and wraps at 100 columns. Those choices
@@ -161,16 +170,22 @@ Blocks are written `{…}` in the grammar below and are drawn as section 3 says.
 File      ::= Decl*
 Decl      ::= import "path" as name
             | [pub] outcome name Alts
-            | [pub] struct name [Generics] { Field,* }
-            | [pub] variant name [Generics] Alts
+            | [pub] [copy] struct name [Generics] { Field,* }
+            | [pub] [copy] variant name [Generics] Alts
             | [pub] view struct name [Generics] { Field,* }
             | [pub] function name [Generics] ( Param,* ) [⊢ Formula] : Type := Expr
             | extern resource name [on fault release]
             | extern [async] control name ( Param,* ) Sig
-            | [pub] [async] control name [Generics] ( Param,* ) Sig {Body}
+            | [pub] [contingent] [async] control name [Generics] ( Param,* ) Sig {Body}
+            | [pub] trait name {TraitItem*}
+            | implement QName for Type {ImplItem*}
+            | boundary name ( Param,* ) [retains name,*] {Body}
+              contingency ( Param ) {Body}
 Sig       ::= [⊢ Formula] ■ Contract [faults] [uses QName,*]
-Contract  ::= auto | name | Entry (│ Entry)*
-Entry     ::= name [{ Field,* }] [⇐ Formula] | …name
+Contract  ::= auto | QName | Entry (│ Entry)*
+Entry     ::= name [{ Field,* }] [⇐ Formula] | …QName
+TraitItem ::= type name | control name ( Param,* ) Sig
+ImplItem  ::= type name := Type | control name ( Param,* ) Sig {Body}
 Alts      ::= : Alt (│ Alt)*   |   one line for each, marked ├ and └
 Alt       ::= name [{ Field,* }] [↦ number]
 Field     ::= name : Type [∈ name,*]
@@ -181,8 +196,8 @@ Type      ::= bool | uN | iN | usize | string | name [< Type,* >] | name . name
             | [ Type ] | Type ⇀ Type | & Type | &~ Type | tasks < QName >
 ```
 
-- **[G1]** A contract with conditions may put each entry on a line of its own,
-  each introduced by `■`.
+- **[G1]** A contract may put each entry on a line of its own, each introduced
+  by `■`. One with conditions is always written so.
 - **[G2]** `…name` in a contract includes every alternative of the outcome
   declaration `name`, and a contract that is one name declared as an outcome
   is that declaration's contract. The contract remembers which declarations
@@ -196,6 +211,21 @@ Type      ::= bool | uN | iN | usize | string | name [< Type,* >] | name . name
 - **[G4a]** `&` and `&~` apply to the whole type that follows them:
   `&string ⇀ string` is a borrow of a map. No borrow type occurs inside
   another type ([W6]), so there is no other reading to choose from.
+- **[G4b]** `copy` before `struct` or `variant` declares the kind `copy`
+  ([T1]). Every component must have that kind.
+- **[G11] Traits.** A trait is what the core calls a capability, carried over
+  from v1. It names associated types and the signatures of controls, in which
+  `self` is the implementing type. `implement t for τ` gives each associated
+  type and a body for each control. A type parameter is bound by a trait in
+  `Generics`. In the scope of `name: t`, an associated type is written
+  `name.item` and a control of the trait is called in the method form
+  ([U12], [U20]). A control of a trait declares its effects like any other,
+  and an implementation may use no more ([F3]).
+- **[G12] Named boundaries.** `boundary`, `contingency`, `supervise` and
+  `terminate` are the named form of a fault boundary ([E-Supervise]).
+  `contingent` marks a control that a contingency may call; it is v1's
+  `@contingent`. The lexical form `fault boundary` keeps its v1 syntax and
+  comes with draft 2 of this document.
 
 ### 4.2 Statements
 
@@ -208,7 +238,7 @@ Path     ::= name | name . name
 Stmt     ::= [~] name [: Type] := Arg                       bind
            | [~] name := capture [await | run] Call         capture a completed outcome
            | name { name,* } := Expr                        take a struct apart
-           | Place ← Expr                                   assign
+           | Place ← (Expr | ▾ Place)                       assign
            | ⊢ Formula                                      obligation
            | ? Expr → (Simple | {Stmt*})                    test
            | [name :] Δ Operand Arms                        decision
@@ -216,12 +246,14 @@ Stmt     ::= [~] name [: Type] := Arg                       bind
            | forward [await | run] Call                     exit with the callee's outcome
            | spawn Call into name                           start a member of a task set
            | cancel name                                    ask the members of a set to stop
-           | Call                                           call with one outcome
+           | [await | run] Call                             call with one outcome
+           | supervise Call                                 run a named boundary
            | ↻ name [( LoopParam,* )] {[⊢ Formula] Stmt*}   loop
            | ∀ name ∈ Place {Stmt*}                         for each element
            | Terminator
-Terminator ::= ■ name [{ Arg,* }] | □ [name [{ Out,* }]] | ↑ name [( Arg,* )]
-           | fault Expr | ⊥
+Terminator ::= ■ name [{ Arg,* }] | ■ ▾ name | □ [name [{ Out,* }]]
+           | ↑ name [( Arg,* )] | fault Expr | ⊥
+           | terminate                                      in a named boundary only
 Simple   ::= a statement with no block and no vertical arms
 LoopParam ::= [~] name : Type := Arg
 Out      ::= name | name : Arg
@@ -233,18 +265,20 @@ Arms     ::= : Arm (│ Arm)*   |   one line for each, marked ├ and └
 Arm      ::= (name [{ Pattern,* }] | …name) [→ Target]
 Pattern  ::= [~] name [: Type]
 Target   ::= name | Terminator | ■ | {Stmt*}
-           | name [{ Expr,* }]                              in an adapter only
+           | name [{ Arg,* }]                               in an adapter only
 ```
 
 - **[G5]** In `Mask`, `¬` binds tighter than `∧`, and `∧` tighter than `∨`. `¬`
   applies to a single path and not to a parenthesis.
 - **[G6]** A `⊢` line that is the first statement of a loop body is the loop's
   invariant. Anywhere else it is an obligation at that point.
-- **[G7]** `fault` and `forward` are words, and so are the task words of
-  [G7b]. Everything else in a statement has a glyph.
+- **[G7]** `fault`, `forward`, `supervise` and `terminate` are words, and so
+  are the task words of [G7b]. Everything else in a statement has a glyph.
 - **[G7a]** `Arg` stands wherever a value is kept. The marked forms `~ place`
   and `▾ place` are accepted as [U11] says for the type of the slot, and the
-  fields of a view constructor take `Arg` as well.
+  fields of a view constructor take `Arg` as well. `▾ place` is also accepted
+  as an element of a vector literal and as a field of a struct or variant
+  constructor, where a value moves in the same way.
 - **[G7b]** `async`, `await`, `next`, `run`, `spawn`, `into`, `cancel` and
   `capture` are words.
 
@@ -368,8 +402,16 @@ block around it, because `d.a` implies that `d` ran ([K4]).
   | --- | --- | --- |
   | `&τ` | `p`, or any expression | `&p`; an expression that is not a place is first bound to a hidden name |
   | `&~τ` | `~p` | `&~p` |
-  | By value, kind `copy` or `drop` | `e` | `e` (a move, for `drop`) |
-  | By value, kind `must` | `▾p` | `p` (a move) |
+  | By value, and the type does not hold an obligation | `e` | `e` (a move, unless the kind is `copy`) |
+  | By value, and the type holds an obligation | `▾p` | `p` (a move) |
+
+  A type **holds an obligation** when it is a resource, a captured outcome,
+  or a struct, a variant, a vector or a map with a component that does. A
+  type parameter and an associated type do not count: a value of such a type
+  moves unmarked, like a `drop` value, although its kind is `must` ([T1a]).
+  The mark shows where something that is known to need completing changes
+  hands; in generic code nothing is known, and the call that instantiates it
+  carries the mark (corpus, question Q19).
 
   The table applies wherever a slot has a declared type: a parameter, a bind
   with a written type (`r: &τ := p` borrows the place `p`, and
@@ -387,9 +429,11 @@ block around it, because `d.a` implies that `d` ran ([K4]).
   ([E-Operands]), so `values.push(len(values))` reads the length first
   (reference model, question Q17).
 - **[U12] Method form.** `p.m(ā)` is `m(p, ā)`, where `m` is found among the
-  operations of the type of `p` or of the capabilities it is bound by. The
-  receiver is lent as `m` declares; an exclusive loan needs a receiver whose
-  root is bound with `~`.
+  built-in operations and functions of the type of `p`, and the controls of
+  the traits that bound it. A control of a module is not found this way: it
+  is called by its name. Where `p` is the name of an import, `p.m(ā)` is the
+  qualified call. The receiver is lent as `m` declares; an exclusive loan
+  needs a receiver whose root is bound with `~`.
 - **[U13] Adapters.** `■ Δ ω(ā) arms` decides `ω` and exits on every
   alternative. Each arm is `a` alone, which exits with the alternative `a` and
   its payload; or `a {pattern} → b {ē}`, which exits with `b`. A group arm
@@ -398,8 +442,9 @@ block around it, because `d.a` implies that `d` ran ([K4]).
 - **[U14] Forward.** `forward ω(ā)` is the adapter in which every alternative
   exits under its own name. It requires every entry of the callee's contract,
   a single alternative or a group included by name, to be an entry of the
-  caller's contract with the same payload types. `■ x`, for a captured outcome
-  `x`, is the same for `Δ ▾x`.
+  caller's contract with the same payload types. `■ ▾x`, for a captured
+  outcome `x`, is the same for `Δ ▾x`. The mark is the one [U11] asks for, and
+  it keeps a captured outcome apart from an alternative of the same name.
 - **[U15] Exits.** The payload of `■ a {ē}` is positional, against the fields
   of `a` in the contract. Conditions `⇐ φ` of the caller's contract are proof
   obligations at each exit the elaboration produces ([P4]), including those of
@@ -420,6 +465,13 @@ block around it, because `d.a` implies that `d` ran ([K4]).
 
   [U7] applies to `await next`: `empty` is named like any other alternative,
   and so is `cancelled` on an operation that lists it.
+
+- **[U20] Traits.** In a control with `name: t` among its generics, `name.item`
+  is the core type `α.item` and `p.m(ā)`, for `p` of type `name` or a borrow
+  of it, is the capability call `α.m(p, ā)`. An instance replaces both by the
+  types and controls of the `implement` that the type argument selects, and
+  type arguments are never written at a call: they are inferred from the
+  arguments.
 
 The rule [U14] is what keeps `forward` from absorbing a new alternative
 silently. A new alternative in a callee's own list has no entry in the caller
@@ -581,7 +633,8 @@ their rules come with the core's draft 2 or with phase 5.
 
 | Form | Example | Comes with |
 | --- | --- | --- |
-| Fault boundaries | `fault boundary` and its contingency, as in v1 | Draft 2 of this document, with a Rails drawing |
+| Lexical fault boundaries | `fault boundary` and its contingency, as in v1. The named form is [G12]. | Draft 2 of this document, with a Rails drawing |
+| Recursion and owned boxes | A control that calls itself; `box<expr>`, `box(e)` | Phase 5. The corpus states what its parser and interpreter assume. |
 | Callable parameters and function values | `accepts: &item → bool`, `value ↦ value ≥ limit`, `test: (&item) ■ matched │ skipped` | Phase 5 |
 | Resource protocols | `protocol a? ; (b │ c)` | Phase 6 |
 | Modules and visibility | `import "…" as name`, `pub` | Draft 2 of this document |
@@ -597,6 +650,14 @@ their rules come with the core's draft 2 or with phase 5.
 3. The acknowledgement rule [C2] stays as it is. Groups exist only in the
    surface and in the record a contract keeps of the groups it includes.
 
+Writing the [corpus](corpus.md) added these to this document: traits and
+their layout ([G11], [Y11], [U20]); named boundaries ([G12], [Y12]); `copy`
+types ([G4b]); the narrower move mark ([U11], question Q19) and `▾` in
+assignments, literals and constructors ([G7a]); `■ ▾x` ([U14]); a qualified
+name for a contract or a group; `await` and `run` on a call statement; and the
+lookup of the method form ([U12]). It added [E-Supervise] to the core, and
+changed [W12] and [E-Cancel] there.
+
 ## 13. Choices and questions
 
 Choices of this draft that follow from the accepted decisions and from the
@@ -611,9 +672,11 @@ reference programs, recorded for the author's acceptance of phase 1:
 4. **A name that two arms have by default must be qualified; routes may
    merge** ([U3]).
 5. **An arm without a pattern binds nothing** ([U8]).
-6. **`▾` is required exactly where a value of kind `must` moves**, and for
-   taking a variant apart by value ([U6], [U11]). Moving a `drop` value is
-   unmarked.
+6. **`▾` is required exactly where a value moves whose type holds an
+   obligation**, and for taking a variant apart by value ([U6], [U11]).
+   Moving any other value is unmarked. The first draft asked for the mark on
+   every value of kind `must`; the corpus showed what that does to generic
+   code (question Q19).
 7. **A group arm needs the group in the callee's contract by name** ([U7]),
    and `forward` needs each entry of the callee in the caller ([U14]). This
    refines the plan's section 5.4, which asked for a named contract; the
@@ -634,3 +697,4 @@ if the recommendation were taken.
 | Q13 | How is the remainder written? | **`mod`**, as a word operator: `hash mod len(buckets)`. No glyph for it is in common use. |
 | Q14 | How is a decision site named when two would collide? | **`name : Δ …`** ([U1]), the core's own form. |
 | Q15 | What does a `□` with no name mean? | **Leaving with nothing to tell apart**, allowed only when no `□` of the loop has a name ([U9]). |
+| Q19 | Is the move mark `▾` written where a value of a parameter type moves? | **No** ([U11]). A type parameter has kind `must`, so the first draft marked every move in generic code: 76 marks in the 231 lines of the rewritten library, against 6 in the settings application. The mark is kept for types known to hold an obligation, and an exit by a captured outcome is written `■ ▾result`, where the reference program has `■ result`. |

@@ -1137,8 +1137,8 @@ Found and left open, for the corpus to weigh:
   elements or a split into two views, is the expected remedy.
 - A type has no invariant; a predicate function in contracts carries it (8.1).
 - A view that holds an exclusive borrow cannot be lent again as a whole (8.5).
-- The fact logic does not know the length of a vector literal, so an index
-  into one needs a test.
+- The fact logic did not know the length of a vector literal. The
+  [corpus](corpus.md) needed it, and [A3] of the fact logic now gives it.
 
 ## 14. Choices and questions
 

@@ -1,0 +1,61 @@
+import "parser.vn" as syntax
+
+┄ An interpreter for the trees the parser builds. Names live in one scope,
+┄ which every rule borrows exclusively and gives back as it found it.
+pub outcome eval_error
+├ unbound {name: string}
+├ overflow
+└ division_by_zero
+
+┄ Evaluate an expression that has no free names.
+pub control compute(tree: &syntax.expr) ■ value {result: i64} │ …eval_error
+│ ~scope: string ⇀ i64 := ∅
+│ forward evaluate(tree, ~scope)
+╵
+
+control evaluate(tree: &syntax.expr, scope: &~string ⇀ i64)
+    ■ value {result: i64} │ …eval_error
+│ Δ tree
+│ ├ literal {value} → ■ value {value}
+│ ├ variable {name}
+│ ├ negate {operand}
+│ ├ binary {operator, left, right}
+│ └ bind {name, bound, body}
+│
+╞═ variable
+│ ┆ ■ Δ scope.get(name): found {value} → value {value} │ missing → unbound {clone(name)}
+╞═ negate
+│ ┆ Δ evaluate(operand, ~scope): value {inner} │ …eval_error → ■
+│ ┆ ? inner = i64.min → ■ overflow
+│ ┆ ■ value {-inner}
+╞═ binary
+│ ┆ Δ evaluate(left, ~scope): value {a} │ …eval_error → ■
+│ ┆ Δ evaluate(right, ~scope): value {b} │ …eval_error → ■
+│ ┆ forward apply(operator, a, b)
+╞═ bind: forward scoped(name, bound, body, ~scope)
+╵
+
+┄ Evaluate `body` with `name` bound, then give the scope back as it was.
+control scoped(
+    name: &string, bound: &syntax.expr, body: &syntax.expr, scope: &~string ⇀ i64
+) ■ value {result: i64} │ …eval_error
+│ Δ evaluate(bound, ~scope): value {local} │ …eval_error → ■
+│ Δ scope.insert(clone(name), local): inserted → fresh │ replaced {outer} → shadowed
+│ result := capture evaluate(body, ~scope)
+│
+│ ┄ Whatever the body did, the outer binding comes back.
+╞═ fresh:    Δ scope.remove(name): removed │ missing
+╞═ shadowed: Δ scope.insert(clone(name), outer): inserted │ replaced
+│ ■ ▾result
+╵
+
+control apply(operator: syntax.op, a: i64, b: i64) ■ value {result: i64} │ …eval_error
+│ Δ operator: add │ subtract │ multiply │ divide
+│
+╞═ add:      ■ Δ checked_add(a, b): sum {value} → value {value} │ overflow
+╞═ subtract: ■ Δ checked_sub(a, b): difference {value} → value {value} │ overflow
+╞═ multiply: ■ Δ checked_mul(a, b): product {value} → value {value} │ overflow
+╞═ divide
+│ ┆ ? b = 0 → ■ division_by_zero
+│ ┆ ■ Δ checked_div(a, b): quotient {value} → value {value} │ overflow
+╵
