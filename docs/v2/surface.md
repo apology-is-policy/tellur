@@ -1,12 +1,13 @@
 # Villanelle v2 surface: Rails
 
-Status: **draft 1**, 19 November 2026. Phase 1, deliverable 3 of the
+Status: **draft 1**, 19 November 2026. Phase 1, part of deliverable 2 of the
 [redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
 normative when it is. Nothing here is implemented. This draft has not been
 reviewed independently.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
-[Fact logic](facts.md) · [Rails reference programs](../../experiments/syntax_lab/rails/)
+[Fact logic](facts.md) · [Reference model](references.md) ·
+[Rails reference programs](../../experiments/syntax_lab/rails/)
 
 ## 1. Purpose and scope
 
@@ -188,8 +189,13 @@ Type      ::= bool | uN | iN | usize | string | name [< Type,* >] | name . name
   it took alternatives from ([U7], [U14]).
 - **[G3]** `■ auto` is allowed on a control that is not `pub`. Its contract is
   the set of alternatives its exits use, with the payload types found there.
+  For a payload that is a borrow or a view, `∈` lists the parameters it is
+  derived from at those exits.
 - **[G4]** `↦ number` on an alternative of an outcome declaration is the
   process status of a program that exits with it. It has no other meaning.
+- **[G4a]** `&` and `&~` apply to the whole type that follows them:
+  `&string ⇀ string` is a borrow of a map. No borrow type occurs inside
+  another type ([W6]), so there is no other reading to choose from.
 
 ### 4.2 Statements
 
@@ -199,7 +205,7 @@ Label    ::= Mask {Stmt*}   |   Mask : Simple (; Simple)*
 Mask     ::= Path | ¬ Path | Mask ∧ Mask | Mask ∨ Mask | ( Mask )
 Path     ::= name | name . name
 
-Stmt     ::= [~] name [: Type] := Expr                      bind
+Stmt     ::= [~] name [: Type] := Arg                       bind
            | [~] name := capture Call                       capture a completed outcome
            | name { name,* } := Expr                        take a struct apart
            | Place ← Expr                                   assign
@@ -212,11 +218,11 @@ Stmt     ::= [~] name [: Type] := Expr                      bind
            | ↻ name [( LoopParam,* )] {[⊢ Formula] Stmt*}   loop
            | ∀ name ∈ Place {Stmt*}                         for each element
            | Terminator
-Terminator ::= ■ name [{ Expr,* }] | □ [name [{ Out,* }]] | ↑ name [( Expr,* )]
+Terminator ::= ■ name [{ Arg,* }] | □ [name [{ Out,* }]] | ↑ name [( Arg,* )]
            | fault Expr | ⊥
 Simple   ::= a statement with no block and no vertical arms
-LoopParam ::= [~] name : Type := Expr
-Out      ::= name | name : Expr
+LoopParam ::= [~] name : Type := Arg
+Out      ::= name | name : Arg
 
 Operand  ::= Call | [▾ | ~] Place
 Call     ::= QName ( Arg,* ) | Place . name ( Arg,* )
@@ -234,6 +240,9 @@ Target   ::= name | Terminator | ■ | {Stmt*}
   invariant. Anywhere else it is an obligation at that point.
 - **[G7]** `fault` and `forward` are words. Everything else in a statement has
   a glyph.
+- **[G7a]** `Arg` stands wherever a value is kept. The marked forms `~ place`
+  and `▾ place` are accepted as [U11] says for the type of the slot, and the
+  fields of a view constructor take `Arg` as well.
 
 ### 4.3 Expressions
 
@@ -321,7 +330,8 @@ block around it, because `d.a` implies that `d` ran ([K4]).
 - **[U9] Loops.** The loop statement lists the alternatives that the `□`
   statements of its body use ([W9]). All `□ a` of one loop give the same field
   names: an entry `name` both names the field and supplies the value of that
-  name, and `name : e` supplies another value. After the loop those names are
+  name, and `name : e` supplies another value. A name of borrow or view type
+  leaves as the borrow or view it is ([W9]). After the loop those names are
   bound in the body that contains it. If the loop body has a name of its own
   that is the same, elaboration renames the inner one, so [W4] holds in the
   core. A `□` without a name is allowed when every `□` of the loop has none;
@@ -357,10 +367,21 @@ block around it, because `d.a` implies that `d` ran ([K4]).
   | By value, kind `copy` or `drop` | `e` | `e` (a move, for `drop`) |
   | By value, kind `must` | `▾p` | `p` (a move) |
 
-  A borrow name passed where a borrow is expected is passed as it is. A bind
-  whose written type is a borrow type takes its value by the same table:
-  `r: &τ := p` borrows the place `p`, and `r: &~τ := ~p` borrows it
-  exclusively. A bind without a written type always takes a value ([W8]).
+  The table applies wherever a slot has a declared type: a parameter, a bind
+  with a written type (`r: &τ := p` borrows the place `p`, and
+  `r: &~τ := ~p` borrows it exclusively), a loop parameter at the loop
+  statement and at each `↑`, a payload field of `■`, and a field of a view. A
+  bind without a written type always takes a value ([W8]).
+
+  A name of shared borrow type given for an `&τ` slot is passed as it is, a
+  copy. For an `&~τ` slot the mark is written whatever the place is: `~r`, for
+  a name `r` of exclusive borrow type, lends what is behind `r` again, and `r`
+  can be used when that loan has ended. The bare name is not accepted there
+  (reference model, question Q16).
+
+  The arguments that do not lend are evaluated before the others
+  ([E-Operands]), so `values.push(len(values))` reads the length first
+  (reference model, question Q17).
 - **[U12] Method form.** `p.m(ā)` is `m(p, ā)`, where `m` is found among the
   operations of the type of `p` or of the capabilities it is bound by. The
   receiver is lent as `m` declares; an exclusive loan needs a receiver whose

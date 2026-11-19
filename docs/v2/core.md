@@ -11,11 +11,14 @@ problems, seven of them confirmed: accepted programs that get stuck or lose a
 resource, a grammar that could not write the borrows the rules speak of, and
 an ambiguity in what a borrow name stands for. The rules below include both
 sets of repairs; choices 11 and 13 to 18 of section 11 come from the second.
+Writing the examples of the [reference model](references.md) added five
+clarifications and one rule, [E-Operands] (its section 13; choice 19 here).
 The latest repairs have not been reviewed again. The author has answered the
 five questions the draft raised (section 11).
 
 [Index of the v2 design](README.md) · [Fact logic](facts.md) ·
-[Surface](surface.md) · [Plan](../redesign-plan.md) ·
+[Reference model](references.md) · [Surface](surface.md) ·
+[Plan](../redesign-plan.md) ·
 [Rails reference programs](../../experiments/syntax_lab/rails/)
 
 ## 1. Purpose and scope
@@ -169,7 +172,7 @@ Command       c ::= [~]x [: τ] := o                     bind
                   | ⊥                                    impossible   (terminator)
 Operation     ω ::= f⟨τ̄⟩ | α.m | op | outcome | V
 Operand       o ::= e | &p | &~p
-Expression    e ::= n | true | false | "…" | x | e.x | S {ē} | V.c {ē}
+Expression    e ::= n | true | false | "…" | x | e.x | S {ē} | V.c {ē} | [ē] | ∅
                   | fn⟨τ̄⟩(ē) | e ⊕ e | ⊖ e | len(p) | p[e] | clone(p) | W {ō}
 Place         p ::= x | p.x | p[e]
 ```
@@ -177,7 +180,8 @@ Place         p ::= x | p.x | p[e]
 `op` ranges over the built-in operations on vectors, maps and strings that have
 several outcomes or an effect. `outcome` decides a captured outcome value and `V`
 decides which constructor a variant has, given the variant or a borrow of it.
-`⊕` ranges over arithmetic, comparison and Boolean operators. `p[e]` indexes a
+`⊕` ranges over arithmetic, comparison and Boolean operators. `[ē]` is a vector
+of the given elements and `∅` the empty map. `p[e]` indexes a
 vector; a map is reached only through operations. `len(p)` applies to vectors,
 strings and maps. An **operand** stands where a value is kept: it is an
 expression, or a borrow `&p` or `&~p` of a place. Borrows are written nowhere
@@ -218,14 +222,18 @@ Well-formedness:
   the parameters and the fields of its own alternative. For an `&~` parameter
   `y`, `y` means the value at completion and `old(y)` the value at entry.
 - **[W8]** A name of borrow type stands for the borrow itself where a borrow
-  is expected: as an operand for a parameter, a payload field or a loop
-  parameter of borrow type, and as the value of a bind whose written type is a
-  borrow type. Everywhere else it stands for the value it refers to; an
-  untyped bind expects a value. `r ← e` writes the value of `e` through `r`. A
-  name of borrow or view type is never assigned: it borrows the same place for
-  as long as it lives.
+  is expected: as an operand for a parameter, a payload field, a loop
+  parameter or a field of a view that has borrow type, as the value of a bind
+  whose written type is a borrow type, and as a payload of `□` ([W9]).
+  Everywhere else it stands for the value it refers to; an untyped bind
+  expects a value. A field of a view that has borrow type is read in the same
+  two ways. `r ← e` writes the value of `e` through `r`. A name of borrow or
+  view type is never assigned: it borrows the same place for as long as it
+  lives.
 - **[W9]** A loop statement lists the alternatives that the `□` statements of
-  its body use, with a name for each payload field. A payload field of a
+  its body use, with a name for each payload field. A payload field of a loop
+  has the type of the operand that leaves through it, so a name of borrow or
+  view type leaves as the borrow or view it is. A payload field of a
   contract that has a borrow or view type always has `∈`. A payload name of a
   loop has none; it holds the loans of the value that leaves ([L1]).
 
@@ -262,8 +270,8 @@ A contract is a closed set of alternatives. Each alternative has a payload and
 may state a condition `⇐ φ` that holds whenever it occurs. A signature may also
 state a precondition `⊢ φ`, the permission `faults`, and the effects it `uses`.
 
-- **[T4]** A borrowed payload field `x : &τ ∈ ȳ` names the borrow parameters it
-  may be derived from. A payload borrow has no other origin.
+- **[T4]** A borrowed payload field `x : &τ ∈ ȳ` names the borrow or view
+  parameters it may be derived from. A payload borrow has no other origin.
 - **[T5]** An `extern` signature is trusted. Its conditions, payload types,
   effects and resource behavior are assumptions about the host, listed in the
   trust report. A defined control's signature is checked against its body.
@@ -399,9 +407,16 @@ term of a formula.
   for them.
 - **[E-Borrow]** An operand `&p` or `&~p` resolves `p` to a place and creates a
   borrow of it by [B3].
-- **[E-Build]** `S {ē}`, `V.c {ē}`, `W {ō}` and `clone(p)` build values. `clone`
-  reads its place and requires a type whose components are all clonable;
-  resources, captured outcomes and exclusive borrows are not.
+- **[E-Operands]** An operand **lends** when it is `&p` or `&~p`, or a view
+  constructor with a field that lends. Where a command or a view constructor
+  takes several operands, those that do not lend are evaluated first, left to
+  right, and those that lend afterwards, left to right. Expressions have no
+  effects ([W5]), so only the bookkeeping can tell: every read of a statement
+  comes before any place is lent by it, and `Δ push(&~v, len(v))` reads the
+  length first.
+- **[E-Build]** `S {ē}`, `V.c {ē}`, `[ē]`, `∅`, `W {ō}` and `clone(p)` build
+  values. `clone` reads its place and requires a type whose components are all
+  clonable; resources, captured outcomes and exclusive borrows are not.
 - **[E-Temp]** A value that was read and not consumed, and that no slot holds
   (the result of a constructor, a function or `clone`), is destroyed when its
   reader is done. If it contains an obligation (section 6.8), stuck.
@@ -440,7 +455,7 @@ Otherwise `c` runs:
   equal operands has the same value wherever it is evaluated.
 - **[E-Test]** `d : ? e`. Evaluate `e`; add `d.true` or `d.false` to the scope's
   history.
-- **[E-Decide]** `d : Δ ω(ō) ▸ …`. Evaluate the operands left to right and run
+- **[E-Decide]** `d : Δ ω(ō) ▸ …`. Evaluate the operands ([E-Operands]) and run
   `ω` (sections 6.6 and 6.7). When it completes with `a` and payload `v̄`: if `a`
   is not among the listed alternatives, stuck. Otherwise add `d.a` to the
   history and bind the names of that alternative to `v̄`, as in [E-Bind].
@@ -728,9 +743,10 @@ For each name `x` the checker keeps two history formulas: `D(x)`, on which `x`
 has been bound, and `M(x)`, on which it has been moved. `x` is **available** on
 `D(x) ∧ ¬M(x)`.
 
-- **[O0] Order.** The rules apply to the expressions of a statement one at a
-  time, left to right, and then to its command. So the second `x` in `Δ f(x, x)`
-  is a use after a move. A terminator's own checks, and the availability `A₀`
+- **[O0] Order.** The rules apply to the operands of a statement one at a
+  time, in the order of evaluation ([E-Operands]): those that do not lend,
+  left to right, then those that lend, and then its command. So the second `x`
+  in `Δ f(x, x)` is a use after a move. A terminator's own checks, and the availability `A₀`
   of [O6], are taken after the statement's expressions.
 
 - **[O1] Bind.** Binding `x` at statement `i`, by a bind or as a payload name of
@@ -780,7 +796,8 @@ A **loan** `⟨p, m, G, H⟩` records that the place `p` is borrowed in mode `m`
 the histories `G`, and that the names in `H`, its **holders**, may carry a
 borrow derived from it. A place is a name with a path, or the place **behind** a
 borrow name `r`, written `*r`, with a path. `*r` is not part of `r`: the name
-holds the borrow, and what is behind it belongs to someone else. In a place,
+holds the borrow, and what is behind it belongs to someone else. A field of a
+view that has borrow type counts as a borrow name here. In a place,
 every index of one collection overlaps every other.
 
 - **[L1] Creation.** `&p` or `&~p` at statement `i` creates a loan on `p` with
@@ -791,8 +808,9 @@ every index of one collection overlaps every other.
   borrow flows into a name, by a bind, a copy, a loop parameter or a derived
   payload, that name becomes a holder of every loan its source holds. A borrow made through a borrow `r` is a loan
   on `*r`, and its holder also becomes a holder of every loan that `r` holds.
-- **[L2] Liveness.** A statement evaluates its expressions left to right and
-  then runs its command, which uses every borrow among their values: an
+- **[L2] Liveness.** A statement evaluates its operands in the order of
+  [E-Operands] and then runs its command, which uses every borrow among their
+  values: an
   operation its arguments, a loop statement its initial arguments, `↑` its
   arguments, `□` and `■` their payloads, a bind its value, an assignment the
   borrows through which its target is reached. A holder is **used
@@ -1040,6 +1058,10 @@ They are recorded for the author's acceptance of phase 1.
     Formulas carry no obligations of their own.
 18. **Parameters are not mutable** ([W4]), so a parameter in a contract
     condition has one value, the one at entry.
+19. **Reads before loans** ([E-Operands]). The operands of a command that lend
+    are evaluated after the others. It is question Q17 of the
+    [reference model](references.md), and the draft follows its
+    recommendation.
 
 The author answered the five questions of this draft on 19 November 2026 and
 took the recommendation in each case:
