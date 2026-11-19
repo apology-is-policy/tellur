@@ -4,25 +4,25 @@ import "ordering.vn" as ordering
 ┄ The checker validates the comparator interface, not the ordering laws.
 pub control lower_bound<order: ordering.comparator>(
     source: &[order.item], rule: &order, needle: &order.item
-) ■ position {index: u32} ⇐ index ≤ len(source)
+) ■ position {index: usize} ⇐ index ≤ len(source)
 │ forward bound(source, rule, needle, false)
 ╵
 
 pub control upper_bound<order: ordering.comparator>(
     source: &[order.item], rule: &order, needle: &order.item
-) ■ position {index: u32} ⇐ index ≤ len(source)
+) ■ position {index: usize} ⇐ index ≤ len(source)
 │ forward bound(source, rule, needle, true)
 ╵
 
 control bound<order: ordering.comparator>(
     source: &[order.item], rule: &order, needle: &order.item, upper: bool
-) ■ position {index: u32} ⇐ index ≤ len(source)
-│ ↻ search(start: u32 := 0, count: u32 := len(source))
+) ■ position {index: usize} ⇐ index ≤ len(source)
+│ ↻ search(start: usize := 0, count: usize := len(source))
 │ ║ ⊢ start + count ≤ len(source)
 │ ║ ? count = 0 → ■ position {start}
 │ ║
-│ ║ half: u32 := count ÷ 2
-│ ║ middle: u32 := start + half
+│ ║ half: usize := count ÷ 2
+│ ║ middle: usize := start + half
 │ ║ Δ rule.compare(source[middle], needle): before │ equal │ after
 │ ║
 │ ╠═ equal

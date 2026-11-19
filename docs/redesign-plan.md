@@ -120,13 +120,12 @@ State on 19 November 2026:
   derive programs by replacing anchors that contain a line break in embedded
   sources, and a Windows checkout delivered those sources with CRLF. Converting
   the sources to CRLF on macOS reproduces both failures exactly. Every `.vn` file
-  is now pinned to LF (`019d012`). Windows stays unqualified at 0.306 until the
-  workflow run on that commit passes.
+  is now pinned to LF (`019d012`), and the Windows workflow passed on that
+  commit.
 - v1 is frozen from this point. Corrections stay possible, because v1 is the
   oracle in phase 2.
 - The roadmap records are replaced by the phases of this plan.
-- Not done: the v1 tag, which waits for the Windows run and for the author's
-  word.
+- v1 is tagged `v1-final` at `019d012`. Phase 0 is complete.
 
 ### Phase 1. Design on paper
 

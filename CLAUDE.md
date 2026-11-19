@@ -79,7 +79,7 @@ plan's phase sections are authoritative for scope and exit conditions.
 
 | Phase | Work | State |
 | --- | --- | --- |
-| 0 | Close out v1 | Done except the v1 tag |
+| 0 | Close out v1 | Done; tagged `v1-final` |
 | 1 | Design on paper: core specification, fact logic, reference model, surface, the corpus rewritten by hand, a reading and repair test. No compiler code. | Active |
 | 2 | Oracle interpreter, program generator, differential harness, mutation tests | |
 | 3 | Checker on a typed core, with the formatter that owns the rails | |
@@ -203,8 +203,13 @@ Adapted from the Thylacine operational contract.
   line, a design fork, a real block, or the author asking. At a checkpoint that
   is run through, give three lines (what landed, what is running, what is next)
   and continue.
-- Self-compaction from inside the session is not set up for this repository.
-  At the line, write the resume note and recommend `/compact` to the author.
+- **Self-compaction.** Where `CLAUDE.local.md` names a self-compaction tool and
+  the session runs in tmux, use it at the line: commit, write the resume note
+  to the tool's note slot, run its check, then run it and end the turn. It
+  refuses a tracked tree with uncommitted changes, a stale or oversized note, a
+  working set with a missing path, and a second compaction with no new commit.
+  Without the tool, write the resume note and recommend `/compact` to the
+  author.
 
 ## Code map
 

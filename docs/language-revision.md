@@ -29,8 +29,8 @@ they derive programs by replacing anchors that contain a line break in
 `library/reduction.vn` and `experiments/ordered_bounds/lower_bound.vn`, and a
 Windows checkout delivered those files with CRLF, so the derived programs were
 wrong. Converting the files to CRLF on macOS reproduces both failures exactly.
-Every `.vn` file is now pinned to LF. Windows remains unqualified at 0.306 until
-the workflow run on that fix passes. Next: phase 1, the core specification on
+Every `.vn` file is now pinned to LF, and the Windows workflow passed on that
+fix. v1 is tagged `v1-final` there. Next: phase 1, the core specification on
 paper.
 
 ### Supported collection sources, 18 November 2026

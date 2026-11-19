@@ -388,7 +388,7 @@ class Printer {
     if (t.k === "ctl") return [[null, "("], ...sep(t.params.map((p) => this.type(p)), ", "), [null, ") "], ...this.exitsInline(t.exits)];
     if (t.name === "vector" && t.args.length === 1) return [["type", "["], ...this.type(t.args[0]), ["type", "]"]];
     if (t.name === "map" && t.args.length === 2) return [...this.type(t.args[0]), [null, " "], ["type", st.mapArrow], [null, " "], ...this.type(t.args[1])];
-    const builtin = /^(u8|u16|u32|u64|i32|i64|bool|string|bytes|unit|tasks|option|slice|box)$/.test(t.name);
+    const builtin = /^(u8|u16|u32|u64|usize|i32|i64|bool|string|bytes|unit|tasks|option|slice|box)$/.test(t.name);
     const out = [[builtin ? "type" : null, t.name]];
     if (t.args.length) out.push([null, "<"], ...sep(t.args.map((a) => this.type(a)), ", "), [null, ">"]);
     return out;

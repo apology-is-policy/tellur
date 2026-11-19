@@ -7,7 +7,8 @@ normative when it is. Nothing here is implemented.
 An independent review of the first version of this draft found seven programs
 that its checking rules accepted and its semantics left stuck, most of them in
 the loan rules. The rules below include the repairs. The repaired text has not
-been reviewed again.
+been reviewed again. The author has answered the five questions the draft
+raised (section 11).
 
 [Index of the v2 design](README.md) · [Plan](../redesign-plan.md) ·
 [Rails reference programs](../../experiments/syntax_lab/rails/)
@@ -51,13 +52,13 @@ Binary search, as written in Rails:
 ```text
 control bound<order: ordering.comparator>(
     source: &[order.item], rule: &order, needle: &order.item, upper: bool
-) ■ position {index: u32} ⇐ index ≤ len(source)
-│ ↻ search(start: u32 := 0, count: u32 := len(source))
+) ■ position {index: usize} ⇐ index ≤ len(source)
+│ ↻ search(start: usize := 0, count: usize := len(source))
 │ ║ ⊢ start + count ≤ len(source)
 │ ║ ? count = 0 → ■ position {start}
 │ ║
-│ ║ half: u32 := count ÷ 2
-│ ║ middle: u32 := start + half
+│ ║ half: usize := count ÷ 2
+│ ║ middle: usize := start + half
 │ ║ Δ rule.compare(source[middle], needle): before │ equal │ after
 │ ║
 │ ╠═ equal
@@ -75,14 +76,14 @@ Its core form names every decision site and gives every statement a selector:
 ```text
 control bound⟨order : comparator⟩(source : &[order.item], rule : &order,
                                   needle : &order.item, upper : bool)
-    ■ { position {index : u32} ⇐ index ≤ len(source) }
+    ■ { position {index : usize} ⇐ index ≤ len(source) }
 
-1  ⊤ ▷ s : ↻ search(start : u32 := 0, count : u32 := len(source))
+1  ⊤ ▷ s : ↻ search(start : usize := 0, count : usize := len(source))
              ⊢ start + count ≤ len(source)
      1  ⊤                 ▷ z : ? count = 0
      2  z.true            ▷ ■ position {start}
-     3  ⊤                 ▷ half : u32 := count ÷ 2
-     4  ⊤                 ▷ middle : u32 := start + half
+     3  ⊤                 ▷ half : usize := count ÷ 2
+     4  ⊤                 ▷ middle : usize := start + half
      5  ⊤                 ▷ c : Δ order.compare(rule, &source[middle], needle)
                                   ▸ before {} │ equal {} │ after {}
      6  c.equal           ▷ u : ? upper
@@ -109,15 +110,14 @@ The checker establishes, among other things:
 | Every history ends | End of the loop body | The selectors of 2, 7 and 8 cover `z`, `c` and `u` |
 | `index ≤ len(source)` | 2 | Invariant, with `count = 0` |
 | `2 ≠ 0` | 3 | Constant |
-| `start + half` fits `u32` | 4 | `half ≤ count`, the invariant, and the range of `len` |
+| `start + half` fits `usize` | 4 | `half ≤ count`, the invariant, and the range of `len` |
 | `middle < len(source)` | 5 | `count ≠ 0`, so `half < count`; then the invariant |
 | Invariant for the next iteration | 7 | `start + half ≤ start + count` |
 | `middle + 1` and `count - half - 1` in range; invariant | 8 | `half < count`; the sum is `start + count` |
 
 No arm is a filler, and no check remains at run time. Deleting the `⊢` line makes
 the obligations at 2, 4, 5 and 8 unprovable, and the program is rejected with a
-counterexample. The example keeps `u32` lengths, as the reference programs do;
-question Q3 in section 11 may change that.
+counterexample. Lengths and indices have the type `usize` (section 11, Q3).
 
 ## 3. Syntax
 
@@ -140,7 +140,7 @@ Signature   Sig ::= [⊢ φ] ■ K [faults] [uses ε̄]
 Contract      K ::= { a₁ {q̄₁} [⇐ φ₁] │ … │ aₙ {q̄ₙ} [⇐ φₙ] }
 Payload field q ::= x : τ  |  x : τ ∈ ȳ          the second for a borrow or view type
 
-Type          τ ::= bool | uN | iN | string
+Type          τ ::= bool | uN | iN | usize | string
                   | S⟨τ̄⟩ | V⟨τ̄⟩ | [τ] | τ ⇀ τ | R | outcome⟨K⟩
                   | &τ | &~τ | W⟨τ̄⟩
                   | α | α.t
@@ -639,7 +639,7 @@ for every `G ⇒ φ` in `Ψ`, `h ⊨ G` implies `ν ⊨ φ`.
   | An obligation proved at statement `i` | `Rᵢ ⇒ φ` |
   | The precondition of the control being checked | `⊤ ⇒ φ` |
   | The invariant of the loop whose body is being checked | `⊤ ⇒ φ` |
-  | The type of a logical name | Its range, and `0 ≤ len(x) ≤` the largest length |
+  | The type of a logical name | Its range, and `0 ≤ len(x) ≤` the largest `usize` |
 
 - **[N5]** A value that changes gets a new logical name, on the histories
   concerned. A borrow and the place it borrows denote the same value, so a
@@ -959,12 +959,13 @@ They are recorded for the author's acceptance of phase 1.
 12. **Functions may state preconditions**, and their bodies are checked under
     them ([P8]).
 
-Questions for the author, with the recommended answer first:
+The author answered the five questions of this draft on 19 November 2026 and
+took the recommendation in each case:
 
-| | Question | Recommendation | Alternative |
-| --- | --- | --- | --- |
-| Q1 | May a component of kind `drop` or `must` be moved out of a struct while the rest stays? | **No** in v2.0: take the owner apart or move it whole. Ownership stays one formula per name. | Partial moves as in Rust: one formula per path, and partly moved values that cannot be passed on. |
-| Q2 | When a loop leaves with alternative `a`, may an outer name be moved on some ways of leaving and not on others? | **No** ([O6]): all `□ a` sites agree. The remedy is a second alternative or passing the value as loop state. | Allow it and export an iteration bit as a hidden drop flag. |
-| Q3 | What is the type of lengths and indices? | **A dedicated unsigned type of address width**, since v2 has several integer widths. The reference programs, written with `u32` as in v1, would change. | Keep `u32`, capping collections at 2³² elements and requiring conversions for wider counters. |
-| Q4 | Is `¬` allowed in a Rails path label? | **Yes, sparingly**: the core has it and it is sometimes the shortest way to say "every other way". | Labels use `∧` and `∨` only; negation is written by naming paths. |
-| Q5 | An arm disposes an alternative that the checker can prove impossible. | **A warning** in non-generic code, suggesting `⊥`; silent in generic code, where it may be reachable in another instance. | An error, or no diagnostic. |
+| | Question | Decision |
+| --- | --- | --- |
+| Q1 | May a component of kind `drop` or `must` be moved out of a struct while the rest stays? | **No** in v2.0. The owner moves whole or is taken apart ([E-Unpack]). Ownership stays one formula per name. |
+| Q2 | When a loop leaves with alternative `a`, may an outer name be moved on some ways of leaving and not on others? | **No** ([O6]). All `□ a` statements agree. The remedy is a second alternative, or passing the value as loop state. |
+| Q3 | What is the type of lengths and indices? | **`usize`**, an unsigned integer of address width, distinct from the fixed-width types. `len` returns it and indices have it. The ordered-search reference program is updated. The name can still change at no cost. |
+| Q4 | Is `¬` allowed in a Rails path label? | **Yes, sparingly.** The surface document says when. |
+| Q5 | An arm disposes an alternative that the checker can prove impossible. | **A warning** in non-generic code, suggesting `⊥`. Silent in generic code, where the arm may be reachable in another instance. |
