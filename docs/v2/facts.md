@@ -10,7 +10,10 @@ inconsistent (a range was claimed for terms that need not have one), that two
 axiom families were false outside the range of their type, that purity was
 defined too widely, and that entailment was not fixed precisely enough for two
 compilers to agree. The text below includes the repairs, which have not been
-reviewed again.
+reviewed again. A later review of all five phase 1 documents found three
+things here: the length of a literal ([A3]) was never an instance of a query
+([J3]), a control that runs tasks counted as pure ([I10]), and a loop did not
+rename a task set that its body changes ([I9]). They are repaired below.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Plan](../redesign-plan.md)
@@ -145,7 +148,7 @@ checker reasons only from what is written.
 - **[S2]** `Bool`; one sort for each struct type and each variant type; the
   sort `[σ]` of vectors over `σ`.
 - **[S3]** Every other type is an **uninterpreted sort**: `string`, maps,
-  resources, captured outcomes, task handles and sets, and type parameters. The
+  resources, captured outcomes, task sets, and type parameters. The
   logic knows that a value of such a sort equals itself and nothing more, apart
   from the measures of [A3].
 
@@ -163,6 +166,7 @@ Term     t ::= n                        integer literal
              | len(t)                   measure
              | t.x                      field of a struct
              | S {t̄} | V.c {t̄}          constructors
+             | [t̄] | ∅                  vector literal, empty map
              | t[t]                     element of a vector
              | t[t ↦ t]                 the vector with one element replaced
              | g(t̄)                     application of a symbol
@@ -266,6 +270,7 @@ piece of program text denotes at a statement.
   | Lending `&~y.π` to an operation | A fresh name. The contract's conditions read the parameter as `z` and `old` of the parameter as `y.π`. |
   | A write or a loan through a local borrow name | As above, for the place the name abbreviates |
   | A write or a loan through a borrow that is a parameter, a loop parameter or a payload field | The value behind it is renamed in the same way. Every root on which that borrow holds a loan gets a fresh name with no fact. |
+  | `spawn … into x`, `await next(x)` | The set `x` is renamed, with the fact about `count` that the core gives ([TK6]). |
   | Entry to a loop | Every name that some event of the body, nested loops included, renames by a row above is renamed at entry. A place the body changes directly gets a fresh `z`, one for each such place, with a path through an index cut at the collection. A name that the row above renames with no fact gets none here. |
 
   What a body can change is read off its text and its loans: the places it
@@ -274,10 +279,11 @@ piece of program text denotes at a statement.
   The fields of `y` outside the places changed directly keep their facts
   across the event, the loop included.
 - **[I10] Pure operations.** An operation is **pure** when its set of effects
-  is empty, whether declared or inferred ([F3]), it is not `async`, and no
+  is empty, whether declared or inferred ([F3]), it is not `async`, no `run`
+  occurs in its body or in the body of a control it calls, and no
   resource type occurs in its parameters or payloads. It neither changes nor
-  observes the world, so its alternative and its payload are functions of the
-  values it was given. A decision at site
+  observes the world, and no order of turns can reach it ([E-Turn]), so its
+  alternative and its payload are functions of the values it was given. A decision at site
   `d` on a pure operation `f` with argument terms `t̄` (borrows as the values
   behind them, at entry) adds, for each alternative `a` with payload names `ȳ`,
 
@@ -328,7 +334,10 @@ apply to (section 6).
   `0 ≤ len(t) ≤ usize.max`. `count` applies to task sets, with the same
   bounds; the core says how the task forms change it ([TK6]). A vector
   literal has the length it shows, `len([t₁, …, tₙ]) = n`, and the empty map
-  has none, `len(∅) = 0`. Different string literals are different values.
+  has none, `len(∅) = 0`. A vector literal and `∅` in program text denote
+  these terms, and the logic knows nothing else about a literal: its elements
+  are whatever was put there, as for any constructor term. Different string
+  literals are different values.
   What `len` counts in a string is for the text library to say, and the logic
   does not know the length of a string literal.
 
@@ -421,7 +430,9 @@ here, so that two compilers cannot disagree about a program.
   irrelevant.
 - **[J3] Instances.** The instance set of a query is the least set that holds:
   the range of every term to which [A1] gives one; [A2]; [A3] for every
-  measure term; the instance of [A7] to [A11] for every quotient, remainder,
+  measure term; the length of [A3] for every vector literal and every `∅`
+  among the terms, whether or not the query applies `len` to it; the instance
+  of [A7] to [A11] for every quotient, remainder,
   product and other operator application; the first two parts of [A6] for
   every update term `t[i ↦ e]`; and the frame part of [A6] for every update
   term together with every term `j` that the query uses as an index on a
@@ -651,7 +662,9 @@ extern async control next⟨t⟩(set : &~tasks⟨t⟩)
 ```
 
 `count` is the measure of a task set. The core gives `await next` these facts
-directly ([TK6]); the contract above is one way to read them. An awaited
+directly ([TK6]). The contract above is only a way to read them: it is not
+program text, since a set is never lent and a producer is never a type
+parameter ([W10], [W11]). An awaited
 operation is never pure ([I10]). The decision renames the set: `old(set)` is
 `active` and `set` is the fresh `active′`. The facts are
 

@@ -33,7 +33,11 @@ emit(text: &string) ■ done uses console.write
 
 ┄ Checked arithmetic, for each integer type. An infix operator is used where
 ┄ the result is proved to fit, and one of these where it is not.
-checked_add(a: i64, b: i64) ■ sum {value: i64} ⇐ value = a + b │ overflow
-checked_sub(a: i64, b: i64) ■ difference {value: i64} ⇐ value = a - b │ overflow
+checked_add(a: i64, b: i64)
+    ■ sum {value: i64} ⇐ value = a + b
+    ■ overflow
+checked_sub(a: i64, b: i64)
+    ■ difference {value: i64} ⇐ value = a - b
+    ■ overflow
 checked_mul(a: i64, b: i64) ■ product {value: i64} │ overflow
 checked_div(a: i64, b: i64) ⊢ b ≠ 0 ■ quotient {value: i64} │ overflow

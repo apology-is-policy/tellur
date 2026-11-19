@@ -3,8 +3,8 @@
 Status: **draft 1**, 19 November 2026. Phase 1, deliverable 3 of the
 [redesign plan](../redesign-plan.md). Not yet accepted by the author. Nothing
 here is implemented, and no tool has parsed or checked the programs: they were
-written and checked by hand against the other documents. This draft has not
-been reviewed independently.
+written and checked by hand against the other documents. One independent
+review has read them against the rules (section 8).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Reference model](references.md) ·
@@ -164,7 +164,7 @@ on every alternative, which is the price of lending one map down a recursion.
 | `settings` | The reference program, with `remove` added. `validate_key` is a function. The three result declarations of v1 become one group, `storage_error`, and four contracts that include it. |
 | `http` | `route` is a sequence of tests with nested blocks: 75 lines and 22 labels in v1, 25 lines and no label here. Each helper decides, exits on the failures, and continues on the solid rail. |
 | `server` | `serve` is the reference program: the admission state of v1, a variant with five constructors, is the set of alternatives of the loop `admit`. The boundary `request` decides the exchange and the close one after the other where v1 captures both. `prepare` binds the media type once. |
-| `main` | The entries that only pass a result on have `■ auto`. |
+| `main` | `set` and `remove`, which only pass a result on, have `■ auto`. `serve` names the server's outcome, which carries the exit statuses. |
 
 A trait is implemented nowhere in the corpus. For completeness, the v1
 example `examples/stable_ordering/main.vn` (25 lines) in v2:
@@ -203,7 +203,8 @@ is listed with the least that the program needs of it.
 | Text interpolation | settings, retry client | `"…{e}…"` is a string built from the text and the value of `e`, an integer or a string. A brace that is text is written `\{`. |
 | Limits of a type | interpreter | `i64.min`, as the fact logic writes `usize.max`. |
 
-The retrying client needs nothing beyond the documents. It is checked by the
+Apart from text interpolation, the retrying client needs nothing beyond the
+documents. It is checked by the
 task rules of the core's draft 2 ([TK4] at each `await`, with the connection
 declared `on fault release`), by the fact logic for its two counters, and by
 the ordinary resource rule for the connection that every attempt closes.
@@ -223,8 +224,8 @@ work within, with the cost stated.
 | F2 | Under the first draft's rule the generic library carried a move mark on every move: 76 in 231 lines. | The mark is asked only where the type is known to hold an obligation ([U11]). This is question Q19. |
 | F3 | A value that holds an obligation could not be marked in an assignment, a literal, a constructor or an adapter's payload. | [G7a] and the grammar accept `▾ place` there. |
 | F4 | `■ result`, for a captured outcome, reads as an exit with an alternative named `result`, and moves a value of kind `must` with no mark. | `■ ▾result` ([U14]). The reference program `server.txt` has the older spelling. |
-| F5 | The logic did not know that a new vector is empty, so no invariant over a vector that a control builds could be proved at entry. | `len([t₁, …, tₙ]) = n` and `len(∅) = 0` ([A3] of the fact logic). |
-| F6 | The server isolates a fault in one connection and carries on. The core described only the lexical boundary, whose contingency cannot let the control continue. | [E-Supervise] in the core and [G12], [Y12] in the surface: the named boundary of v1, with `supervise`, `terminate` and `contingent`. |
+| F5 | The logic did not know that a new vector is empty, so no invariant over a vector that a control builds could be proved at entry. | `len([t₁, …, tₙ]) = n` and `len(∅) = 0` ([A3] of the fact logic), an instance for every literal in a query ([J3]). |
+| F6 | The server isolates a fault in one connection and carries on. The core described only the lexical boundary, whose contingency cannot let the control continue. | [E-Supervise] and the checking rule [F6] in the core, [G12] and [Y12] in the surface: the named boundary of v1, with `supervise`, `terminate` and `contingent`. |
 | F7 | [W12] let only an extern control list `cancelled`. The library wraps a cancellable host operation in a defined control, which must pass the alternative on. | [W12] relaxed: in a defined control `cancelled` is an alternative like any other. |
 | F8 | The server awaits a cancellable operation through `run` inside a member. No rule cancelled the root of that run. | [E-Cancel]: the root of a run that a cancelled task starts or waits for is cancelled. |
 | F9 | A contract could not name an outcome or a group of another module. | `QName` in `Contract` and in `…group`. |
@@ -282,7 +283,27 @@ Each program was traced by hand against the rules that decide it: the
 acknowledgement of every alternative ([C2], [U7]), ownership at every
 terminator ([O5], [O6]), the loans at every exclusive use ([L3]), the proof
 obligations ([P2] to [P6]) and, for the server and the client, the task rules
-([TK2] to [TK5]). A script checked the rails, the line width and the counts.
-No parser, checker or interpreter exists yet, so an error of the kind a
-compiler finds may remain. Phase 2 runs the whole corpus through the oracle,
-which is the first mechanical check these programs get.
+([TK2] to [TK5]). [`count.py`](corpus/count.py) checks the line width and
+makes the counts. The rails were checked by eye and by a throwaway script
+that is not kept. No parser, checker or interpreter exists yet, so an error
+of the kind a compiler finds may remain. Phase 2 runs the whole corpus
+through the oracle, which is the first mechanical check these programs get.
+
+One independent review read the five phase 1 documents together, and every
+program here against the rules. It reproduced the counts and found no missing
+acknowledgement and no ownership, loan or `⊥` error in the programs. What it
+found that touches the corpus:
+
+| Finding | What was done |
+| --- | --- |
+| Two proofs rested on an axiom that the fact logic stated and never used: the entry invariant of `split_prefix`, and the `⊥` in `encode_value`. | The length of a literal is now an instance of every query that has one ([J3] of the fact logic). |
+| The boundary `request` had no checking rule, and nothing said whether its body is `async`. | [F6] and [W10] of the core. The body is not `async`, which is why it uses `run`. `request` was checked again against [F6]: `connection` is available where `exchange` may fault, and is consumed after it. |
+| The parser writes `op.add` and `punctuation.let_word` without braces, which the grammar did not derive. So were a label in a loop and a decision on a Boolean expression. | The grammar of the surface, section 4. |
+| Four programs that the task rules accepted and the semantics left stuck or with a lost resource. No corpus program is one of them. | [TK3] to [TK6], [E-Await], [E-AwaitHost] and [E-Stop] of the core. The server and the retry client were checked again against the new [TK4]: every value given to an awaited operation, and every payload that one returns, is a text, a number or a connection declared `on fault release`. |
+| The contracts with conditions in `prelude.txt` put two entries on a line, against [G1]. | One entry on a line. |
+| `route` declares `faults`, and nothing in the application faults, so the contingency of `request` cannot run. | Left as it is, and not an error: a permission need not be used, and v1's `route` declares the same. It is why `exchange` and `prepare` say `faults`. |
+
+`cancel active` in `serve` is kept from v1 although it changes nothing where
+it stands: a member is cancelled when the task that owns its set is
+([E-Cancel]), and `serve` reaches the statement only when it is cancelled
+itself. The preparation of the reading test found this, not the review.

@@ -2,10 +2,14 @@
 
 Status: **draft 1**, 19 November 2026. Phase 1, part of deliverable 2 of the
 [redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
-normative when it is. Nothing here is implemented. This draft has not been
-reviewed independently. Writing the [corpus](corpus.md) amended it: traits,
-named boundaries, `copy` types, the move mark and five smaller points of
-grammar (section 12).
+normative when it is. Nothing here is implemented. Writing the
+[corpus](corpus.md) amended it: traits, named boundaries, `copy` types, the
+move mark and five smaller points of grammar (section 12). One review, of all
+five phase 1 documents together, has been folded in. It found three forms
+that the grammar did not derive (a label in a loop, a decision on a Boolean
+expression, a constructor without braces), a `■ auto` that did not determine
+a contract, and a method rule narrower than the core's. The repairs have not
+been reviewed again.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Reference model](references.md) ·
@@ -107,7 +111,7 @@ or indentation.
 
 - **[Y1]** Source is UTF-8 text with lines ended by a line feed. A declaration
   starts in the first column. A signature may continue on following lines
-  indented by four spaces.
+  indented by four spaces or more.
 - **[Y2]** Inside a control, every line is a **prefix** followed by content. The
   prefix is a sequence of **segments**, each two columns wide: a rail character
   and a space. There is one segment for each block the line lies in, outermost
@@ -140,7 +144,9 @@ or indentation.
   In the horizontal form the arms follow the operation on its line, after a
   colon and separated by `│`; no arm has a block.
 - **[Y8] Continuation.** A line whose content begins with white space continues
-  the statement of the line above.
+  the statement of the line above. The prefix is read first: the two spaces
+  that stand for a finished arm rail before a `┆` ([Y2]) belong to the prefix
+  and do not begin a continuation.
 - **[Y9]** A blank line in a body is its prefix alone. A comment is `┄` and the
   rest of the line, as content at any nesting or in the first column between
   declarations.
@@ -203,9 +209,18 @@ Type      ::= bool | uN | iN | usize | string | name [< Type,* >] | name . name
   is that declaration's contract. The contract remembers which declarations
   it took alternatives from ([U7], [U14]).
 - **[G3]** `■ auto` is allowed on a control that is not `pub`. Its contract is
-  the set of alternatives its exits use, with the payload types found there.
-  For a payload that is a borrow or a view, `∈` lists the parameters it is
-  derived from at those exits.
+  the set of entries its exits use. A `■ a {ē}`, and a target `a {ē}` of an
+  adapter, gives the alternative `a`. A `forward`, a `■ ▾x` and an arm that
+  exits under the alternative's own name give the entries of the contract
+  they pass on, so a group that is passed on whole stays a group ([G2],
+  [U14]). The type of a payload field is the type of the expressions given
+  for it, which must agree. An integer literal fits any integer type that
+  holds it, takes the type of the other exits for that field, and is `u32`
+  when every one of them is a literal. For a payload that is a borrow or a
+  view, `∈` lists the parameters it is derived from at those exits. Contracts
+  are inferred callee first: a control with `■ auto` that reaches itself
+  through `forward` or adapters of other `■ auto` controls needs a written
+  contract.
 - **[G4]** `↦ number` on an alternative of an outcome declaration is the
   process status of a program that exits with it. It has no other meaning.
 - **[G4a]** `&` and `&~` apply to the whole type that follows them:
@@ -224,7 +239,9 @@ Type      ::= bool | uN | iN | usize | string | name [< Type,* >] | name . name
 - **[G12] Named boundaries.** `boundary`, `contingency`, `supervise` and
   `terminate` are the named form of a fault boundary ([E-Supervise]).
   `contingent` marks a control that a contingency may call; it is v1's
-  `@contingent`. The lexical form `fault boundary` keeps its v1 syntax and
+  `@contingent`. Neither body of a named boundary is `async`, so it uses
+  `run` and never `await`, and its effects count toward the control that
+  supervises it ([W10], [F6]). The lexical form `fault boundary` keeps its v1 syntax and
   comes with draft 2 of this document.
 
 ### 4.2 Statements
@@ -248,8 +265,8 @@ Stmt     ::= [~] name [: Type] := Arg                       bind
            | cancel name                                    ask the members of a set to stop
            | [await | run] Call                             call with one outcome
            | supervise Call                                 run a named boundary
-           | ↻ name [( LoopParam,* )] {[⊢ Formula] Stmt*}   loop
-           | ∀ name ∈ Place {Stmt*}                         for each element
+           | ↻ name [( LoopParam,* )] {[⊢ Formula] (Stmt | Label)*}   loop
+           | ∀ name ∈ Place {(Stmt | Label)*}               for each element
            | Terminator
 Terminator ::= ■ name [{ Arg,* }] | ■ ▾ name | □ [name [{ Out,* }]]
            | ↑ name [( Arg,* )] | fault Expr | ⊥
@@ -259,6 +276,7 @@ LoopParam ::= [~] name : Type := Arg
 Out      ::= name | name : Arg
 
 Operand  ::= [await | run] Call | await next name | [▾ | ~] Place
+           | Expr                                           of type bool ([U6])
 Call     ::= QName ( Arg,* ) | Place . name ( Arg,* )
 Arg      ::= Expr | ~ Place | ▾ Place
 Arms     ::= : Arm (│ Arm)*   |   one line for each, marked ├ and └
@@ -286,12 +304,17 @@ Target   ::= name | Terminator | ■ | {Stmt*}
 
 ```text
 Expr   ::= literal | name | Expr . name | Place [ Expr ] | QName ( Expr,* )
-         | Expr . name ( Expr,* ) | name { Expr,* } | name . name { Expr,* }
+         | Expr . name ( Expr,* ) | name { Expr,* } | name . name [{ Expr,* }]
          | [ Expr,* ] | ∅ | len ( Place ) | clone ( Place )
          | ( Expr ) | ¬ Expr | - Expr
          | Expr op Expr
 Place  ::= name | Place . name | Place [ Expr ]
 ```
+
+A constructor without fields may leave out its braces: `op.add`. It is told
+from the field of a value by its first name, which is a variant type and not
+a value. In `{ Field,* }`, a name after `∈` that is followed by `:` begins
+the next field, and any other name there is one more origin.
 
 Operators, loosest first: `∨`; `∧`; `= ≠ < ≤ > ≥` (not associative); `+ -`;
 `* ÷ mod`; unary `¬` and `-`. `=` is equality, and binding is always `:=`. A
@@ -388,7 +411,9 @@ block around it, because `d.a` implies that `d` ran ([K4]).
   ```
 
   A history that reaches the end of `B` goes on to the next element. `B` may
-  exit, and may leave with a named alternative. The three obligations of the
+  exit, and may leave with a named alternative. The `done` of the expansion
+  is hidden: no name in a program equals it, so a `□ done` written in `B` is
+  an alternative of its own. The three obligations of the
   expansion (the index, the increment and the invariant) are proved from the
   test and the invariant in every case; a body that shortens `p` fails the
   invariant at `↑` and is rejected there.
@@ -433,7 +458,8 @@ block around it, because `d.a` implies that `d` ran ([K4]).
   the traits that bound it. A control of a module is not found this way: it
   is called by its name. Where `p` is the name of an import, `p.m(ā)` is the
   qualified call. The receiver is lent as `m` declares; an exclusive loan
-  needs a receiver whose root is bound with `~`.
+  needs a receiver that is a mutable place ([C1]): its root is bound with
+  `~`, or it passes through an exclusive borrow.
 - **[U13] Adapters.** `■ Δ ω(ā) arms` decides `ω` and exits on every
   alternative. Each arm is `a` alone, which exits with the alternative `a` and
   its payload; or `a {pattern} → b {ē}`, which exits with `b`. A group arm
@@ -686,6 +712,9 @@ reference programs, recorded for the author's acceptance of phase 1:
    answer to Q4 of the core.
 9. **Mutating a vector inside `∀` is checked, not forbidden** ([U10]): the
    invariant at `↑` decides.
+10. **`■ auto` is inferred callee first, and an integer literal that nothing
+    else types is `u32`** ([G3]), as in v1. A group that is passed on whole
+    stays a group in the inferred contract.
 
 Questions for the author, each with a recommendation. The draft is written as
 if the recommendation were taken.

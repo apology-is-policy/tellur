@@ -2,8 +2,10 @@
 
 Status: **draft 1**, 19 November 2026. Phase 1, part of deliverable 2 of the
 [redesign plan](../redesign-plan.md) (its section 5.3). Not yet accepted by the
-author; it becomes normative when it is. Nothing here is implemented. This
-draft has not been reviewed independently.
+author; it becomes normative when it is. Nothing here is implemented. One
+review, of all five phase 1 documents together, has been folded in. It found
+the 36 verdicts to agree with the clauses they cite, and corrected what
+section 12 says of the loans a task set holds.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -1038,9 +1040,11 @@ logic, section 3.1).
 
 Tasks have their rules in the core's draft 2 (sections 6.12 and 7.8). For
 borrows they add one statement, [TK3]: a borrow given to a child by
-`spawn … into set` is held by the set, and so is every borrow that comes back
-from `await next`. A set is of kind `must` and is consumed only by the
-alternative `empty` ([TK2]), so the loans last until the set is drained.
+`spawn … into set` is held by the set, and a payload name of borrow type that
+comes back from `await next` becomes a holder of every loan the set holds. A
+set uses its loans for as long as it is available, and it is of kind `must`
+and consumed only by the alternative `empty` ([TK2]), so the loans last until
+the set is drained, also on a history that faults or never ends.
 
 ### 12.1 Children that borrow from their parent
 
@@ -1077,7 +1081,8 @@ async control chorus(line: &string) ■ done
 [O6]), so nothing is owed at statement 5 ([O5]). A shared loan may go to many
 children. An exclusive loan goes to one, and the parent cannot touch the place
 until the set is drained: a read of it between the `spawn` and the loop is
-rejected by [L3], because the loop mentions `voices`.
+rejected by [L3], because the set is still available there and so its loans
+are live ([TK3]).
 
 ### 12.2 A lender that an inner scope owns
 
@@ -1092,9 +1097,10 @@ rejected by [L3], because the loop mentions `voices`.
 ```
 
 **Rejected** at the `↑`, by [L3]: it ends the scope that owns `copy` while
-`voices`, a name of the enclosing body, holds a loan on it. No rule about
-tasks is involved. `spawn shout(lines[next]) into voices` is accepted, since
-the vector outlives the set.
+`voices`, a name of the enclosing body, holds a loan on it, and the set is
+available, so the loan is live ([TK3]).
+`spawn shout(lines[next]) into voices` is accepted, since the vector outlives
+the set.
 
 In the service of the Rails reference programs, `serve` clones `path` and
 `authority` for every connection. Under these rules it may lend them: both

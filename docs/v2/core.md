@@ -13,9 +13,14 @@ an ambiguity in what a borrow name stands for. The rules below include both
 sets of repairs; choices 11 and 13 to 18 of section 11 come from the second.
 Writing the examples of the [reference model](references.md) added five
 clarifications and one rule, [E-Operands] (its section 13; choice 19 here).
-The latest repairs have not been reviewed again. Draft 2 adds tasks (sections
-6.12 and 7.8), which no review has seen. The author has answered the five
-questions that draft 1 raised (section 11).
+Draft 2 adds tasks (sections 6.12 and 7.8). A third review, of all five
+phase 1 documents together, read the tasks for the first time and found four
+programs that the task rules accepted and the semantics left stuck or with a
+lost resource, and that the named boundaries which the corpus added had no
+checking rule. The repairs are in [TK3] to [TK6], [E-Await], [E-AwaitHost],
+[E-Stop], [N5], [F5] and [F6] (choices 25 to 28 of section 11) and have not
+been reviewed again. The author has answered the five questions that draft 1
+raised (section 11).
 
 [Index of the v2 design](README.md) · [Fact logic](facts.md) ·
 [Reference model](references.md) · [Surface](surface.md) ·
@@ -168,11 +173,14 @@ Command       c ::= [~]x [: τ] := o                     bind
                   | d : ↻ ℓ(x̄ : τ̄ := ō) [⊢ φ] {B} ▸ a₁ {x̄₁} │ … │ aₙ {x̄ₙ}    loop
                   | spawn f⟨τ̄⟩(ō) into x                  start a member of a task set
                   | cancel x                              ask the members of a set to stop
+                  | d : boundary {B} contingency [x̄] {B}  lexical fault boundary
+                  | supervise b(ō)                        run a named boundary
                   | ↑ ℓ(ō)                               again        (terminator)
                   | □ a {ō}                              leave        (terminator)
                   | ■ a {ō}                              exit         (terminator)
                   | fault e                              fault        (terminator)
                   | ⊥                                    impossible   (terminator)
+                  | terminate | escalate | recover ↑ ℓ   in a boundary (terminators, [F5], [F6])
 Operation     ω ::= f⟨τ̄⟩ | α.m | op | outcome | V
                   | await f⟨τ̄⟩ | await next | run f⟨τ̄⟩
 Operand       o ::= e | &p | &~p
@@ -250,14 +258,17 @@ Well-formedness:
   of an `async control`, and `run` only in a control that is not `async`. An
   `async control` is invoked only by `await f`, `run f` and `spawn f`. The `f`
   of `spawn f` and of `tasks⟨f⟩` is a defined `async control`, the
-  **producer** of the set.
+  **producer** of the set. The two bodies of a named boundary are not `async`,
+  whatever control supervises it: they may use `run` and may not `await`.
 - **[W11]** `tasks⟨f⟩` is the type of a local, bound once by
   `~x : tasks⟨f⟩ := tasks⟨f⟩()`, and of nothing else: not a parameter, a loop
   parameter, a payload field, a field or an element. A task set is never
   moved, lent or assigned. `spawn … into x`, `await next(x)`, `cancel x` and
   `count(x)` name it directly.
 - **[W12]** The alternative `cancelled` never has a payload. An
-  `extern async control` that lists it is **cancellable**. In the contract of
+  `extern async control` that lists it is **cancellable**, and there the
+  alternative has no condition either: a cancelled task receives it without
+  the host being asked ([E-AwaitHost]). In the contract of
   a defined control it is an alternative like any other: the body exits with
   it, in practice to pass on the `cancelled` of an operation it awaited. The
   contract of a producer has no alternative `empty`.
@@ -611,8 +622,9 @@ meaning ([reference](../reference/contingency.md)). In core terms:
   a boundary of its own, with `faults` permitted inside. Every history of
   `B₁` ends with `terminate`. When a fault unwinds to it, the scope of `B₁`
   is ended by [E-Unwind] except for the retained `ȳ`, and `B₂` runs with `ȳ`
-  and the message; a retained name is therefore available at every statement
-  of `B₁` that may fault. Every history of `B₂` ends with `terminate`, with
+  and the message, which is stuck if a retained name is not available then;
+  [F6] requires it to be available at every statement of `B₁` that may
+  fault. Every history of `B₂` ends with `terminate`, with
   `escalate` or with a new `fault`. After `terminate` in either body the
   supervising control continues with its next statement. It learns nothing:
   `supervise` has no alternatives, no payload and no fact, and it may not
@@ -667,22 +679,27 @@ do: the activation that started a run waits at its `run` decision.
   `fault`, the decision completes with no alternative and the fault continues
   in the caller ([E-Unwind]).
 - **[E-Turn]** When no task of the innermost run has the turn, the host gives
-  it to a task that is `ready`. That task runs until it awaits, is done, or
-  faults; nothing interrupts it in between. If no task is `ready`, the host
-  completes an operation that some task waits for ([E-AwaitHost]). A run all
-  of whose tasks wait for the host is not stuck.
+  it to a task of that run that is `ready`. That task runs until it awaits,
+  is done, or faults; nothing interrupts it in between. If no task of the run
+  is `ready`, the host completes an operation that one of them waits for
+  ([E-AwaitHost]). A run all of whose tasks wait for the host is not stuck.
+  The tasks of the runs around the innermost one stand still until it ends.
 - **[E-Await]** `d : Δ await f(ō) ▸ …`, with `f` a defined `async control`.
-  Evaluate `ō`. The task gives up its turn and is `ready`. When it has the
-  turn again it calls `f` by [E-Call], in the same task.
+  Evaluate `ō` and call `f` by [E-Call], in the same task, so that its
+  parameters are bound. The task then gives up its turn, before the first
+  statement of `f`, and is `ready`. No value is between scopes while the task
+  waits.
 - **[E-AwaitHost]** `d : Δ await f(ō) ▸ …`, with `f` an `extern async control`.
   Evaluate `ō`. If the task is cancelled ([E-Cancel]) and `f` is cancellable,
   the decision completes with `cancelled`: the host is not asked, and the
   arguments given by value are released as [E-Unwind] releases them.
   Otherwise the host starts the operation and the task is `waiting`. The host
-  later completes it as in [E-Extern], and the task is `ready` with that
-  alternative and payload. If the task becomes cancelled while it waits and
-  `f` is cancellable, the host withdraws the operation, which then has no
-  completion and no event, and the task is `ready` with `cancelled`.
+  later completes it as in [E-Extern]: the decision completes, its payload
+  names are bound in the task's scope, and the task is `ready`. If the task
+  becomes cancelled while it waits and `f` is cancellable, the host withdraws
+  the operation and the task is `ready` with `cancelled`. An operation that
+  is withdrawn, here or by [E-Stop], has no completion and no event, and the
+  arguments it was given by value are released as [E-Unwind] releases them.
 - **[E-Spawn]** `spawn f(ō) into x`. Evaluate `ō` and check the precondition of
   `f`. A new task with one activation of `f` on those arguments becomes a
   member of the set in `x`, in state `ready`. It does not run yet: `spawn`
@@ -714,11 +731,21 @@ do: the activation that started a run waits at its `run` decision.
 - **[E-Stop]** Stopping an activation ends its scopes, innermost first, as
   [E-Unwind] ends them: a resource declared `on fault release` is released,
   any other open resource makes the configuration stuck, and an operation the
-  host has started is withdrawn. No contingency runs and no fault permission
-  is asked: a stopped activation did not fault. Stopping a task stops its
-  activations, last first. Whenever a scope that holds a task set ends by
-  [E-Unwind] or [E-Stop], every member of the set is stopped, and the payload
-  of a member that is already done is released in the same way.
+  host has started is withdrawn ([E-AwaitHost]). The values in the care of a
+  boundary of that activation are released in the same way. No contingency
+  runs and no fault permission is asked: a stopped activation did not fault.
+  Stopping a task stops its activations, last first. Whenever a scope that
+  holds a task set ends by [E-Unwind] or [E-Stop], every member of the set is
+  stopped, and the payload of a member that is already done is released in
+  the same way. Ending scopes does not pass the turn, so no member runs
+  between the fault or the stop and its own stopping, whichever scope is
+  ended first.
+
+A task is stopped only while it is `ready`, `waiting` at an `await` or `done`.
+It is never stopped while one of its activations waits at a `run`: the run it
+started is then the innermost one, and the task that could fault and unwind
+its set stands still ([E-Turn]). The awaits of async controls are therefore
+the only places where [TK4] has something to require.
 
 For [E-Effect], the stack of a task continues below its first activation into
 the activation that spawned or ran it.
@@ -738,8 +765,9 @@ are still running before each statement (`Lᵢ`) and which of them run it (`Rᵢ
 ```text
 [K1]  L₁    = ⊤
 [K2]  Rᵢ    = Lᵢ ∧ gᵢ
-[K3]  Lᵢ₊₁  = Lᵢ                           cᵢ binds, captures, assigns, obliges or tests
-            = Lᵢ ∧ (gᵢ → d.a₁ ∨ … ∨ d.aₙ)   cᵢ is a decision or loop at site d
+[K3]  Lᵢ₊₁  = Lᵢ                           cᵢ binds, captures, assigns, obliges, tests,
+                                            spawns, cancels or supervises
+            = Lᵢ ∧ (gᵢ → d.a₁ ∨ … ∨ d.aₙ)   cᵢ is a decision, loop or boundary at site d
             = Lᵢ ∧ ¬gᵢ                      cᵢ is a terminator
 ```
 
@@ -825,7 +853,9 @@ for every `G ⇒ φ` in `Ψ`, `h ⊨ G` implies `ν ⊨ φ`.
   change through either renames both. An assignment to a name or through a
   borrow, and an operation that receives `&~p` or an exclusive borrow, give a
   fresh name to the root of every place written or lent, and to the root of
-  every place on which the borrow used holds a loan. Entry to a loop gives
+  every place on which the borrow used holds a loan. `spawn … into x` and
+  `await next(x)` give a fresh name to the set `x` ([TK6]), and `spawn` is an
+  operation in this sense for the borrows among its operands. Entry to a loop gives
   fresh names to the loop's parameters and to every outer name that its body,
   nested loops included, can change in these ways; the parts of a name that
   the body cannot change keep their facts (fact logic, [I9]). Facts stated earlier keep referring to the earlier
@@ -920,7 +950,9 @@ every index of one collection overlaps every other.
   `G = Rᵢ`. A borrow bound to a name is held by that name. A borrow passed as an
   argument is held by the operation, and by the payload names that the contract
   derives from that parameter with `∈`. A decision on a variant through a
-  borrow derives every payload name from that borrow ([E-Outcome]). Whenever a
+  borrow derives every payload name from that borrow ([E-Outcome]). A borrow
+  written as an operand of `■`, `□` or `↑` is held by the payload field or the
+  loop parameter it is given to, which the terminator uses ([L2]). Whenever a
   borrow flows into a name, by a bind, a copy, a loop parameter or a derived
   payload, that name becomes a holder of every loan its source holds. A borrow made through a borrow `r` is a loan
   on `*r`, and its holder also becomes a holder of every loan that `r` holds.
@@ -1004,9 +1036,11 @@ Each of these is an entailment by [N2], on the histories that run the statement.
 
 ### 7.7 Faults and effects
 
-- **[F1]** A statement **may fault** when it is `fault e`, or a decision or
-  capture on an operation whose signature says `faults`. It requires `faults`
-  in the signature of the control being checked, or an enclosing boundary.
+- **[F1]** A statement **may fault** when it is `fault e` or `escalate`, or a
+  decision or capture on an operation whose signature says `faults`, or a
+  `supervise` of a named boundary from whose contingency a fault can escape
+  ([F6]). It requires `faults` in the signature of the control being checked,
+  or an enclosing boundary.
 - **[F2]** At a statement `i` that may fault, for every name `x` in scope whose
   type is not fault-releasable, after the statement's own arguments have moved:
   `Θ ⊨ ¬(Rᵢ ∧ D(x) ∧ ¬M(x))`. A value lent to a callee is still owned by the
@@ -1016,6 +1050,34 @@ Each of these is an entailment by [N2], on the histories that run the statement.
   the union. Functions have none.
 - **[F4]** The unproven form `assume ⊥ "reason"` is `fault "reason"`. It needs
   [F1] and [F2] and is listed in the trust report.
+- **[F5] Lexical boundaries.** The rules of v1 for boundaries carry over
+  ([reference](../reference/contingency.md)). These are the ones that the
+  other clauses of this section rely on. For
+  `d : boundary {B₁} contingency [x̄] {B₂}`, each name of `x̄` owns its value,
+  is available at the statement, and is moved by it ([O3]). Where `B₁` can
+  fall off its end, that end is checked as a terminator that ends the scope
+  of `B₁` ([O5]). `B₂` calls only operations declared `contingent`, built-in
+  operations and `emit`, and supervises nothing. Each of its histories ends
+  with one of the terminators that [E-Contingency] lists; [O5] applies there
+  to `x̄` as to any other name. `escalate` and a
+  `fault` in `B₂` may fault in the sense of [F1], and their own boundary does
+  not count as enclosing them.
+- **[F6] Named boundaries.** For
+  `boundary b(x̄ : τ̄) retains ȳ {B₁} contingency(m : string) {B₂}`, no `τ` is or
+  contains a borrow or a view, and `ȳ` are distinct names among `x̄`. `B₁` is
+  checked as the body of a control that permits `faults` and has no exit:
+  each of its histories ends with `terminate`, a terminator to which [O5]
+  applies. At every statement `i` of `B₁` that may fault, after the
+  statement's own arguments have moved, every retained name is wholly
+  available, `Θ ⊨ Rᵢ → (D(y) ∧ ¬M(y))`, and [F2] holds for every other name.
+  A retained name may be consumed where no later statement of the history
+  may fault. `B₂` is checked as a body in which `ȳ` and `m` are bound, as
+  [F5] says of a contingency, and each of its histories ends with
+  `terminate`, `escalate` or `fault`. `supervise b(ō)` is typed as a call
+  with no alternative, and its operands move. It may fault exactly when a
+  history of `B₂` ends with `escalate` or `fault`. The effects of both bodies
+  count toward the control that supervises ([F3]). A boundary is invoked only
+  by `supervise`, and not from a contingency.
 
 ### 7.8 Tasks
 
@@ -1035,23 +1097,36 @@ the set that owns it.
   `cancel` and `count` require `x` to be available ([O2]).
 - **[TK3] Loans.** A borrow among the operands of `spawn f(ō) into x` is held by
   `x`. A payload name of `await next(x)` of borrow or view type becomes a
-  holder of every loan that `x` holds. A statement that names `x` uses it
-  ([L2]). For [L3], `spawn … into x` and `await next(x)` are writes to `x`, and
-  `cancel x` and `count(x)` are reads. No other rule is needed: a history on
-  which `x` is still available has a later `await next(x)` by [TK2], so every
-  loan the set holds is live until the set is drained, and the end of a scope
-  that owns a lender is a write to it ([L3]).
-- **[TK4] Stops.** At every `await` of an `async control`, at statement `i`,
-  the condition of [F2] holds: no name in scope whose type is not
-  fault-releasable is available. The parameters taken by value and the
-  payloads of a producer have fault-releasable types, and so have the
-  parameters taken by value of a cancellable operation.
+  holder of every loan that `x` holds. For [L3], `spawn … into x` and
+  `await next(x)` are writes to `x`, and `cancel x` and `count(x)` are reads.
+  A set uses the loans it holds for as long as it is available, whether or
+  not a later statement names it: for [L2], the holder `x` is used after an
+  access at statement `i` on every history on which `x` is available after
+  that statement. A member may run at any `await` until the set is drained,
+  and a history that faults or never ends has no later `await next(x)` to
+  stand for that. The end of a scope that owns a lender is a write to it
+  ([L3]), so a lender cannot go while the set holds the loan. There is one
+  exception: the scopes that a `fault` ends do not conflict with the loans of
+  the sets they hold, because the members of those sets are stopped without
+  running again ([E-Stop]).
+- **[TK4] Stops.** A task can be stopped wherever it waits at an `await`
+  ([E-Stop]), so everything it holds there is fault-releasable. At every
+  `await` of an `async control`, at statement `i`, the condition of [F2]
+  holds: no name in scope whose type is not fault-releasable is available. A
+  name in the care of a lexical boundary that encloses the `await` has a
+  fault-releasable type. The operands that `await f(ō)` and `spawn f(ō)` pass
+  by value have fault-releasable types: `f` holds them while it waits for
+  its first turn, or the host does ([E-Await], [E-AwaitHost]). The payloads
+  of a producer and of an `extern async control` have fault-releasable types:
+  a payload can reach a task that is stopped before it runs again.
 - **[TK5] Faults from members.** An `await` at statement `i` may fault, in the
   sense of [F1], unless `Θ ⊨ ¬(Rᵢ ∧ D(x) ∧ ¬M(x))` for every name `x` in scope
   whose type is `tasks⟨f⟩` with a producer that permits `faults`. No task set
-  is available at a `boundary` statement: the same entailment holds there for
-  every name of a task set type. A set bound inside the body of a boundary
-  belongs to that body.
+  is available at a lexical `boundary` statement: the same entailment holds
+  there for every name of a task set type. A set bound inside the body of a
+  boundary belongs to that body. `supervise` is not such a statement: the
+  bodies of a named boundary do not await ([W10]), so the fault of a member
+  is never delivered inside them.
 - **[TK6] Facts.** `count` is a measure (fact logic, [A3]).
 
   | From | Fact |
@@ -1062,7 +1137,9 @@ the set that owns it.
   | `d : Δ await next(x)`, `empty` | `d.empty ⇒ count(x) = 0` |
 
   `await f(ō)` and `run f(ō)` give the facts of a call of `f` ([N4]). No
-  awaited operation is pure (fact logic, [I10]).
+  operation that is awaited or run is pure, and neither is a control whose
+  body contains `run`, directly or in a control it calls: which member is
+  done first is the host's choice ([E-Turn]; fact logic, [I10]).
 - **[TK7] Effects.** `spawn f`, `await f` and `run f` count the effects of `f`
   toward the control that contains them ([F3]).
 
@@ -1100,7 +1177,7 @@ of the final payload.
 arguments, and each exit replaced by the caller's continuation for that
 alternative) yields a checked program with the same observations.
 
-The proofs rest on four invariants of reachable configurations, each relating a
+The proofs rest on five invariants of reachable configurations, each relating a
 scope at statement `i` to the checker's state there:
 
 - **Adequacy.** The histories of the activation's scopes, the hidden atoms of
@@ -1111,10 +1188,12 @@ scope at statement `i` to the checker's state there:
   satisfies `D(x) ∧ ¬M(x)`, a moved slot exactly when it satisfies
   `D(x) ∧ M(x)`, and no slot otherwise.
 - **Loans.** Every borrow in an available slot whose holder is used later on
-  this history has a live tag.
+  this history has a live tag, and so has every borrow that a member of a set
+  holds while the set is not drained.
 - **Linearity.** Every open resource is in exactly one available slot, or is an
-  argument or payload in transit, or is in the payload of a member that is
-  done.
+  argument or payload in transit, or is an argument of an operation that the
+  host has started, or is in the care of a boundary, or is in the payload of
+  a member that is done.
 - **Structure.** Every task that is not a root is a member of a set held by an
   available slot of a scope of its owner task, and the owner task is at an
   `await` whenever a member has the turn.
@@ -1169,8 +1248,9 @@ Draft 2 gives tasks their rules. They meet the requirements that draft 1
 carried over from v1's accepted decisions:
 
 - A task set is a local of kind `must`. Its scope cannot end while it has
-  members, so children finish before the scope that owns them ([TK2]). This is
-  the one rule that lets a child borrow from its parent ([TK3]).
+  members, except by a fault or a stop, which stops them; so children finish
+  before the scope that owns them ([TK2], [E-Stop]). This is the one rule
+  that lets a child borrow from its parent ([TK3]).
 - Tasks interleave only at `await`. The order of turns is the host's choice;
   given it, execution is deterministic ([E-Turn]).
 - Cancellation is a request. It arrives as the `cancelled` alternative of an
@@ -1254,6 +1334,18 @@ They are recorded for the author's acceptance of phase 1.
 24. **Only values that can be released are held across an `await`** ([TK4]),
     in every async control, because any of them can be stopped by a fault
     elsewhere under the same boundary. v1 required this of spawned controls.
+25. **A set's loans last as long as the set, not as long as it is named**
+    ([TK3]). The third review found that liveness by mention let a parent
+    that faults or never ends read what a running child holds.
+26. **An awaited control has its arguments before it waits** ([E-Await]), a
+    completed host operation binds its payload at once ([E-AwaitHost]), and a
+    withdrawn one releases what it was given. With [TK4] this leaves no
+    resource between scopes when a task is stopped.
+27. **A control that runs tasks is not pure** ([TK6]): which member finishes
+    first is the host's choice, so two calls need not agree.
+28. **Boundaries have their checking rules written down** ([F5], [F6]). They
+    are v1's. The first corpus draft used a named boundary that the core
+    described only in its semantics.
 
 The author answered the five questions of this draft on 19 November 2026 and
 took the recommendation in each case:

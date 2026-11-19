@@ -10,11 +10,11 @@ v1, the language and compiler at 0.306, is described by the
 
 | Document | Deliverable | State |
 | --- | --- | --- |
-| [Core calculus](core.md) | The core language, its instrumented semantics, the checker's judgments, and the claims to test and mechanize | Draft 2: the synchronous language (two reviews folded in, then amended by the reference model) and tasks (not yet reviewed; raises Q18). The corpus added named boundaries and changed two task clauses. |
-| [Fact logic](facts.md) | The interpreted fragment behind `⊨`, the decision procedure, certificates, counterexamples, worked examples | Draft 1, one review folded in; raises five questions (Q6 to Q10). The corpus added the length of a vector literal. |
-| [Reference model](references.md) | Second-class borrows and views: the model, 36 worked examples in Rails and core form with verdicts, the tag semantics on an example | Draft 1, not yet reviewed; raises two questions (Q16, Q17) |
-| [Surface](surface.md) | The Rails grammar, layout, and the elaboration into the core, including the acknowledgement rule and outcome groups | Draft 1, with the task forms of the core's draft 2 and the forms the corpus needed (traits, named boundaries, `copy` types), not yet reviewed; raises six questions (Q11 to Q15, Q19) |
-| [Corpus on paper](corpus.md) | The settings application, the eight collection modules and three new programs, rewritten by hand, with counts and findings | Draft 1, checked by hand only, not yet reviewed. Library 476 to 231 lines, application 635 to 304, no filler arm; thirteen gaps repaired in the other documents, thirteen limits left open. |
+| [Core calculus](core.md) | The core language, its instrumented semantics, the checker's judgments, and the claims to test and mechanize | Draft 2. The synchronous language has two reviews folded in. Tasks and named boundaries were read by the combined review, which found four programs that the task rules accepted and the semantics left stuck, and no checking rule for named boundaries; the repairs are in and not yet reviewed again. Raises Q18. |
+| [Fact logic](facts.md) | The interpreted fragment behind `⊨`, the decision procedure, certificates, counterexamples, worked examples | Draft 1, two reviews folded in; raises five questions (Q6 to Q10). The corpus added the length of a vector literal. |
+| [Reference model](references.md) | Second-class borrows and views: the model, 36 worked examples in Rails and core form with verdicts, the tag semantics on an example | Draft 1, one review folded in, which found the 36 verdicts to agree with their clauses; raises two questions (Q16, Q17) |
+| [Surface](surface.md) | The Rails grammar, layout, and the elaboration into the core, including the acknowledgement rule and outcome groups | Draft 1, with the task forms of the core's draft 2 and the forms the corpus needed (traits, named boundaries, `copy` types); one review folded in; raises six questions (Q11 to Q15, Q19) |
+| [Corpus on paper](corpus.md) | The settings application, the eight collection modules and three new programs, rewritten by hand, with counts and findings | Draft 1, checked by hand and read by one review, which found no error in the programs. Library 476 to 231 lines, application 635 to 304, no filler arm; thirteen gaps repaired in the other documents, thirteen limits left open. |
 | Reading and repair test | v1 and v2 versions of the same programs, given to people and to agents | Not started |
 
 ## Conventions
@@ -41,5 +41,5 @@ v1, the language and compiler at 0.306, is described by the
 5. The corpus on paper, which tests all of the above and yields the counts the
    plan asks for (lines, labels, filler arms, annotations) (draft 1 done).
 6. One independent review of all five documents together, for consistency and
-   soundness.
+   soundness (done; the repairs it led to have not been reviewed again).
 7. The reading and repair test.
