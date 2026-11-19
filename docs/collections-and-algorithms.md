@@ -1,6 +1,39 @@
 # Collections and algorithms for the Villanelle standard library
 
-Design draft, 17 November 2026. The standard library will include collections and algorithms. The calling convention below is agreed. The individual algorithms and backing representations are proposals. The existing operations and ownership rules are specified in the [language reference](language-reference.md#arrays-vectors-and-maps).
+Supported source slice 0.1.0, 18 November 2026, tested with compiler 0.306.0.
+The calling convention and eight module contracts are implemented; further
+algorithms and backing representations below remain proposals where stated.
+The [language reference](language-reference.md#arrays-vectors-and-maps) specifies
+built-in operations and ownership. The [standalone library contract](../library/COLLECTIONS.md)
+is the current public API and compatibility policy; historical prototype wording
+in this design records how that slice was developed.
+
+## Delivered slice and next boundaries
+
+| Roadmap item | Delivered result |
+| --- | --- |
+| Collection calls and discovery | Explicit module-qualified controls, capability traits and ownership-aware editor suggestions. |
+| Membership and traversal | String-keyed ordered-map membership/entry loans; shared vector windows. |
+| Search and reduction | First match, fallible first match, and fold with owned accumulator and explicit stop/failure. |
+| Consuming algorithms | Split/join, stable partition with every partial owner returned, stable sort/merge. |
+| Ordered search | Lower/upper bounds and first-equivalent source loan under caller-supplied ordering laws. |
+| Performance passes | Paired Rust baselines, hot-path profiles, allocation/byte/peak/movement evidence, guarded native lowering and checked fallback. |
+| Representation selection | ART/B-tree/flat map and flat/moving-start/RRB sequence experiments; reference-layout candidates qualified and rejected where they regress. |
+| Adoption and support | Fixed source inventory, no-overwrite vendoring, hashes, canonical arithmetic requirements, fresh-project checks and a composed caller-owned Rust adapter example. |
+
+See [adoption instructions and the measured performance table](../library/COLLECTIONS.md)
+and [the pipeline example](../examples/collection_pipeline/README.md). Supported
+semantics are distinct from speed parity: stable sort still measures roughly
+648× optimized Rust and middle lower bound 154× in their respective paired M2
+runs. Generic reference/value transport and payload representation remain the
+next performance targets. Current and prior compiler/editor qualification is
+reused for this source-only release; no language or runtime behavior changes.
+
+Future design includes array windows, generic map-key constraints, persistent
+sharing eligibility, fallible sorting and broader algorithms. These are outside
+this first supported slice; no implicit sharing, new origin capability or new
+sorting failure policy has been chosen. Thylacine and Rust-backend retirement
+remain separate work.
 
 ## Calling collection controls
 

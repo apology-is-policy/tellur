@@ -1,0 +1,71 @@
+import "../../library/ordering.vn" as ordering;
+import "../../library/ordered_search.vn" as ordered;
+import "../../library/reduction.vn" as reduction;
+
+struct ascending {}
+implement ordering.comparator for ascending {
+    type item = u32;
+    control compare(ref ascending rule, ref u32 a, ref u32 b) exits before,
+    equal,
+    after {
+        delta (deref a < deref b) {
+            true => exit before,
+            false => next
+        }
+        [next]: exit delta (deref a > deref b) {
+            true => after {},
+            false => equal {}
+        };
+    }
+}
+struct target {
+    u32 limit;
+}
+implement reduction.reducer for target {
+    type item = u32;
+    type state = u32;
+    type error = string;
+    control step(ref target rule, u32 current, ref u32 value)
+        exits advanced { u32 total },
+        stopped { u32 total },
+        failed { u32 partial, string reason }
+    {
+        delta accept_reading(deref value) {
+            accepted { u32 reading } => add,
+            rejected { string reason } => exit failed { current, reason }
+        }
+        [add]: delta checked_add(current, reading) {
+            sum { u32 total } => compare,
+            overflow => exit failed { current, "total overflow" }
+        }
+        [compare]: exit delta (total >= rule.limit) {
+            true => stopped { total },
+            false => advanced { total }
+        };
+    }
+}
+outcome result {
+    @exit 0 finished { u32 total, u32 first, u32 end, vector<u32> values },
+    @exit 0 stopped { u32 total, u32 first, u32 end, vector<u32> values },
+    @exit 1 failed { u32 partial, string reason, u32 first, u32 end, vector<u32> values }
+}
+control main(u32 limit, u32 final_reading) exits result {
+    vector<u32> input = [4, 1, 2, 2, final_reading];
+    ascending order = ascending {};
+    target rule = target { limit };
+    u32 needle = 2;
+    delta ordering.sort<ascending>(input, borrow order) {
+        sorted { auto values } => low
+    }
+    [low]: delta ordered.lower_bound<ascending>(borrow values, borrow order, borrow needle) {
+        position { u32 first } => high
+    }
+    [high]: delta ordered.upper_bound<ascending>(borrow values, borrow order, borrow needle) {
+        position { u32 end } => fold
+    }
+    [fold]: exit delta reduction.fold<target>(borrow values, borrow rule, 0) {
+        finished { u32 total } => finished { total, first, end, values },
+        stopped { u32 total } => stopped { total, first, end, values },
+        failed { u32 partial, string reason } => failed { partial, reason, first, end, values }
+    };
+}

@@ -2,6 +2,26 @@
 
 ## Active checkpoint queue
 
+### Supported collection sources, 18 November 2026
+
+Collections 0.1.0 provides eight supported source modules on qualified compiler
+0.306.0: membership, search, traversal, reduction, sequence batches, partition,
+ordering and ordered search. Adoption uses a fixed source inventory, a hash
+receipt, canonical arithmetic declarations and explicit caller-owned adapters.
+The fresh-project check exercises paths with spaces, a different working
+directory, normal/observed LLVM execution, Rust adapter parity and an extracted
+source bundle. The composed example sorts readings, locates duplicates and
+returns finished, stopped or failed folds with all owners intact.
+[Contracts and compatibility](../library/COLLECTIONS.md) ·
+[Example](../examples/collection_pipeline/README.md) ·
+[Delivered scope and future boundaries](collections-and-algorithms.md#delivered-slice-and-next-boundaries)
+
+The scheduled performance/library slice ends after adoption qualification and
+publication. The standing Rust-parity goal remains: measured generic transport,
+value layout and stable-sort costs are substantial follow-up work. Array windows,
+generic map keys, persistent sharing and fallible sorting remain future design.
+
+
 ### Scalar ordered-search advances, 18 November 2026
 
 Compiler 0.306 proves every effect-free advancing binary-search path and scalar comparison, retaining checked terminals, borrowed result origins and observed/resource fallback. The complete 4,096-middle lower bound improves 123.834 → 25.666 µs (4.82×), with allocations 403 → 25 and peak extra memory 11,872 → 6,096 bytes. Rust takes 167 ns; empty-case medians are slightly slower with unchanged allocations, so parity is not claimed. First-equivalent hits improve 2.75×. Next: fresh-project adoption and the first supported collection/algorithm modules, carrying the measured transport/payload limitations forward. [Final paired evidence](../experiments/ordered_bounds/README.md#scalar-binary-search-advances-in-0306)

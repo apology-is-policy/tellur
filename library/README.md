@@ -1,16 +1,31 @@
 # Villanelle source library
 
-These first reusable slices of the standard-library work are extracted from the
-maintained settings service: JSON files in 0.75 and bounded loopback HTTP as a
-library follow-up on compiler 0.76. They use explicit file imports and
-manifest-selected Rust mechanisms. It is experimental source code, with no package
-resolver, implicit prelude or stable binary ABI.
+The **collections 0.1.0 source slice**, tested with compiler 0.306.0, supports eight
+modules: membership, search, traversal, reduction, sequence batches, partition,
+ordering and ordered search. Read the [standalone contracts and compatibility
+policy](COLLECTIONS.md) before adoption. All calls use explicit imports and
+ownership; there is no package resolver, implicit prelude or stable binary ABI.
 
-For the planned collection APIs, algorithm contracts and storage experiments, see the [collections and algorithms design](../docs/collections-and-algorithms.md).
+```sh
+python3 -B library/vendor_collections.py /path/to/new-project/vendor/villanelle
+python3 -B ci/check-collections.py --vnc /absolute/path/to/vnc
+```
+
+The first command refuses existing destinations and writes a source hash receipt.
+Merge [canonical arithmetic declarations](arithmetic.manifest.json) into the
+caller's manifest. The second validates fresh-project adoption and produces a
+source bundle under `build/collections`; it needs Rust for the example's explicit
+caller-owned adapter, but does not rebuild the compiler.
+
+Try [the collection pipeline](../examples/collection_pipeline/README.md): sort
+readings, locate duplicates and fold until completion, an early stop or failure.
+The [design and performance record](../docs/collections-and-algorithms.md) keeps
+measured Rust gaps and future scope visible. JSON and HTTP below remain separate
+experimental source profiles and are not in the supported collection bundle.
 
 ## String-keyed map membership
 
-The experimental [membership module](membership.vn) exports `contains_key<item>`. It borrows a string-keyed map and a key and exits `present` or `absent`. The [collection discovery example](../examples/collection_discovery/main.vn) routes both outcomes.
+The [membership module](membership.vn) exports `contains_key<item>`. It borrows a string-keyed map and a key and exits `present` or `absent`. The [collection discovery example](../examples/collection_discovery/main.vn) routes both outcomes.
 
 ## Shared vector windows
 
@@ -19,6 +34,13 @@ The [traversal module](traversal.vn) exports `range` and `get`. The [example](..
 ## Borrowed ordered map entries
 
 Run `./bin/vnc exec examples/borrowed_traversal/headers.vn -- --json` to print two HTTP headers in key order, then remove one. The example calls `traversal.entry_at<string>` and passes the returned position into the next iteration. The runner reports one header remaining. [Header example](../examples/borrowed_traversal/headers.vn)
+
+## First-match search
+
+`search.first` returns the first matching source-element loan or `missing`.
+`search.try_first` also preserves the predicate's failure reason. Both borrow the
+source and rule. Run `./bin/vnc exec examples/first_match/main.vn` to print 17 and
+29. [Source](search.vn) · [Contract](COLLECTIONS.md#public-contracts)
 
 ## Fold with an owned accumulator
 

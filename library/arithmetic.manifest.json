@@ -1,0 +1,102 @@
+{
+  "version": "0.1",
+  "types": [],
+  "primitives": [
+    {
+      "name": "checked_add",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "sum",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "overflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_sub",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "difference",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "underflow",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    },
+    {
+      "name": "checked_div",
+      "parameters": [
+        {
+          "name": "a",
+          "type": "u32",
+          "mode": "value"
+        },
+        {
+          "name": "b",
+          "type": "u32",
+          "mode": "value"
+        }
+      ],
+      "outcomes": [
+        {
+          "name": "quotient",
+          "fields": [
+            {
+              "name": "value0",
+              "type": "u32"
+            }
+          ]
+        },
+        {
+          "name": "zero_divisor",
+          "fields": []
+        }
+      ],
+      "effects": [],
+      "returns": true
+    }
+  ]
+}

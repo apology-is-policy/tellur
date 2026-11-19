@@ -86,7 +86,7 @@ The companion chapters provide quick lookup:
 - [Core grammar](reference/grammar.md): schematic syntax for modern source programs.
 - [Diagnostics and limits](reference/diagnostics-and-limits.md): rejected programs, repairs and implementation budgets.
 - [Feature status](reference/support-status.md): implemented boundaries and queued features.
-- [Source library](../library/README.md): shared JSON file contracts, explicit imports and Rust adapter modules.
+- [Source library](../library/README.md): supported collection contracts, explicit imports, source vendoring, and experimental JSON/HTTP profiles.
 - [Formatting](reference/formatting.md): terminal commands, VS Code and layout preservation.
 - [Public contract snapshots](reference/contract-snapshots.md): portable checked interfaces, reviewable diffs and the editor JSON view.
 - [Outcome absorption](reference/outcome-absorption.md): internal contributors and changes hidden by an unchanged public contract.
@@ -2887,6 +2887,16 @@ extract from a non-generic caller using generic calls; selecting a generic templ
 itself is currently rejected. See [the runnable example](../playground/generic_controls.vn).
 
 ## Live primitive library
+
+The [collections 0.1.0 source slice](../library/COLLECTIONS.md), tested with
+compiler 0.306.0, supports membership, search, traversal, reduction, sequence
+batches, partition, stable ordering and ordered bounds. Its standalone contract
+specifies ownership, outcomes, comparator obligations and source compatibility.
+Use explicit relative imports; the vendoring tool copies a fixed inventory and
+refuses existing destinations. Merge the supplied arithmetic declarations into
+the caller's manifest. [A composed example](../examples/collection_pipeline/README.md)
+shows sorting, duplicate bounds and a fold with an explicit caller-owned adapter.
+Measured performance gaps are documented; support does not imply Rust parity.
 
 The [source library](../library/README.md) adds reusable controls above manifest
 primitives. Its `json_file.load` preserves missing, invalid, unreadable and oversized

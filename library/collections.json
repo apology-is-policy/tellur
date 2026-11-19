@@ -1,0 +1,21 @@
+{
+  "format": "villanelle.source-library",
+  "format_version": 1,
+  "name": "villanelle-collections",
+  "version": "0.1.0",
+  "tested_compilers": [
+    "0.306.0"
+  ],
+  "modules": [
+    "membership.vn",
+    "search.vn",
+    "traversal.vn",
+    "reduction.vn",
+    "sequence_batches.vn",
+    "partition.vn",
+    "ordering.vn",
+    "ordered_search.vn"
+  ],
+  "arithmetic_manifest": "arithmetic.manifest.json",
+  "contracts": "COLLECTIONS.md"
+}
