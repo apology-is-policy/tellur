@@ -130,7 +130,7 @@ State on 19 November 2026:
 
 ### Phase 1. Design on paper
 
-No compiler code. Deliverables:
+No compiler code. The documents are in [`docs/v2/`](v2/README.md). Deliverables:
 
 1. **Core specification** (section 5.1), including an instrumented small-step
    semantics that gets stuck on every violation the checker is meant to exclude.

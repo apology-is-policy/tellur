@@ -57,6 +57,7 @@ state, then `docs/language-revision.md`. Older handoff notes lose to newer facts
 | Source | Holds |
 | --- | --- |
 | `docs/redesign-plan.md` | The roadmap: the accepted v2 redesign, its decisions, phases and design sketches. Section 5.5 is the adopted Rails surface syntax. |
+| `docs/v2/` | The v2 design on paper (phase 1): core calculus first, then fact logic, surface, reference model and the corpus. `README.md` there lists the state of each. Drafts until the author accepts them. |
 | `docs/language-revision.md` | The v1 record. "Active checkpoint queue" is newest-first; later sections hold history, decisions and the six language milestones. |
 | `experiments/syntax_lab/` | Reference programs in Rails form, their word-form sources and the transpiler. Nothing in it compiles yet. |
 | `docs/collections-and-algorithms.md`, `library/COLLECTIONS.md` | Standard-library design, contracts and the measured performance table. |
