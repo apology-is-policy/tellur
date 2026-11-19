@@ -1,0 +1,22 @@
+TASK 1
+1. `invalid_file`: `json_file.load` reports `invalid {message}`. `settings.load` renames it to `invalid_file {message}` (arm `invalid {message} → invalid_file {message}`). `settings.get` passes it on unchanged (`…storage_error → ■`). In `http.lookup_setting` the arm `invalid_file {message}` chooses `text {500, message}`. `route` forwards it, and `prepare` turns `text` into `prepared {500, …}`.
+2. `storage_failed` from a read error: `json_file.load` reports `read_failed {message}`. `settings.load` renames it to `storage_failed {message}`. `settings.get` passes it on. `http.lookup_setting` arm `storage_failed {message}` chooses `text {500, message}`. `route` and `prepare` pass it on as in 1.
+3. `too_large`: `json_file.load` reports `too_large`. `settings.load` passes it on under the same name. `settings.get` passes it on. `http.lookup_setting` arm `too_large` chooses `text {500, "Settings file exceeds 1 MiB"}`. `route` and `prepare` pass it on as in 1.
+4. `encode_failed`: the host `json_encode` reports `encode_failed {message}` inside `http.encode_value`. `lookup_setting` reaches it by `forward encode_value(value)`, which is only reached when `settings.get` found the value. The arm `encode_failed {message}` chooses `text {500, message}`. `route` and `prepare` pass it on as in 1.
+5. A fault (an event, not an alternative): any fault in the work of `route`, `prepare` or `exchange` abandons that work. The boundary `request` (run by `supervise` in `serve_connection`) then runs its `contingency`, where `transport.reply_failure(connection)` sends the fixed generic 500. This holds only if ordinary transmission has not started, and the origin of the fault is not shown (unsure).
+
+TASK 2
+1. `settings.vn` / `outcome storage_error`: add the line `├ locked {holder: string}` (for example before `└ too_large`).
+2. `settings.vn` / `control load`, the arms of `■ Δ json_file.load`: add the line `├ locked`.
+3. `http.vn` / `control list_settings`, the arms of `Δ settings.load(path)`: add the line `├ locked {holder}             → ■ text {423, holder}`.
+4. `http.vn` / `control lookup_setting`, the arms of `Δ settings.get(path, key)`: add the line `├ locked {holder}             → ■ text {423, holder}`.
+5. `http.vn` / `control update_setting`, the arms of `■ Δ settings.set(...)`: add the line `├ locked {holder}             → text {423, holder}`.
+6. `http.vn` / `control remove_setting`, the arms of `■ Δ settings.remove(path, key)`: add the line `├ locked {holder}             → text {423, holder}`.
+7. `main.vn` / `control main`, the arms of `Δ settings.load(path)`: add the line `├ locked → ■ failed`.
+8. `main.vn` / `control get`, the arms of `Δ settings.get(path, key)`: add the line `├ locked → ■ failed`.
+
+No edit needed: `settings.vn` `set`, `get` and `remove`: `…storage_error` is in their signatures and in `→ ■` after `load`, so `locked` passes through with its payload.
+No edit needed: `main.vn` `set` and `remove`: `forward` with `■ auto` exits with `locked` and its payload as it is.
+No edit needed: `http.vn` `route`: the called controls end with `■ auto` and all exit with `text`, so its signature is unchanged.
+No edit needed: `server.vn`: it does not call `settings`, and `prepare` already handles every `route` outcome.
+No edit needed: `settings.vn` `set` and `remove`, the arms of `json_file.replace`: `replace_result` did not change.

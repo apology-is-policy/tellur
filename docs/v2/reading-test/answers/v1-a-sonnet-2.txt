@@ -1,0 +1,29 @@
+TASK 1
+1. Origin `json_file.load` `read_failed { message }`. `settings.load` passes it on as `storage_failed { message }`. `settings.get` passes it on as `storage_failed { message }`. `lookup_setting` chooses `text { 500, message }`. It then travels through `http.route` (`forward lookup_setting`, exit `text`) and `server.prepare`, which turns it into `prepared { 500, content, "text/plain; charset=utf-8", "" }`.
+2. Origin `json_file.load` `invalid { message }`. `settings.load` passes it on as `invalid_file { message }`. `settings.get` passes it on as `invalid_file { message }`. `lookup_setting` chooses `text { 500, message }`. The route is then the same as in 1.
+3. Origin `json_file.load` `too_large`. `settings.load` passes it on as `too_large`. `settings.get` passes it on as `too_large`. `lookup_setting` chooses `text { 500, "Settings file exceeds 1 MiB" }`. The route is then the same as in 1.
+4. Origin `json_encode` `encode_failed { message }`, called in `encode_value`. `encode_value` exits `text { 500, message }`. `lookup_setting` receives it on the `found` arm (`delta encode_value(value)`) and passes it on as `text { status, content }`. The route is then the same as in 1.
+5. Origin: a fault, which is an event and not an alternative. It is any fault in the work of boundary `request` (in `exchange`, `prepare` or `http.route`, which is marked `faults`). `supervise request` runs the `contingency`. `transport.reply_failure` sends the fixed generic 500 only if transmission has not started, and only when it ends with `sent`. `serve_connection` then exits `handled`.
+
+TASK 2
+1. settings.vn / outcome `loaded_settings`: add the line `locked { string holder },` (after `storage_failed`).
+2. settings.vn / outcome `update_result`: add the line `locked { string holder },`.
+3. settings.vn / outcome `removal_result`: add the line `locked { string holder },`.
+4. settings.vn / control `load`: add the arm `locked { string holder } => locked { holder },` to the `exit delta json_file.load` block.
+5. settings.vn / control `set`: add the arm `locked { string holder } => exit locked { holder },` to `delta load(path)`.
+6. settings.vn / control `remove`: add the arm `locked { string holder } => exit locked { holder },` to `delta load(path)`.
+7. settings.vn / control `get`: add `locked { string holder },` to the signature exits, after `storage_failed { string message },`.
+8. settings.vn / control `get`: add the arm `locked { string holder } => locked { holder },` to `exit delta load(path)`.
+9. http.vn / control `list_settings`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.load(path)`.
+10. http.vn / control `lookup_setting`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.get(...)`.
+11. http.vn / control `update_setting`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.set(...)`.
+12. http.vn / control `remove_setting`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.remove(...)`.
+13. main.vn / control `main`: add the arm `locked { string holder } => locked,` to `delta settings.load(borrow path)`. Also add the line `[locked]: emit(holder); exit failed;`.
+14. main.vn / control `get`: add the arm `locked { string holder } => locked,` to `delta settings.get(borrow path, borrow key)`. Also add the line `[locked]: emit(holder); exit failed;`.
+
+No edit needed: main.vn `set` and `remove`: they `forward` to `settings.set` and `settings.remove`, and those exit `update_result` and `removal_result`, which now have `locked { string holder }`, so `locked` passes through with its payload.
+No edit needed: main.vn `display_result` and `lookup_result`: both entries end with the existing `failed`.
+No edit needed: http.vn `route`: it only forwards, and its `response` outcome is unchanged.
+No edit needed: server.vn (all controls): it never sees the new alternative, because 423 is a normal `text` response.
+No edit needed: settings.vn `set` and `remove` at `json_file.replace`: `replace_result` is unchanged.
+No edit needed: settings.vn `validate_key`: it does not call `load`.

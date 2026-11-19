@@ -1,0 +1,26 @@
+TASK 1
+1. json_file.load reports `read_failed { message }` → settings.load: `storage_failed { message }` → settings.get: `storage_failed { message }` → lookup_setting chooses `text { 500, message }`.
+2. json_file.load reports `invalid { message }` → settings.load: `invalid_file { message }` → settings.get: `invalid_file { message }` → lookup_setting chooses `text { 500, message }`.
+3. json_file.load reports `too_large` → settings.load: `too_large` → settings.get: `too_large` → lookup_setting chooses `text { 500, "Settings file exceeds 1 MiB" }`.
+4. json_encode reports `encode_failed { message }` → encode_value chooses `text { 500, message }`. The found arm of lookup_setting passes that text reply on unchanged.
+5. (unsure) A fault of the request work: the only `faults` control is route, and the file names no fault source on this path. If one occurred, the request contingency's reply_failure would send a fixed generic 500 if transmission had not started.
+
+TASK 2
+1. settings.vn / outcome loaded_settings: add `locked { string holder },` after `storage_failed { string message },`.
+2. settings.vn / control load: add the arm `locked { string holder } => locked { holder },` between the `read_failed` and `too_large` arms.
+3. settings.vn / outcome update_result: add `locked { string holder },` after `storage_failed { string message },`.
+4. settings.vn / outcome removal_result: add `locked { string holder },` after `storage_failed { string message },`.
+5. settings.vn / control set: in `[valid]: delta load(path)`, add the arm `locked { string holder } => exit locked { holder },` after the `storage_failed` arm.
+6. settings.vn / control get: in the exits list, add `locked { string holder },` after `storage_failed { string message },`. In `exit delta load(path)`, add the arm `locked { string holder } => locked { holder },` after the `storage_failed` arm.
+7. settings.vn / control remove: in `[valid]: delta load(path)`, add the arm `locked { string holder } => exit locked { holder },` after the `storage_failed` arm.
+8. http.vn / control list_settings: add the arm `locked { string holder } => text { 423, holder },` to the `settings.load` arms.
+9. http.vn / control lookup_setting: add the arm `locked { string holder } => text { 423, holder },` to the `settings.get` arms.
+10. http.vn / control update_setting: add the arm `locked { string holder } => text { 423, holder },` to the `settings.set` arms.
+11. http.vn / control remove_setting: add the arm `locked { string holder } => text { 423, holder },` to the `settings.remove` arms.
+12. main.vn / control main: add the arm `locked { string holder } => locked,` to the `settings.load` arms, and the line `[locked]: emit(holder); exit failed;` after the `[too_large]` line.
+13. main.vn / control get: add the arm `locked { string holder } => locked,` to the `settings.get` arms, and the line `[locked]: emit(holder); exit failed;` after the `[too_large]` line.
+
+No edit needed: main.vn / control set and control remove: they forward, so they pick up `locked` from update_result and removal_result.
+No edit needed: server.vn: the 423 text reply passes through prepare and exchange unchanged.
+No edit needed: http.vn / route, key_body, object_body and encode_value: they do not call settings or json_file.load.
+No edit needed: json_file library: `load_result` already has `locked`, per the task. It is not one of the four files anyway.

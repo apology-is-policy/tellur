@@ -1,0 +1,30 @@
+TASK 1
+1. `json_file.load` reports `invalid { message }`. `settings.load` renames it `invalid_file { message }`. `settings.get` passes it on as `invalid_file { message }`. `lookup_setting` turns it into `text { 500, message }` in the `invalid_file` arm. `http.route` forwards that as `text`. `prepare` maps `text { status, content }` to `prepared { 500, content, "text/plain; charset=utf-8", "" }`, and `exchange` sends it.
+2. `json_file.load` reports `read_failed { message }`. `settings.load` renames it `storage_failed { message }`. `settings.get` passes it on as `storage_failed { message }`. `lookup_setting` turns it into `text { 500, message }` in the `storage_failed` arm. After that it follows the same route as chain 1 (`route`, `prepare`, `exchange`).
+3. `json_file.load` reports `too_large`. `settings.load` passes on `too_large`, and so does `settings.get`. `lookup_setting` turns it into `text { 500, "Settings file exceeds 1 MiB" }` in the `too_large` arm. After that it follows the same route as chain 1.
+4. `json_encode` reports `encode_failed { message }`, called from `encode_value` after `settings.get` found the key. `encode_value` turns it into `text { 500, message }`. `lookup_setting` receives it in the `found` arm as `text { status, content }` and passes it on as `text { status, content }`. After that it follows the same route as chain 1.
+5. This one is an event, not an alternative: a fault in the work of the `request` boundary. `route` is marked `faults`, so a fault there is one example. The `contingency` block of `request` then runs. `transport.reply_failure(borrow connection)` sends the fixed generic 500, but only if ordinary transmission has not started. Status 500 is chosen inside `reply_failure`, not in Villanelle code.
+
+TASK 2
+1. settings.vn / `outcome loaded_settings`: add the line `locked { string holder },` (for example after `storage_failed { string message },`).
+2. settings.vn / `outcome update_result`: add the line `locked { string holder },`.
+3. settings.vn / `outcome removal_result`: add the line `locked { string holder },`.
+4. settings.vn / `load`: add the arm `locked { string holder } => locked { holder },` to the `exit delta json_file.load(path, 1048576)`.
+5. settings.vn / `set`: add the arm `locked { string holder } => exit locked { holder },` to `delta load(path)`.
+6. settings.vn / `get`: in the signature, add `locked { string holder },` to the `exits` list.
+7. settings.vn / `get`: add the arm `locked { string holder } => locked { holder },` to `exit delta load(path)`.
+8. settings.vn / `remove`: add the arm `locked { string holder } => exit locked { holder },` to `delta load(path)`.
+9. http.vn / `list_settings`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.load(path)`.
+10. http.vn / `lookup_setting`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.get(path, borrow key)`.
+11. http.vn / `update_setting`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.set(...)`.
+12. http.vn / `remove_setting`: add the arm `locked { string holder } => text { 423, holder },` to `exit delta settings.remove(path, borrow key)`.
+13. main.vn / `main`: add the arm `locked { string holder } => locked,` to `delta settings.load(borrow path)`.
+14. main.vn / `main`: add the line `[locked]: exit failed;`. It needs its own label, because `holder` is not `message`, so `[invalid_file | storage_failed]` cannot take it.
+15. main.vn / `get`: add the arm `locked { string holder } => locked,` to `delta settings.get(borrow path, borrow key)`.
+16. main.vn / `get`: add the line `[locked]: exit failed;`.
+
+No edit needed: http.vn / `route`: it only forwards to controls that use `exits auto`, and the `response` outcome is unchanged.
+No edit needed: main.vn / `set` and `remove`: they `forward` and exit with `settings.update_result` and `settings.removal_result`, which now include `locked`.
+No edit needed: main.vn / `display_result`, `lookup_result`: `failed` already exists.
+No edit needed: settings.vn / `set` and `remove`, the `json_file.replace` deltas: `replace_result` did not change.
+No edit needed: server.vn (all of it): it never sees the new alternative, because `http.route` still exits only with `response`.

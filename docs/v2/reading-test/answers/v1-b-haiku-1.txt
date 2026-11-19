@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `storage_failed { string message } => text { 500, message },` (after the `invalid_file` arm of the `exit delta settings.get(...)` block, lines 389-398)
+how I can tell: `settings.get` exits `storage_failed { string message }` (settings.vn line 181), and the `exit delta` in `lookup_setting` has no arm for it. The rule "every alternative must be dealt with" applies to an `exit delta`. The matching blocks in `remove_setting` and `update_setting` both have this arm.
+
+REMOVAL 2 (unsure about the exact line)
+file: server.vn
+control: start
+missing: a release of the listener before the final `exit delta result` (the exact line is unknown; a likely form is `run transport.release(listener);`, marked unsure)
+how I can tell: `listen` yields an `http_listener` resource, which `start` binds in `[listening]` and passes only by `borrow` to `serve`. The resource rule requires handing it by value to an operation that ends it before the control exits. `transport.release(http_listener)` is declared in the signatures (line 908) and is used nowhere else in the program, so this is where it was used.

@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `├ storage_failed {message} → ■ text {500, message}` (between the `invalid_file` and `too_large` arms of the `Δ settings.get(path, key)` decision)
+how I can tell: `settings.get` exits with `found`, `missing`, `invalid_key` and the group `…storage_error`, which contains `invalid_file`, `storage_failed` and `too_large`. The decision in `lookup_setting` names `invalid_file` and `too_large` but not `storage_failed`, and the rule that every alternative is named exactly once is then broken. The sibling controls `update_setting` (line 281) and `remove_setting` (line 296) both have this arm.
+
+REMOVAL 2
+file: server.vn
+control: start
+missing: `Δ transport.release(▾listener): released` (between `result := capture run serve(...)` and `■ ▾result`)
+how I can tell: The `listening {listener, authority}` arm binds a resource of type `http_listener`. `serve` takes the listener by reference (`&http_listener`), so nothing in `start` hands it over by value before the exit `■ ▾result`. The rule that a control holding a resource must pass it to a by-value operation before it exits is then broken. `transport.release(listener: http_listener)` is the by-value operation that fits.

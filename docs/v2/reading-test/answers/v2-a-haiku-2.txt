@@ -1,0 +1,22 @@
+TASK 1
+1. json_file.load reports `invalid {message}` → settings.load (`├ invalid {message} → invalid_file {message}`) → settings.get (forwards via `…storage_error`, name kept) → http.lookup_setting (`├ invalid_file {message} → ■ text {500, message}`)
+2. json_file.load reports `read_failed {message}` → settings.load (`└ read_failed {message} → storage_failed {message}`) → settings.get (forwards `storage_failed {message}`) → http.lookup_setting (`├ storage_failed {message} → ■ text {500, message}`)
+3. json_file.load reports `too_large` → settings.load (`├ too_large`, name kept) → settings.get (forwards `too_large`) → http.lookup_setting (`├ too_large → ■ text {500, "Settings file exceeds 1 MiB"}`)
+4. Host primitive json_encode reports `encode_failed {message}` → http.encode_value (`└ encode_failed {message} → text {500, message}`, the place where 500 is chosen; lookup_setting and route forward its result unchanged)
+5. (unsure) Event, not an alternative: a fault in a `faults` control on this path (route or prepare) abandons its work → boundary `request` in serve_connection runs its contingency → transport.reply_failure sends a fixed generic 500, but only if ordinary transmission has not started. The file names no operation that raises such a fault for POST /lookup.
+
+TASK 2
+1. settings.vn / `pub outcome storage_error`: add `├ locked {holder: string}` after `├ storage_failed {message: string}`
+2. settings.vn / `pub control load`: add `├ locked {holder}` to the `Δ json_file.load(path, 1048576)` decision, before `└ read_failed {message} → storage_failed {message}`
+3. http.vn / `control list_settings`: add `│ ├ locked {holder}                → text {423, holder}` to the `Δ settings.load(path)` decision
+4. http.vn / `control lookup_setting`: add `│ ├ locked {holder}                  → text {423, holder}` to the `Δ settings.get(path, key)` decision
+5. http.vn / `control update_setting`: add `│ ├ locked {holder}            → text {423, holder}` to the `■ Δ settings.set(path, clone(key), clone(value))` decision
+6. http.vn / `control remove_setting`: add `│ ├ locked {holder}            → text {423, holder}` to the `■ Δ settings.remove(path, key)` decision
+7. main.vn / `control main`: add `├ locked {holder}` to the `Δ settings.load(path)` decision, before `└ too_large`; add the label `╞═ locked: ■ failed` after the `╞═ too_large: …` label
+8. main.vn / `control get`: add `├ locked {holder}` to the `Δ settings.get(path, key)` decision, before `└ too_large`; add the label `╞═ locked: ■ failed` after the `╞═ too_large: …` label
+
+No edit needed: settings.vn / set, remove and get signatures and bodies: locked reaches them through the `…storage_error` group and the `→ ■` forwarding arms.
+No edit needed: main.vn / set and remove: both are `■ auto` forwards, so locked and its payload pass through.
+No edit needed: server.vn (all controls): HTTP replies are text values that prepare forwards unchanged.
+No edit needed: json_file library: the task says load_result already has locked.
+No edit needed: http.vn / route, encode_value and the body decoders: none of them calls json_file.load.

@@ -1,0 +1,11 @@
+REMOVAL 1
+file: subject-v2-b.md (the program's `http.vn`, Part 2)
+control: lookup_setting
+missing: `├ storage_failed {message} → ■ text {500, message}` (between the `invalid_file` arm and the `too_large` arm)
+how I can tell: `settings.get` is declared with `…storage_error`, which includes `storage_failed {message}`. The `Δ settings.get(path, key)` decision in `lookup_setting` names found, missing, invalid_key, invalid_file and too_large, but not storage_failed. `update_setting` and `remove_setting` both handle it at the same point. (Medium confidence on the exact wording of the line; the missing alternative is certain.)
+
+REMOVAL 2
+file: subject-v2-b.md (the program's `server.vn`, Part 2)
+control: start
+missing: `transport.release(▾listener)` (unsure of the exact form), after `result := capture run serve(path, listener, authority, max_connections, idle_ms)` and before `■ ▾result`
+how I can tell: `listener` is an `http_listener` resource with no `on fault release` clause, so it must be handed by value to an operation that ends it. `serve` only borrows it (`&http_listener`), and `transport.release` is declared in the signatures but called nowhere in the program. As written, `start` can exit while still holding the listener.

@@ -1,0 +1,30 @@
+TASK 1
+1. `json_encode` ends with `encode_failed { message }` (in `encode_value`). `encode_value` exits `text { 500, message }`. `lookup_setting` passes it on as `text { status, content }` (the `found` arm of `settings.get`). `http.route` does `forward lookup_setting`. `prepare` maps it to `prepared { status, content, "text/plain; charset=utf-8", "" }`. `exchange` sends it with `transport.send`.
+2. `json_file.load` ends with `invalid { message }`. `settings.load` renames it `invalid_file { message }`. `settings.get` passes on `invalid_file { message }`. `lookup_setting` chooses `text { 500, message }`. After that the chain is the same as in 1 (`route`, `prepare`, `exchange`).
+3. `json_file.load` ends with `read_failed { message }`. `settings.load` renames it `storage_failed { message }`. `settings.get` passes on `storage_failed { message }`. `lookup_setting` chooses `text { 500, message }`. After that the chain is the same as in 1.
+4. `json_file.load` ends with `too_large`. `settings.load` passes on `too_large`. `settings.get` passes on `too_large`. `lookup_setting` chooses `text { 500, "Settings file exceeds 1 MiB" }`. After that the chain is the same as in 1.
+5. A fault is an event, not an alternative. It can happen in the work of boundary `request`, for example in `http.route`, which is marked `faults`. The work is abandoned and the `contingency` block of `request` runs. It calls `transport.reply_failure`, which ends with `sent` and sends the fixed generic 500. This happens only if ordinary transmission has not started.
+
+TASK 2
+1. settings.vn / `outcome loaded_settings`: add the alternative `locked { string holder },` (for example before `too_large`).
+2. settings.vn / `outcome update_result`: add the alternative `locked { string holder },`.
+3. settings.vn / `outcome removal_result`: add the alternative `locked { string holder },`.
+4. settings.vn / `load` (its `exit delta json_file.load` block): add the arm `locked { string holder } => locked { holder },`.
+5. settings.vn / `set` (its `delta load(path)` block): add the arm `locked { string holder } => exit locked { holder },`.
+6. settings.vn / `remove` (its `delta load(path)` block): add the arm `locked { string holder } => exit locked { holder },`.
+7. settings.vn / `get`, signature: add `locked { string holder },` to the `exits` list (for example after `storage_failed { string message },`).
+8. settings.vn / `get` (its `exit delta load(path)` block): add the arm `locked { string holder } => locked { holder },`.
+9. http.vn / `list_settings` (its `exit delta settings.load(path)` block): add the arm `locked { string holder } => text { 423, holder },`.
+10. http.vn / `lookup_setting` (its `exit delta settings.get` block): add the arm `locked { string holder } => text { 423, holder },`.
+11. http.vn / `update_setting` (its `exit delta settings.set` block): add the arm `locked { string holder } => text { 423, holder },`.
+12. http.vn / `remove_setting` (its `exit delta settings.remove` block): add the arm `locked { string holder } => text { 423, holder },`.
+13. main.vn / `main` (its `delta settings.load` block): add the arm `locked { string message } => locked,`. Change the label to `[invalid_file | storage_failed | locked]: emit(message); exit failed;`.
+14. main.vn / `get` (its `delta settings.get` block): add the arm `locked { string message } => locked,`. Change the label to `[invalid_file | storage_failed | locked]: emit(message); exit failed;`.
+
+No edit needed: settings.vn / `validate_key`: it does not call `load`.
+No edit needed: http.vn / `route`: it only forwards, and `text` already exists in `response`.
+No edit needed: http.vn / `object_body`, `key_body`, `encode_value`: none of them calls `load`, `get`, `set` or `remove`.
+No edit needed: server.vn (all of it): `prepare` already handles `text { status, content }` from `route`.
+No edit needed: main.vn / `set` and `remove`: they use `forward`, and the exits come from `settings.update_result` and `settings.removal_result`, which now include `locked`.
+No edit needed: main.vn / `display_result`, `lookup_result`: `main` and `get` end with the existing `failed`.
+No edit needed: settings.vn / the `replace` arms in `set` and `remove`: `json_file.replace` did not change.

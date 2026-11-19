@@ -1,0 +1,21 @@
+TASK 1
+1. `json_file.load` reports `invalid {message}`, which `settings.load` renames to `invalid_file {message}`. `settings.get` passes `invalid_file {message}` through, and `lookup_setting` chooses `text {500, message}`.
+2. `json_file.load` reports `read_failed {message}`, which `settings.load` renames to `storage_failed {message}`. `settings.get` passes `storage_failed {message}` through, and `lookup_setting` chooses `text {500, message}`.
+3. `json_file.load` reports `too_large`. `settings.load` passes `too_large` through, `settings.get` passes it through, and `lookup_setting` chooses `text {500, "Settings file exceeds 1 MiB"}`.
+4. The host primitive `json_encode` reports `encode_failed {message}`. `encode_value` chooses `text {500, message}`, and `lookup_setting` forwards it unchanged.
+5. A fault (an event, not an alternative) raised inside `prepare`, or inside `route` or `exchange` which are marked `faults` (unsure: the file does not name the operation that raises the fault). It reaches the `request` boundary's `contingency(reason)`, and `reply_failure(connection)` sends the fixed generic 500 if ordinary transmission has not started. If transmission has started, it reports `unavailable` or `failed` instead.
+
+TASK 2
+1. settings.vn / `pub outcome storage_error`: insert the line `├ locked {holder: string}` after `├ storage_failed {message: string}`, before the unchanged `└ too_large`.
+2. settings.vn / `pub control load`: insert the line `│ ├ locked` after `│ ├ too_large`.
+3. http.vn / `control list_settings`: insert the line `│ ├ locked {holder}          → ■ text {423, holder}` before `│ └ too_large`.
+4. http.vn / `control lookup_setting`: insert the line `│ ├ locked {holder}                  → ■ text {423, holder}` before `│ └ too_large`.
+5. http.vn / `control update_setting`: insert the line `│ ├ locked {holder} → text {423, holder}` before `│ └ too_large`.
+6. http.vn / `control remove_setting`: insert the line `│ ├ locked {holder} → text {423, holder}` before `│ └ too_large`.
+7. main.vn / `control main`: insert the line `│ ├ locked` before `│ └ too_large`, and add the label line `╞═ locked: ■ failed` after the `╞═ too_large:` label.
+8. main.vn / `control get`: insert the line `├ locked` before `└ too_large`, and add the label line `╞═ locked: ■ failed` after the `╞═ too_large:` label.
+
+No edit needed: settings.vn / `get`, `set`, `remove`: their signatures already include `…storage_error`, and their `…storage_error → ■` arms pass `locked` through.
+No edit needed: server.vn / `prepare`: `http.route` already returns `text`, which becomes a plain-text reply with the status.
+No edit needed: main.vn / `set`, `remove`: `■ auto` forwards settings outcomes.
+No edit needed: http.vn / `route`, `update_setting` `Δ json_file.replace` path: `replace_result` does not gain `locked`.

@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `│ ├ storage_failed {message} → ■ text {500, message}`, placed between the `invalid_file` and `too_large` arms of the `Δ settings.get(path, key)` decision.
+how I can tell: `settings.get` has the signature `■ found {value: string} │ missing │ invalid_key │ …storage_error`, and `storage_error` includes `storage_failed`. The decision in `lookup_setting` names `found`, `missing`, `invalid_key`, `invalid_file` and `too_large` but not `storage_failed`. Every alternative must be named exactly once, so the decision is incomplete. The other controls that decide on `settings.get`, `settings.set` and `settings.remove` each name `storage_failed {message}` and map it to `text {500, message}`.
+
+REMOVAL 2 (unsure about the exact wording and placement)
+file: server.vn
+control: start
+missing: `│ Δ transport.release(▾listener): released`, placed after `result := capture run serve(...)` and before `■ ▾result`.
+how I can tell: `listener` is an `http_listener` resource, which is not declared `on fault release`, so it must be handed by value to an operation before `start` exits. `serve` takes the listener by reference, and `start` exits through `■ ▾result` without any call that takes `▾listener`. `release(listener: http_listener)` is listed in the library signatures and is called nowhere else in the program, so the release line is the one that is missing.

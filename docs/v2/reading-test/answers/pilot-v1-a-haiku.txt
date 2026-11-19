@@ -1,0 +1,27 @@
+TASK 1
+1. json_file.load reports `invalid { message }` → settings.load renames it `invalid_file { message }` → settings.get passes `invalid_file { message }` → lookup_setting chooses 500 (`invalid_file { string message } => text { 500, message }`).
+2. json_file.load reports `read_failed { message }` → settings.load renames it `storage_failed { message }` → settings.get passes `storage_failed { message }` → lookup_setting chooses 500 (`storage_failed { string message } => text { 500, message }`).
+3. json_file.load reports `too_large` → settings.load passes `too_large` → settings.get passes `too_large` → lookup_setting chooses 500 (`too_large => text { 500, "Settings file exceeds 1 MiB" }`).
+4. Host primitive json_encode reports `encode_failed { message }` → encode_value chooses 500 (`encode_failed { string message } => text { 500, message }`), and lookup_setting's `[found]` arm passes the text reply on unchanged.
+5. (unsure) A fault in http.route, the only control marked `faults`, during POST /lookup before transmission starts → the request boundary's contingency runs `transport.reply_failure`, which sends a fixed generic 500. No operation in the file faults, so I could not find a source for this fault.
+
+TASK 2
+1. settings.vn / outcome loaded_settings: add `locked { string holder },`
+2. settings.vn / outcome update_result: add `locked { string holder },`
+3. settings.vn / outcome removal_result: add `locked { string holder },`
+4. settings.vn / control load, `exit delta json_file.load`: change the last arm to `too_large => too_large {},` and add `locked { string holder } => locked { holder }`
+5. settings.vn / control set, `delta load(path)`: add `locked { string holder } => exit locked { holder },`
+6. settings.vn / control get, exits list: add `locked { string holder }` after `too_large,`, with a comma after `too_large`
+7. settings.vn / control get, `exit delta load(path)`: change the last arm to `too_large => too_large {},` and add `locked { string holder } => locked { holder }`
+8. settings.vn / control remove, `delta load(path)`: add `locked { string holder } => exit locked { holder },`
+9. http.vn / control list_settings, `exit delta settings.load`: change the `loaded` arm's trailing comma to a line `locked { string holder } => text { 423, holder },` after the `too_large` arm, so the arm reads `too_large => text { 500, "Settings file exceeds 1 MiB" },` then `locked { string holder } => text { 423, holder }`
+10. http.vn / control update_setting, `exit delta settings.set`: change `too_large => text { 413, "Settings size limit exceeded" }` to end with a comma, then add `locked { string holder } => text { 423, holder }`
+11. http.vn / control lookup_setting, `exit delta settings.get`: change `too_large => text { 500, "Settings file exceeds 1 MiB" }` to end with a comma, then add `locked { string holder } => text { 423, holder }`
+12. http.vn / control remove_setting, `exit delta settings.remove`: change `too_large => text { 413, "Settings size limit exceeded" }` to end with a comma, then add `locked { string holder } => text { 423, holder }`
+13. main.vn / control main, `delta settings.load`: add arm `locked { string holder } => locked,` and label `[locked]: emit(concat("The settings file is locked by ", holder)); exit failed;` (the emitted wording is my choice)
+14. main.vn / control get, `delta settings.get`: add arm `locked { string holder } => locked,` and label `[locked]: emit(concat("The settings file is locked by ", holder)); exit failed;`
+No edit needed: main.vn / controls set and remove: `forward` passes `locked` through, and their exits name the updated settings.update_result and settings.removal_result.
+No edit needed: server.vn: 423 is an ordinary text reply, and prepare already passes any status and body.
+No edit needed: http.vn / controls route and prepare: their exits (response, and the prepared shape) need no new outcome, since 423 uses `text`.
+No edit needed: http.vn / encode_value, object_body, key_body: `locked` does not arise in them.
+No edit needed: the library json_file: the task states it already has `locked`.

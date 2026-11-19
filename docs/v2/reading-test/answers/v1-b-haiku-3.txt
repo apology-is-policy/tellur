@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `storage_failed { string message } => text { 500, message },` (between the `invalid_file` and `too_large` arms of the `delta settings.get(path, borrow key)` inside `[keyed]:`)
+how I can tell: `settings.get` exits `storage_failed` (settings.vn, lines 181 and 195), and the `exit delta` in `lookup_setting` has no arm for it. Every alternative of an `exit delta` needs its own arm, and the compiler rejects one that is left out. The same arm is present in `remove_setting` and `update_setting`, which handle the same `settings.*` outcomes.
+
+REMOVAL 2
+file: server.vn
+control: start
+missing: a statement in the `[listening]:` path that hands `listener` by value to `transport.release`, after the `capture run serve(...)` call and before the final `exit delta result`. My best guess is `run transport.release(listener);` (unsure of the exact form).
+how I can tell: `listener` is an `http_listener`, which is a `resource`. It is bound at line 504 and is used only by borrow (`borrow listener`, line 512). Nothing passes it to an operation that takes it by value on the `listening` history, and the rule requires that before the control exits. `transport.release` (declared at line 908) is called nowhere in the file.

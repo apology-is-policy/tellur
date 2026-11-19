@@ -1,0 +1,21 @@
+TASK 1
+1. `json_file.load` reports `invalid {message}`. `settings.load` renames it `invalid_file {message}`. `settings.get` passes it on unchanged through `…storage_error → ■`. `http.lookup_setting` chooses 500 with `■ text {500, message}`. `route` passes it on with `forward lookup_setting`. `prepare` turns `text {status, content}` into `prepared {500, …}`. `exchange` sends it.
+2. `json_file.load` reports `read_failed {message}`. `settings.load` renames it `storage_failed {message}`. `settings.get` passes it on unchanged. `lookup_setting` chooses `■ text {500, message}`. After that it follows the same path as 1.
+3. `json_file.load` reports `too_large` (file over 1 MiB). `settings.load` passes it on as `too_large`. `settings.get` passes it on. `lookup_setting` chooses `■ text {500, "Settings file exceeds 1 MiB"}`. After that it follows the same path as 1.
+4. `json_encode` reports `encode_failed {message}`. `encode_value` renames it `■ text {500, message}`. `lookup_setting` passes it on with `forward encode_value(value)`. `route` passes it on with `forward lookup_setting`. After that it follows the same path as 1.
+5. This one is an event, not an alternative. Any fault in the work of `exchange`, `prepare`, `route` or their callees abandons the work. The boundary `request` then runs its `contingency`, and `transport.reply_failure(connection)` sends a fixed generic 500 if transmission has not started. `serve_connection` is not told what happened. (unsure whether any fault can occur on this path, but the mechanism exists)
+
+TASK 2
+1. settings.vn / `outcome storage_error`: add the line `├ locked {holder: string}` before `└ too_large`.
+2. settings.vn / `load`: add the arm `├ locked` to the `■ Δ json_file.load(path, 1048576)` decision, for example after `├ too_large`.
+3. http.vn / `list_settings`: add the arm `├ locked {holder} → ■ text {423, holder}` to `Δ settings.load(path)`.
+4. http.vn / `lookup_setting`: add the arm `├ locked {holder} → ■ text {423, holder}` to `Δ settings.get(path, key)`.
+5. http.vn / `update_setting`: add the arm `├ locked {holder} → text {423, holder}` to `■ Δ settings.set(…)`.
+6. http.vn / `remove_setting`: add the arm `├ locked {holder} → text {423, holder}` to `■ Δ settings.remove(…)`.
+7. main.vn / `main`: add the arm `├ locked {holder}` to `Δ settings.load(path)`. Add the label line `╞═ locked: ■ failed` after `╞═ too_large: …`.
+8. main.vn / `get`: add the arm `├ locked {holder}` to `Δ settings.get(path, key)`. Add the label line `╞═ locked: ■ failed` after `╞═ too_large: …`.
+
+No edit needed: settings.vn `set`, `get` and `remove`: `…storage_error` in the signature and in `Δ load(path) … → ■` now includes `locked`, so it passes on with its payload.
+No edit needed: settings.vn `set` and `remove`, the `json_file.replace` decisions: `replace_result` has no `locked`.
+No edit needed: main.vn `set` and `remove`: they use `■ auto` and `forward`, so they exit with `locked {holder}` themselves.
+No edit needed: http.vn `route`, and server.vn: `text` already carries a 423 status, so `response` and `prepare` are unchanged.

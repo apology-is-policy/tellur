@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `storage_failed { string message } => text { 500, message },` (in the `exit delta settings.get(path, borrow key) { … }` arms, after the `invalid_file` arm)
+how I can tell: `settings.get` exits with `found`, `missing`, `invalid_key`, `invalid_file`, `storage_failed` and `too_large`. The arms in this `exit delta` cover every one except `storage_failed`. An `exit delta` needs an arm for each alternative, so the compiler rejects it. `update_setting` and `remove_setting` both have this arm.
+
+REMOVAL 2
+file: server.vn
+control: start
+missing: a call that hands the listener to `transport.release`, after the `capture run serve(…)` and before `exit delta result`. For example `auto released = capture transport.release(listener);`
+how I can tell: `listener` is an `http_listener`, which is a resource. `start` only lends it (`borrow listener`) to `serve` and then exits on every history that passed `[listening]`. Nothing passes it by value to an operation that ends it. `transport.release(http_listener listener)` takes it by value, and the program never calls it. The compiler rejects a control that can end while it still holds a resource.

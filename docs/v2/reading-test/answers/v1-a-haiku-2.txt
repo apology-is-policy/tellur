@@ -1,0 +1,25 @@
+TASK 1
+1. json_file.load: invalid { message } → settings.load: invalid → invalid_file { message } → settings.get: invalid_file { message } → lookup_setting: invalid_file { message } → text { 500, message }
+2. json_file.load: read_failed { message } → settings.load: read_failed → storage_failed { message } → settings.get: storage_failed { message } → lookup_setting: storage_failed { message } → text { 500, message }
+3. json_file.load: too_large → settings.load: too_large → settings.get: too_large → lookup_setting: too_large → text { 500, "Settings file exceeds 1 MiB" }
+4. json_encode: encode_failed { message } → encode_value: encode_failed { message } → text { 500, message } (reached only after settings.get finds the key)
+5. (unsure) Origin is a fault, not an alternative: a fault in the request boundary → contingency(reason) → reply_failure sends the fixed generic 500 if ordinary transmission has not started. The text declares no fault source: route is the only control marked `faults`, and none of its callees declares one.
+
+TASK 2
+1. settings.vn / outcome loaded_settings: `too_large,` and `locked { string holder }`
+2. settings.vn / control load: `too_large => too_large {},` and `locked { string holder } => locked { holder }`
+3. settings.vn / outcome update_result: `too_large,` and `locked { string holder }`
+4. settings.vn / control set, delta load(path) arms: `too_large => exit too_large,` and `locked { string holder } => exit locked { holder },`
+5. settings.vn / outcome removal_result: `too_large,` and `locked { string holder }`
+6. settings.vn / control remove, delta load(path) arms: `too_large => exit too_large,` and `locked { string holder } => exit locked { holder },`
+7. settings.vn / control get, exits list: `too_large,` and `locked { string holder }`
+8. settings.vn / control get, exit delta load(path) arms: `too_large => too_large {},` and `locked { string holder } => locked { holder }`
+9. http.vn / control list_settings, exit delta settings.load arms: `too_large => text { 500, "Settings file exceeds 1 MiB" },` and `locked { string holder } => text { 423, holder }`
+10. http.vn / control lookup_setting, exit delta settings.get arms: `too_large => text { 500, "Settings file exceeds 1 MiB" },` and `locked { string holder } => text { 423, holder }`
+11. http.vn / control update_setting, exit delta settings.set arms: `},` after the commit_uncertain arm, and `locked { string holder } => text { 423, holder }` after `too_large => text { 413, "Settings size limit exceeded" }`, which gains a comma
+12. http.vn / control remove_setting, exit delta settings.remove arms: `locked { string holder } => text { 423, holder }` after `too_large => text { 413, "Settings size limit exceeded" }`, which gains a comma
+13. main.vn / control main, delta settings.load arms: `locked { string holder } => locked,` and the line `[locked]: emit(holder); exit failed;`
+14. main.vn / control get, delta settings.get arms: `locked { string holder } => locked,` and the line `[locked]: emit(holder); exit failed;`
+No edit needed: main.vn / control set and control remove: `forward` passes the widened update_result and removal_result through unchanged.
+No edit needed: server.vn: it does not call json_file or settings, and the `response` outcome in http.vn is unchanged.
+No edit needed: settings.vn / control remove, exit delta json_file.replace: `replace` is not changed.

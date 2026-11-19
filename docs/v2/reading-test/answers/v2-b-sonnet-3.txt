@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `│ ├ storage_failed {message} → ■ text {500, message}`. It belongs in the `Δ settings.get(path, key)` decision, between the `invalid_file` and `too_large` arms.
+how I can tell: `settings.get` exits with `found`, `missing`, `invalid_key` and all of `…storage_error`. That group is `invalid_file`, `storage_failed` and `too_large`. The decision names `found`, `missing`, `invalid_key`, `invalid_file` and `too_large`, but not `storage_failed`. Every alternative must be named exactly once, so the compiler would reject it. The other callers of settings operations (`list_settings`, `update_setting`, `remove_setting` and `main.vn`'s `get`) all have the `storage_failed` arm.
+
+REMOVAL 2
+file: server.vn
+control: start
+missing: `│ Δ transport.release(▾listener): released`. It belongs after `result := capture run serve(...)` and before `■ ▾result`.
+how I can tell: `listener` is an `http_listener`, which is a resource. `start` gets it from `transport.listen` and passes it to `serve` only by reference (`&http_listener`). Nothing hands it over by value, such as `▾listener`, before `■ ▾result`. The only operation that takes it by value is `transport.release(listener: http_listener) ■ released`, and nothing calls it. So `start` can exit while still holding a resource, which the compiler rejects.

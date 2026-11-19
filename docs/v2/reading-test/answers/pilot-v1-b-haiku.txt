@@ -1,0 +1,11 @@
+REMOVAL A
+file: http.vn
+control: lookup_setting
+missing: `storage_failed { string message } => text { 500, message },` (between the `invalid_file` and `too_large` arms of the `delta settings.get(path, borrow key)`)
+how I can tell: `settings.get` exits `storage_failed { string message }` (settings.vn, `get`), and no arm of `lookup_setting` handles it, while `get_setting` in remove_setting and update_setting do. In a plain `delta` the unhandled alternative becomes a path named `storage_failed`, and no label selects it, so that history never ends in an exit.
+
+REMOVAL B
+file: server.vn
+control: start
+missing: a line that hands `listener` to `transport.release` after the `serve` capture and before the final `exit delta result` (unsure: the exact form, e.g. `auto released = capture run transport.release(listener);`, is my reconstruction)
+how I can tell: `transport.release(http_listener listener)` appears only in the signature block, and nothing in the program calls it. `start` holds `listener` from the `listening` arm and then exits without giving it to an operation that takes it by value. The resource rule in Part 1 says the compiler rejects a control that can end while it still holds one.

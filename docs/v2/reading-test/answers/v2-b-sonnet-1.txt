@@ -1,0 +1,11 @@
+REMOVAL 1
+file: http.vn
+control: lookup_setting
+missing: `│ ├ storage_failed {message}   → ■ text {500, message}` in the `Δ settings.get(path, key)` decision, between the `invalid_file {message}` arm and the `too_large` arm.
+how I can tell: `settings.get` exits with `found`, `missing`, `invalid_key` and `…storage_error`. The group `storage_error` covers `invalid_file`, `storage_failed` and `too_large`. The decision names `invalid_file` and `too_large` but not `storage_failed`, and every alternative must be named exactly once. `update_setting` and `remove_setting` both list `storage_failed` for their calls to the same family of operations.
+
+REMOVAL 2
+file: server.vn
+control: start
+missing: `│ Δ transport.release(▾listener): released`, placed after `result := capture run serve(...)` and before `■ ▾result`.
+how I can tell: `transport.listen` binds `listener: http_listener`, which is a `resource`. `serve` only borrows it (`&http_listener`). `start` therefore still holds the listener when it exits with `■ ▾result`, and the compiler rejects a control that can end while holding a resource. The signatures list `release(listener: http_listener) ■ released`, which nothing in the program calls now.

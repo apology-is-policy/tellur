@@ -1,0 +1,25 @@
+TASK 1
+1. `json_file.load` reports `invalid { message }`, then `settings.load` maps it to `invalid_file { message }`, `settings.get` passes `invalid_file { message }` on, and `lookup_setting` chooses `text { 500, message }`. `route` and `prepare` forward the reply unchanged.
+2. `json_file.load` reports `read_failed { message }`, then `settings.load` maps it to `storage_failed { message }`, `settings.get` passes `storage_failed { message }` on, and `lookup_setting` chooses `text { 500, message }`.
+3. `json_file.load` reports `too_large`, then `settings.load` and `settings.get` pass `too_large` on, and `lookup_setting` chooses `text { 500, "Settings file exceeds 1 MiB" }`.
+4. The host primitive `json_encode` reports `encode_failed { message }`, then `encode_value` chooses `text { 500, message }`, and `lookup_setting` passes it on as `text { status, content }` after `settings.get` reports `found { value }`.
+5. (unsure) A fault in `route`, the only control marked `faults`. The file names no operation that faults. The boundary `request` runs its `contingency`, which calls `transport.reply_failure`, sending a fixed generic 500 if transmission has not started. The 500 is chosen in the contingency, not in `lookup_setting`.
+
+TASK 2
+1. settings.vn / outcome `loaded_settings`: add `locked { string holder },` after `storage_failed { string message },`.
+2. settings.vn / outcome `update_result`: add `locked { string holder },` after `commit_uncertain { string message },`.
+3. settings.vn / outcome `removal_result`: add `locked { string holder },` after `commit_uncertain { string message },`.
+4. settings.vn / `load`: add the arm `locked { string holder } => locked { holder },` after the `read_failed` arm.
+5. settings.vn / `set`: in `[valid]: delta load(path)`, add `locked { string holder } => exit locked { holder },` after the `storage_failed` arm.
+6. settings.vn / `get`: add `locked { string holder },` to the exits after `storage_failed { string message },`, and add `locked { string holder } => locked { holder },` to `exit delta load(path)` after the `storage_failed` arm.
+7. settings.vn / `remove`: in `[valid]: delta load(path)`, add `locked { string holder } => exit locked { holder },` after the `storage_failed` arm.
+8. http.vn / `list_settings`: add `locked { string holder } => text { 423, holder },` to `exit delta settings.load(path)`.
+9. http.vn / `lookup_setting`: add `locked { string holder } => text { 423, holder },` to `exit delta settings.get(path, borrow key)`.
+10. http.vn / `update_setting`: add `locked { string holder } => text { 423, holder },` to `exit delta settings.set(...)`.
+11. http.vn / `remove_setting`: add `locked { string holder } => text { 423, holder },` to `exit delta settings.remove(path, borrow key)`.
+12. main.vn / `main`: in `delta settings.load(borrow path)`, add `locked { string holder } => locked,`, and add the label `[locked]: exit failed;`.
+13. main.vn / `get`: in `delta settings.get(borrow path, borrow key)`, add `locked { string holder } => locked,`, and add the label `[locked]: exit failed;`.
+No edit needed: main.vn / `set` and `remove`: they forward, and the callee outcomes now carry `locked` with its payload.
+No edit needed: server.vn, all controls: HTTP replies stay `text`, and `route`, `prepare` and `exchange` pass them on unchanged.
+No edit needed: settings.vn / `validate_key` and the `json_file.replace` path: `locked` is only on `load`, and `replace_result` is unchanged.
+No edit needed: main.vn / `serve`: its `service_result` is not affected.

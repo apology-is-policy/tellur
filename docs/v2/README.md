@@ -15,7 +15,7 @@ v1, the language and compiler at 0.306, is described by the
 | [Reference model](references.md) | Second-class borrows and views: the model, 36 worked examples in Rails and core form with verdicts, the tag semantics on an example | Draft 1, one review folded in, which found the 36 verdicts to agree with their clauses; raises two questions (Q16, Q17) |
 | [Surface](surface.md) | The Rails grammar, layout, and the elaboration into the core, including the acknowledgement rule and outcome groups | Draft 1, with the task forms of the core's draft 2 and the forms the corpus needed (traits, named boundaries, `copy` types); one review folded in; raises six questions (Q11 to Q15, Q19) |
 | [Corpus on paper](corpus.md) | The settings application, the eight collection modules and three new programs, rewritten by hand, with counts and findings | Draft 1, checked by hand and read by one review, which found no error in the programs. Library 476 to 231 lines, application 635 to 304, no filler arm; thirteen gaps repaired in the other documents, thirteen limits left open. |
-| Reading and repair test | v1 and v2 versions of the same programs, given to people and to agents | Not started |
+| [Reading and repair test](reading-test.md) | v1 and v2 versions of the same programs, given to people and to agents | First run with agents done: 24 runs, 23 fully correct, so no difference between the versions is shown on reading. The repair needs 8 edits in v2 against 14. People have not taken it. |
 
 ## Conventions
 
@@ -42,4 +42,5 @@ v1, the language and compiler at 0.306, is described by the
    plan asks for (lines, labels, filler arms, annotations) (draft 1 done).
 6. One independent review of all five documents together, for consistency and
    soundness (done; the repairs it led to have not been reviewed again).
-7. The reading and repair test.
+7. The reading and repair test (first run with agents done; people are the
+   author's part and open).

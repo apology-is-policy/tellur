@@ -1,0 +1,11 @@
+REMOVAL 1
+file: applications/... no: http.vn
+control: lookup_setting
+missing: `storage_failed { string message } => text { 500, message },` (the arm between `invalid_file` and `too_large` in the `exit delta settings.get(path, borrow key)` block)
+how I can tell: `settings.get` exits with `storage_failed { string message }` (its signature in the `settings.vn` file lists it, and `get` forwards it), and an `exit delta` needs an arm for every alternative. `lookup_setting` has arms for found, missing, invalid_key, invalid_file and too_large only. `remove_setting` in the same file has the matching arm, which has the same shape.
+
+REMOVAL 2 (unsure about the exact form of the line, certain about its place)
+file: server.vn
+control: start
+missing: a call that hands the listener to `transport.release` (the library's `release(http_listener listener) exits released`), placed in the `[listening]` block before the final `exit delta result`, for example `transport.release(listener);` (unsure)
+how I can tell: the `listening { http_listener listener, ... }` arm binds a resource, and `start` only lends it to `serve` through `borrow listener`. The `[listening]` history then ends in `exit delta result` while still holding the listener. A resource must be handed by value to an operation before the control exits, and no such call appears in `start`.
