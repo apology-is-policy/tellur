@@ -37,16 +37,16 @@ git-ignored `CLAUDE.local.md` beside this file. Keep them out of this one.
 ## Working with the author
 
 - Proceed through routine checkpoints autonomously. Ask only at a real
-  language-design fork, with a recommended option first. Known forks that need the
-  author: persistent sharing eligibility, fallible sorting, new generic origin
-  capabilities, array windows, generic map-key constraints, and the mutation
-  keyword (`mutable` is provisional).
+  language-design fork, with a recommended option first. The exit of each plan
+  phase that says "the author accepts" is such a point.
 - Record a failure as a failure. Never describe unverified work as done, and never
   claim Rust parity that was not measured on the complete Villanelle path. Keep
   measured gaps visible in docs.
 - Reuse valid evidence for unchanged inputs instead of rerunning suites.
-- Accepted design decisions are recorded in `docs/language-revision.md`
-  ("Decisions carried forward"). Do not relitigate them.
+- Accepted design decisions are recorded in `docs/redesign-plan.md` (section 3
+  and section 5.5, for v2) and in `docs/language-revision.md` ("Decisions carried
+  forward", for v1). Where they differ, the plan governs v2. Do not relitigate
+  them.
 - Commit and push only within the authorization the author has given.
 
 ## Where the truth lives
@@ -56,7 +56,9 @@ state, then `docs/language-revision.md`. Older handoff notes lose to newer facts
 
 | Source | Holds |
 | --- | --- |
-| `docs/language-revision.md` | The roadmap. "Active checkpoint queue" is newest-first; later sections hold history, decisions and the six language milestones. |
+| `docs/redesign-plan.md` | The roadmap: the accepted v2 redesign, its decisions, phases and design sketches. Section 5.5 is the adopted Rails surface syntax. |
+| `docs/language-revision.md` | The v1 record. "Active checkpoint queue" is newest-first; later sections hold history, decisions and the six language milestones. |
+| `experiments/syntax_lab/` | Reference programs in Rails form, their word-form sources and the transpiler. Nothing in it compiles yet. |
 | `docs/collections-and-algorithms.md`, `library/COLLECTIONS.md` | Standard-library design, contracts and the measured performance table. |
 | `docs/reference/` | The maintained manual. `maintenance.md` is the per-checkpoint checklist, `support-status.md` the feature matrix, `llvm-backend.md` the backend reference. |
 | `docs/conformance.md` | Requirement-to-evidence inventory. |
@@ -65,24 +67,39 @@ state, then `docs/language-revision.md`. Older handoff notes lose to newer facts
 
 ## Roadmap
 
-The roadmap is a sequence of stations. States below are as of compiler 0.306;
-the "Active checkpoint queue" is authoritative for the current position.
+**v1 is frozen** at compiler 0.306.0 and collections 0.1.0 (19 November 2026): no
+further performance passes, library modules or target work. v1 stays buildable,
+receives corrections, and becomes the test oracle for v2. Its seventeen stations
+are history in `docs/language-revision.md`; the Thylacine target and the
+retirement of the generated-Rust backend were never started.
 
-| # | Station | State |
+The roadmap is the accepted redesign, **v2**, in `docs/redesign-plan.md`. The
+plan's phase sections are authoritative for scope and exit conditions.
+
+| Phase | Work | State |
 | --- | --- | --- |
-| 1–7 | Accepted design, runtime C ABI, embedded LLVM/LLD, synchronous emission, async frames, Rust adapters and live I/O, application and suite parity | Done (0.233–0.277) |
-| 8 | Single binary and CI releases (`vnc` plus `vnc lsp`, macOS and Linux musl packs) | Done (0.278–0.283) |
-| 9 | Windows target (COFF, import libraries) | Shipped in 0.283 |
-| 10–11 | Language review against the six original milestones; JSON outcome expansion comparison | Done |
-| 12–13 | Collection and algorithm contracts; traversal and storage experiments | Done (0.284–0.306) |
-| 14 | Fresh-project library adoption | Active |
-| 15 | First supported library modules | Next |
-| 16 | Thylacine target (`aarch64-thylacine`, LLVM fork, pouch link pack, `poll()` readiness) | Deferred until the author asks |
-| 17 | Retire the generated-Rust backend | Deferred until the author asks |
+| 0 | Close out v1 | Done except the v1 tag |
+| 1 | Design on paper: core specification, fact logic, reference model, surface, the corpus rewritten by hand, a reading and repair test. No compiler code. | Active |
+| 2 | Oracle interpreter, program generator, differential harness, mutation tests | |
+| 3 | Checker on a typed core, with the formatter that owns the rails | |
+| 4 | Typed backend; exit is 1.2× optimized Rust on every kernel under `experiments/` | |
+| 5 | Language breadth: numbers, functions, loops as decisions, recursion, closures, recursive data, views | |
+| 6 | Algebra at compile time: symbolic automata, policies, resource protocols, behavioral contracts | |
+| 7 | Editor and migration | |
+| 8 | Evidence: a 5,000 to 10,000 line application, repair benchmark, reading study | Continuous |
 
-Standing goal across all stations: match or beat equivalent optimized Rust for
-every operation. Generic value/reference transport, checked payloads and the
-136-byte generic value are the main remaining costs.
+Phases 2 to 4 are built as vertical slices (scalars and decisions, then data,
+then borrows, then tasks); each slice passes specification, oracle, checker,
+backend and differential fuzzing before the next begins.
+
+v2 source is written in **Rails** (plan section 5.5): glyphs and box-drawing
+rails are the canonical text, and the word form is the input spelling. New
+design text and examples use Rails. Existing `.vn` files are v1 and keep v1
+syntax and the style in `AGENTS.md`.
+
+Standing goal: match or beat equivalent optimized Rust for every operation. In
+v1 the generic value/reference transport, checked payloads and the 136-byte
+generic value are the measured costs; they are the baseline for phase 4.
 
 ## Build and test
 
@@ -127,6 +144,9 @@ source adapters also need Cargo. `bin/`, `*.vsix`, `**/build/` and
 Every implementation checkpoint is a small release (0.3xx). A change to compiler
 or editor inputs runs the full workflow. A source- or docs-only checkpoint reuses
 the current release evidence and needs no version bump or reinstall.
+This workflow governs corrections to v1 and, from phase 2, compiler work on v2.
+Phase 1 is design on paper: its checkpoints are documents, validated by the
+manual checks and by the author's acceptance.
 
 1. Implement with positive tests and rejection tests, a runnable example, and
    agreement between interpreter, LLVM and generated Rust, original and expanded,

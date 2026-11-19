@@ -2,6 +2,37 @@
 
 ## Active checkpoint queue
 
+### Redesign accepted and v1 closed out, 19 November 2026
+
+The author accepted the [redesign plan](redesign-plan.md): the Rails surface
+syntax and eight decisions. Borrows and views become second-class; path facts
+become propositions in linear integer arithmetic, with proven `impossible` arms;
+every alternative is named at its decision or covered by a named group; a new
+typed core is built beside v1 in vertical slices; assurance comes from
+differential fuzzing against an oracle and a staged Lean 4 mechanization; proofs
+come from a built-in procedure that emits certificates; v2 drops the Path and
+Tellur legacy forms and ships a migrator. The nine phases of that plan replace
+the station roadmap from here on.
+
+**v1 is frozen at compiler 0.306.0 and collections 0.1.0.** No further
+performance passes, library modules or target work are scheduled for it. The
+Thylacine target and the retirement of the generated-Rust backend were never
+started and move behind the plan. v1 stays buildable and receives corrections,
+because it becomes the test oracle. The measured gaps to optimized Rust (stable
+sort about 648×, middle lower bound about 154×) are the baseline for the plan's
+phase 4, whose exit is 1.2× on every kernel under `experiments/`.
+
+Close-out. The collections slice below is committed after requalification (28
+adoption cases, 3 manual tests). The Windows host workflow had failed on every
+push since 0.297. The cause was in two `llvm_backend` tests, not in the compiler:
+they derive programs by replacing anchors that contain a line break in
+`library/reduction.vn` and `experiments/ordered_bounds/lower_bound.vn`, and a
+Windows checkout delivered those files with CRLF, so the derived programs were
+wrong. Converting the files to CRLF on macOS reproduces both failures exactly.
+Every `.vn` file is now pinned to LF. Windows remains unqualified at 0.306 until
+the workflow run on that fix passes. Next: phase 1, the core specification on
+paper.
+
 ### Supported collection sources, 18 November 2026
 
 Collections 0.1.0 provides eight supported source modules on qualified compiler
@@ -1075,6 +1106,13 @@ Primary references for these constraints:
 - [Non-exhaustive I/O errors](https://doc.rust-lang.org/std/io/enum.ErrorKind.html)
 
 ## Decisions carried forward
+
+- **19 November 2026: the redesign reopens five decisions for v2.** Precise
+  origin groups (26 October), outcome-producing checked arithmetic, dynamic
+  values first with typed lowering later, identity routing of omitted arms, and
+  JSON manifests as the home of primitive contracts are superseded in v2 by
+  decisions D1 to D8 of the [redesign plan](redesign-plan.md#3-decisions-for-the-author)
+  and by its Rails surface. The entries below continue to describe v1.
 
 - Selected payload inference uses `exits ready..., missing`. Bare exits remain
   payload-free; explicit payloads and named outcome contracts remain available.

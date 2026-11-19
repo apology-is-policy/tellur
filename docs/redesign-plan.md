@@ -1,10 +1,11 @@
 # Villanelle redesign plan
 
-Status: **proposal**, 19 November 2026, written by Claude Code at the author's
-request. Only the surface syntax is accepted (section 5.5, Rails); nothing is
-implemented. All other syntax in this document is
-illustrative and uses `text` fences so the manual checks ignore it. "v1" means the
-language and compiler at 0.306; "v2" means the redesign.
+Status: **accepted** by the author on 19 November 2026: the surface syntax
+(section 5.5, Rails) and all eight decisions in section 3, as recommended. Written
+by Claude Code at the author's request. Nothing of v2 is implemented. Syntax
+outside section 5.5 is illustrative, predates Rails and uses `text` fences so the
+manual checks ignore it. "v1" means the language and compiler at 0.306; "v2" means
+the redesign.
 
 The plan follows from the [vision](path-language-vision.md), the
 [semantic foundation](semantic-foundation.md) and a review of 0.306 that included
@@ -61,8 +62,9 @@ server, packaging, CI and the embedded LLVM toolchain.
 
 ## 3. Decisions for the author
 
-Each fork lists the recommended option first. The plan below assumes the
-recommendations; the note says what changes otherwise.
+**All eight recommendations were accepted on 19 November 2026.** D4 was settled
+by adopting Rails (section 5.5), where structure is drawn. The alternatives stay
+listed as the record of what was declined and what it would have cost.
 
 | # | Fork | Recommendation | Alternative and its cost |
 | --- | --- | --- | --- |
@@ -109,6 +111,22 @@ backend and differential fuzzing before the next begins.
 - Replace the Yip arc with the v2 phases once this plan is accepted.
 
 Exit: `main` clean and pushed; v1 tagged; roadmap replaced.
+
+State on 19 November 2026:
+
+- The collections slice is committed (`ccf5141`) after requalification: 28
+  adoption cases on LLVM and generated Rust, 3 manual tests.
+- The Windows failures were a fault in two tests, not in the compiler. The tests
+  derive programs by replacing anchors that contain a line break in embedded
+  sources, and a Windows checkout delivered those sources with CRLF. Converting
+  the sources to CRLF on macOS reproduces both failures exactly. Every `.vn` file
+  is now pinned to LF (`019d012`). Windows stays unqualified at 0.306 until the
+  workflow run on that commit passes.
+- v1 is frozen from this point. Corrections stay possible, because v1 is the
+  oracle in phase 2.
+- The roadmap records are replaced by the phases of this plan.
+- Not done: the v1 tag, which waits for the Windows run and for the author's
+  word.
 
 ### Phase 1. Design on paper
 
@@ -437,7 +455,7 @@ On 19 November 2026 the author adopted the **Rails** rendering wholesale as the
 surface syntax of v2, after trying alternative glyphs in a playground and
 keeping the defaults. It supersedes the word spellings shown in sections 5.2 to
 5.4 and settles D4: structure is drawn, so a label's extent is the dashed rail
-beneath it. The other decisions in section 3 are still open.
+beneath it. The other decisions in section 3 were accepted the same day.
 
 Canonical source text is the glyph form, rail characters included. The word
 form remains the input spelling: every glyph has a word, and the formatter
