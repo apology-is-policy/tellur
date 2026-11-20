@@ -1,0 +1,22 @@
+┄ [E-Formula] A formula is evaluated over the mathematical integers: a sum
+┄ that no type holds is a number like any other, and a literal need not be a
+┄ value of the type beside it.
+control sum_fits(a : u8, b : u8) ■ { fits │ leaves }
+⊤ ▷ t : ? a ≤ 255 - b
+t.true ▷ ⊢ a + b < 256
+t.true ▷ ■ fits
+t.false ▷ ⊢ a + b > 255
+t.false ▷ ■ leaves
+
+control wide(a : u64, b : u64) ■ { ok }
+⊤ ▷ ⊢ a * b * a ≥ a ∧ a * b * a - a * b * a = 0
+⊤ ▷ ■ ok
+
+control total(a : u32) ■ { ok }
+⊤ ▷ ⊢ a ÷ 0 = 0 ∧ a mod 0 = a
+⊤ ▷ ■ ok
+
+//! run sum_fits(200, 55) => done fits
+//! run sum_fits(200, 100) => done leaves
+//! run wide(18446744073709551615, 18446744073709551615) => done ok
+//! run total(7) => done ok

@@ -1,0 +1,10 @@
+┄ [W2] The program is refused before it can run.
+control f(a : u32) ■ { ok }
+⊤ ▷ s : ↻ once() {
+    ⊤ ▷ t : ? a < 1
+    ⊤ ▷ □ out
+} ▸ out
+t.true ▷ ■ ok
+⊤ ▷ ■ ok
+
+//! reject W2

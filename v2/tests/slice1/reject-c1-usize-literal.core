@@ -1,0 +1,5 @@
+┄ [C1] The program is refused before it can run.
+control f(a : usize) ■ { value {v : usize} }
+⊤ ▷ ■ value {4294967296}
+
+//! reject C1

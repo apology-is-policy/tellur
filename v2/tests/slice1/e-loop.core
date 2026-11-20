@@ -1,0 +1,68 @@
+┄ [E-Loop], [E-Again], [E-Leave], [H1], [H4] A loop runs its body in a scope
+┄ of its own. ↑ replaces that scope and starts with an empty history; □ ends
+┄ it and completes the loop's site. The invariant holds at entry and at
+┄ every ↑. A loop body consults the history around it.
+control gcd(a : u32, b : u32) ■ { result {value : u32} }
+⊤ ▷ s : ↻ step(x : u32 := a, y : u32 := b) {
+    ⊤ ▷ z : ? y = 0
+    z.true ▷ □ found {x}
+    ⊤ ▷ ↑ step(y, x mod y)
+} ▸ found {value}
+⊤ ▷ ■ result {value}
+
+control countdown(n : u32, limit : u32) ■ { finished {steps : u32} }
+⊤ ▷ s : ↻ down(left : u32 := n, steps : u32 := 0) {
+    ⊢ left + steps = n ∧ steps ≤ limit
+    ⊤ ▷ z : ? left = 0
+    z.true ▷ □ out {steps}
+    z.false ▷ ↑ down(left - 1, steps + 1)
+} ▸ out {total}
+⊤ ▷ ■ finished {total}
+
+control bad_entry(n : u32) ■ { finished }
+⊤ ▷ s : ↻ spin(i : u32 := n) {
+    ⊢ i < 5
+    ⊤ ▷ □ out
+} ▸ out
+⊤ ▷ ■ finished
+
+control fresh(n : u32) ■ { count {value : u32} }
+⊤ ▷ s : ↻ walk(i : u32 := 0, hits : u32 := 0) {
+    ⊤ ▷ end : ? i = n
+    end.true ▷ □ out {hits}
+    ⊤ ▷ even : ? i mod 2 = 0
+    even.true ▷ ↑ walk(i + 1, hits + 1)
+    even.false ▷ ↑ walk(i + 1, hits)
+} ▸ out {value}
+⊤ ▷ ■ count {value}
+
+control triangle(n : u32) ■ { total {value : u32} }
+⊤ ▷ big : ? n > 100
+⊤ ▷ o : ↻ rows(i : u32 := 0, acc : u32 := 0) {
+    ⊤ ▷ last : ? i = n
+    last.true ∧ big.true ▷ ■ total {0}
+    last.true ▷ □ finished {acc}
+    ⊤ ▷ c : ↻ cells(j : u32 := 0, row : u32 := acc) {
+        ⊤ ▷ full : ? j = i
+        full.true ▷ ↑ rows(i + 1, row)
+        ⊤ ▷ ↑ cells(j + 1, row + 1)
+    }
+} ▸ finished {value}
+⊤ ▷ ■ total {value}
+
+control forever() ■ { never }
+⊤ ▷ s : ↻ spin() {
+    ⊤ ▷ ↑ spin()
+}
+
+//! run gcd(48, 18) => done result {6}
+//! run gcd(0, 0) => done result {0}
+//! run countdown(3, 10) => done finished {3}
+//! run countdown(3, 2) => stuck X7 E-Again
+//! run bad_entry(3) => done finished
+//! run bad_entry(7) => stuck X7 E-Loop
+//! run fresh(5) => done count {3}
+//! run triangle(4) => done total {6}
+//! run triangle(0) => done total {0}
+//! run triangle(101) => done total {0}
+//! run forever() fuel 500 => fuel

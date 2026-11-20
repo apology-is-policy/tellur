@@ -439,6 +439,11 @@ term of a formula.
   result is not a value of `τ`, and for division when the divisor is zero.
   Division truncates toward zero, and the remainder has the sign of the
   dividend. The wrapping and saturating operators are total and never stuck.
+- **[E-Bool]** `e₁ ∧ e₂` evaluates `e₁` and, only when it is true, `e₂`.
+  `e₁ ∨ e₂` evaluates `e₂` only when `e₁` is false. Expressions have no
+  effects ([W5]), so the order shows in one thing: the left operand can keep
+  the right one from being evaluated where it would be stuck, as in
+  `b ≠ 0 ∧ a ÷ b > 1`. `¬` and the comparisons evaluate their operands.
 - **[E-Fn]** `fn⟨τ̄⟩(ē)` evaluates the arguments left to right and then the body
   of `fn` with its parameters bound. A place given for a borrow parameter is
   read where it is ([W5a]). It is stuck when the precondition of `fn` is false
@@ -480,7 +485,8 @@ Otherwise `c` runs:
 - **[E-Assign]** `p ← e`. Evaluate `e` to `v`, then write `v` at the place of
   `p`: a write access by [B1]. If the value being replaced contains an
   obligation (section 6.8), stuck. A moved slot may be assigned as a whole and
-  becomes available.
+  becomes available. A name that has no slot in this run cannot be assigned:
+  stuck.
 - **[E-Oblige]** `⊢ φ`. If `φ` is false in the current state, stuck.
 - **[E-Formula]** A formula is evaluated on current values, over the
   mathematical integers, and makes no access: it reads through borrows and
@@ -490,7 +496,10 @@ Otherwise `c` runs:
   term that indexes out of range has a value of the element type, and a term
   that divides by zero has an integer value. This document does not fix those
   values, but each depends only on the operands of its term: the same term on
-  equal operands has the same value wherever it is evaluated.
+  equal operands has the same value wherever it is evaluated. A formula has
+  no order of evaluation: every name it mentions is read, on both sides of
+  `∧` and `∨`. A function in a formula is its body on the argument terms
+  ([fact logic](facts.md), [I8]), and its precondition is not asked there.
 - **[E-Test]** `d : ? e`. Evaluate `e`; add `d.true` or `d.false` to the scope's
   history.
 - **[E-Decide]** `d : Δ ω(ō) ▸ …`. Evaluate the operands ([E-Operands]) and run
@@ -642,7 +651,7 @@ excludes.
 | | Stuck when | Clause | Excluded by |
 | --- | --- | --- | --- |
 | **X1** | A body reaches its end with the history undisposed | [E-End] | Coverage [K7] |
-| **X2** | A name is read, moved or borrowed where it is unbound or moved | [E-Var] | Availability [O2] |
+| **X2** | A name is read, moved or borrowed where it is unbound or moved, or assigned where it is unbound | [E-Var], [E-Assign] | Availability [O2], [O4] |
 | **X3** | A name is bound twice in one run | [E-Bind] | [O1] |
 | **X4** | An access goes through a dead tag, or writes through a shared one | [B1] | Loans [L3], mutable places [C1] |
 | **X5** | A value that contains an obligation is destroyed or overwritten | [E-Scope], [E-Assign], [E-Temp] | Obligations [O4], [O5], temporaries [O3a], task sets [TK2] |
@@ -869,7 +878,12 @@ causes an error, and every reported error comes with a feasible history.
 ### 7.3 Typing
 
 - **[C1]** Expressions, operands, payloads and assignments are typed in the
-  ordinary way. An operand is given by value, as `&p` or as `&~p`, as the type
+  ordinary way. An integer literal has the integer type that its place
+  expects, and `u32` where nothing expects one. It must be a value of that
+  type, and for `usize` a value on every target (fact logic, [A2]). The
+  negation of a literal is a literal. Both operands of an arithmetic
+  operator or of a comparison have one type; a formula is typed in the same
+  way, except that a literal in it may be any integer ([E-Formula]). An operand is given by value, as `&p` or as `&~p`, as the type
   expected there says ([W8]). An assignment, an exclusive borrow `&~p` and an
   operation that changes a collection's shape each need a **mutable place**:
   one whose root was bound with `~`, or that passes through an exclusive
@@ -1030,10 +1044,14 @@ Each of these is an entailment by [N2], on the histories that run the statement.
 - **[P6]** `⊥` at statement `i`: `Θ ⊨ ¬Rᵢ`. No feasible history runs it.
 - **[P7]** A proved obligation is a fact afterwards, by [N4]. The obligations of
   one statement are proved in the order of evaluation, each a fact for the next.
+  The obligations of the right operand of `∧` are proved where the left
+  operand is true, and those of the right operand of `∨` where it is false
+  ([E-Bool]).
 - **[P8]** A function body is checked as one expression under the function's
   precondition, with [P5] for its primitives and with [O3] and [O3a]; by
-  [W5a] it owns nothing. A call of a function is checked by [P3], wherever it
-  occurs.
+  [W5a] it owns nothing. A call of a function in an expression is checked by
+  [P3]. A formula carries no obligations, so a call in a formula is not
+  ([E-Formula]).
 
 ### 7.7 Faults and effects
 
@@ -1346,6 +1364,15 @@ The author accepted them with phase 1 on 20 November 2026.
 28. **Boundaries have their checking rules written down** ([F5], [F6]). They
     are v1's. The first corpus draft used a named boundary that the core
     described only in its semantics.
+29. **`∧` and `∨` evaluate their right operand only where it decides the
+    result** ([E-Bool], [P7]). The draft did not say. Writing the oracle
+    asked the question, and the answer is the one every reader expects:
+    `i < len(v) ∧ v[i] = x` is one test and needs no nesting. A formula is
+    not evaluated in an order and reads both sides ([E-Formula]).
+30. **A function's precondition is an obligation in expressions only**
+    ([P8], [E-Formula]). In a formula a call is the function's body.
+31. **An integer literal takes the type its place expects** ([C1]), `u32`
+    where nothing expects one, as the surface says of `■ auto`.
 
 The author answered the five questions of this draft on 19 November 2026 and
 took the recommendation in each case:
@@ -1364,3 +1391,15 @@ took the recommendation.
 | | Question | Decision |
 | --- | --- | --- |
 | Q18 | Does v2.0 keep v1's single task handles (`child := spawn f(…)`, `await child`), deferred tasks (`defer`) and `yield`? | **No.** Task sets only, as the plan's list of words has it (`spawn … into`, `await`, `next`, `cancel`, `run`). A handle is a set with one member, a deferred task is a call made later, and `yield` only made schedules observable. One form means one ownership rule and one loan rule for all concurrency. |
+
+## 12. Changes after acceptance
+
+The author accepted this document on 20 November 2026. What changed afterwards,
+and what asked for it:
+
+| Date | Change | Asked for by |
+| --- | --- | --- |
+| 20 November 2026 | [E-Bool] added, with its part of [P7]: `∧` and `∨` evaluate the right operand only where it decides the result. | The oracle of slice 1: the semantics did not say whether `b ≠ 0 ∧ a ÷ b > 1` is stuck for `b = 0`. |
+| 20 November 2026 | [E-Formula] and [P8] say that a formula reads every name it mentions and that a function call in a formula is the function's body, without its precondition. | The oracle: [P8] said "wherever it occurs", and [S4] of the fact logic says a formula carries no obligations. |
+| 20 November 2026 | [E-Assign] is stuck on a name that has no slot, and X2 names the case. | The oracle: [O4] already required `D(x)`, and the semantics had no stuck state for it. |
+| 20 November 2026 | [C1] states how an integer literal is typed. | The oracle's reader, which has to give every literal a type before anything runs. |

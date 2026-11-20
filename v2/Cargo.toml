@@ -1,0 +1,21 @@
+[package]
+name = "villanelle-v2"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/apology-is-policy/villanelle"
+description = "Villanelle v2: the typed core, its oracle interpreter and the test harness"
+publish = false
+
+[lib]
+name = "villanelle_v2"
+
+[[bin]]
+name = "vn2"
+path = "src/bin/vn2.rs"
+
+# The v2 core is built beside v1 and shares nothing with it. It has no
+# dependencies, so that the oracle can be read and audited on its own.
+[dependencies]
+
+[workspace]

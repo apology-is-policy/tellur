@@ -1,0 +1,12 @@
+┄ [C3], [W9] All □ of one alternative agree on its payload types, and a
+┄ literal takes the type the others give that place.
+control pick(a : u64) ■ { value {v : u64} }
+⊤ ▷ s : ↻ once() {
+    ⊤ ▷ t : ? a > 5
+    t.true ▷ □ out {0}
+    t.false ▷ □ out {a}
+} ▸ out {v}
+⊤ ▷ ■ value {v}
+
+//! run pick(9) => done value {0}
+//! run pick(3) => done value {3}

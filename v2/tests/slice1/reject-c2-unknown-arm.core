@@ -1,0 +1,7 @@
+┄ [C2] The program is refused before it can run.
+extern control g(a : u32) ■ { one │ two }
+control f(a : u32) ■ { ok }
+⊤ ▷ d : Δ g(a) ▸ one │ two │ three
+⊤ ▷ ■ ok
+
+//! reject C2

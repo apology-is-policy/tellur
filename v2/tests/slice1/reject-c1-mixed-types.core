@@ -1,0 +1,7 @@
+┄ [C1] The program is refused before it can run.
+control f(a : u32, b : u64) ■ { yes │ no }
+⊤ ▷ t : ? a < b
+t.true ▷ ■ yes
+t.false ▷ ■ no
+
+//! reject C1

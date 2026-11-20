@@ -1,0 +1,8 @@
+┄ [W4] The program is refused before it can run.
+control f(a : u32) ■ { ok }
+⊤ ▷ t : ? a < 1
+t.true ▷ x := a
+t.false ▷ ~x := a
+⊤ ▷ ■ ok
+
+//! reject W4

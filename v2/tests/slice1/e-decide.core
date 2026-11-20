@@ -1,0 +1,43 @@
+┄ [E-Decide], [E-Call], [E-Exit] A decision on a defined control runs it and
+┄ records the alternative it exits with. An alternative that the decision
+┄ does not list is stuck, and so is a false precondition or a false condition
+┄ of the alternative at the exit.
+control spend(total : u32, used : u32)
+    ■ { left {value : u32} ⇐ value = total - used │ over ⇐ used > total }
+⊤ ▷ t : ? used > total
+t.true ▷ ■ over
+⊤ ▷ ■ left {total - used}
+
+control budget(total : u32, a : u32, b : u32) ■ { rest {value : u32} │ short }
+⊤ ▷ first : Δ spend(total, a) ▸ left {after} │ over
+first.over ▷ ■ short
+⊤ ▷ second : Δ spend(after, b) ▸ left {value} │ over
+second.over ▷ ■ short
+⊤ ▷ ■ rest {value}
+
+control careless(total : u32, a : u32) ■ { rest {value : u32} }
+⊤ ▷ first : Δ spend(total, a) ▸ left {value}
+⊤ ▷ ■ rest {value}
+
+control divide(a : u32, b : u32) ⊢ b ≠ 0 ■ { quotient {value : u32} ⇐ value * b ≤ a }
+⊤ ▷ ■ quotient {a ÷ b}
+
+control ask(a : u32, b : u32) ■ { result {value : u32} }
+⊤ ▷ d : Δ divide(a, b) ▸ quotient {value}
+⊤ ▷ ■ result {value}
+
+control wrong(a : u32) ■ { doubled {value : u32} ⇐ value = a + a }
+⊤ ▷ t : ? a < 100
+t.true ▷ ■ doubled {a * 2}
+t.false ▷ ■ doubled {a}
+
+//! run budget(10, 3, 4) => done rest {3}
+//! run budget(10, 30, 4) => done short
+//! run budget(10, 3, 40) => done short
+//! run careless(10, 3) => done rest {7}
+//! run careless(10, 30) => stuck X10 E-Decide
+//! run ask(7, 2) => done result {3}
+//! run ask(7, 0) => stuck X7 E-Call
+//! run divide(7, 0) => not-an-execution
+//! run wrong(4) => done doubled {8}
+//! run wrong(400) => stuck X7 E-Exit

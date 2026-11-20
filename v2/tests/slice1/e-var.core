@@ -1,0 +1,8 @@
+┄ [E-Var] A name that has no slot on this history is stuck.
+control late(a : u32) ■ { value {v : u32} }
+⊤ ▷ t : ? a < 10
+t.true ▷ x := a + 1
+⊤ ▷ ■ value {x}
+
+//! run late(3) => done value {4}
+//! run late(30) => stuck X2 E-Var

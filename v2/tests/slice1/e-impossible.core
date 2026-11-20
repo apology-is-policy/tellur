@@ -1,0 +1,21 @@
+┄ [E-Impossible] ⊥ is stuck when it runs. The first control is the example of
+┄ the fact logic, section 2.1, with the statement numbers of the document.
+extern control checked_sub(a : u32, b : u32)
+    ■ { difference {value : u32} ⇐ a ≥ b ∧ value = a - b │ underflow ⇐ a < b }
+
+control spend(total : u32, used : u32) ■ { left {value : u32} │ over }
+1  ⊤            ▷ t : ? used > total
+2  t.true       ▷ ■ over {}
+3  ⊤            ▷ s : Δ checked_sub(total, used) ▸ difference {value} │ underflow {}
+4  s.underflow  ▷ ⊥
+5  ⊤            ▷ ■ left {value}
+
+control unguarded(total : u32, used : u32) ■ { left {value : u32} }
+⊤ ▷ s : Δ checked_sub(total, used) ▸ difference {value} │ underflow {}
+s.underflow ▷ ⊥
+⊤ ▷ ■ left {value}
+
+//! run spend(10, 4) with arithmetic => done left {6}
+//! run spend(4, 10) with arithmetic => done over
+//! run unguarded(10, 4) with arithmetic => done left {6}
+//! run unguarded(4, 10) with arithmetic => stuck X6 E-Impossible

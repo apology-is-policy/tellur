@@ -1,0 +1,21 @@
+┄ [E-Test], [H2], [H3] A test records one of two atoms. An atom that was not
+┄ established is false, also under ¬.
+control classify(a : i32) ■ { negative │ zero │ positive }
+⊤ ▷ n : ? a < 0
+⊤ ▷ z : ? a = 0
+n.true ▷ ■ negative
+z.true ▷ ■ zero
+¬n.true ∧ ¬z.true ▷ ■ positive
+
+control unreached(a : u32) ■ { one │ two }
+⊤ ▷ t : ? a < 10
+t.true ▷ u : ? a < 5
+u.false ▷ ■ one
+(¬u.false ∨ t.false) ▷ ■ two
+
+//! run classify(-4) => done negative
+//! run classify(0) => done zero
+//! run classify(9) => done positive
+//! run unreached(7) => done one
+//! run unreached(2) => done two
+//! run unreached(50) => done two

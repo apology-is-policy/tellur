@@ -1,0 +1,17 @@
+┄ [E-Fn] A function evaluates its arguments, then its body. It is stuck when
+┄ its precondition is false. Inside a formula it is its body, with no
+┄ obligation ([E-Formula], [I8]).
+function half(x : u32) : u32 := x ÷ 2
+function ratio(a : u32, b : u32) ⊢ b ≠ 0 : u32 := a ÷ b
+function twice(x : u32) : u32 := half(x) * 4
+
+control apply(a : u32, b : u32) ■ { value {v : u32} }
+⊤ ▷ ■ value {ratio(twice(a), b)}
+
+control stated(a : u32, b : u32) ■ { ok }
+⊤ ▷ ⊢ ratio(a, b) ≥ 0
+⊤ ▷ ■ ok
+
+//! run apply(10, 5) => done value {4}
+//! run apply(10, 0) => stuck X7 E-Fn
+//! run stated(1, 0) => done ok

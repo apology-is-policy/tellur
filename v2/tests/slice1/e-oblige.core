@@ -1,0 +1,7 @@
+┄ [E-Oblige] An obligation that is false is stuck.
+control need(a : u32) ■ { ok }
+⊤ ▷ ⊢ a > 3
+⊤ ▷ ■ ok
+
+//! run need(4) => done ok
+//! run need(3) => stuck X7 E-Oblige

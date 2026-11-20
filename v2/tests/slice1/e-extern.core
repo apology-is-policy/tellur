@@ -1,0 +1,42 @@
+┄ [E-Extern], [E-Host], [E-Effect] A decision on an extern control is one
+┄ step of the host. A step with an effect is recorded, and is stuck where an
+┄ activation on the stack does not allow the effect. A host that breaks the
+┄ contract ends the run in a violation, which is not a stuck state.
+extern control read(port : u32) ⊢ port < 4 ■ { value {v : u32} ⇐ v ≤ 100 │ closed } uses io
+extern control scale(x : u32) ■ { scaled {y : u32} ⇐ y ≥ x }
+
+control pump(port : u32) ■ { total {sum : u32} } uses io
+⊤ ▷ s : ↻ more(sum : u32 := 0) {
+    ⊤ ▷ r : Δ read(port) ▸ value {v} │ closed
+    r.closed ▷ □ end {sum}
+    r.value ▷ ↑ more(sum + v)
+} ▸ end {all}
+⊤ ▷ ■ total {all}
+
+control twice_scaled(x : u32) ■ { pair {a : u32, b : u32} }
+⊤ ▷ first : Δ scale(x) ▸ scaled {a}
+⊤ ▷ second : Δ scale(x) ▸ scaled {b}
+⊤ ▷ ■ pair {a, b}
+
+control quiet(port : u32) ■ { got {v : u32} │ none }
+⊤ ▷ r : Δ read(port) ▸ value {v} │ closed
+r.value ▷ ■ got {v}
+r.closed ▷ ■ none
+
+control outer(port : u32) ■ { got {v : u32} │ none } uses io
+⊤ ▷ q : Δ quiet(port) ▸ got {v} │ none
+q.got ▷ ■ got {v}
+q.none ▷ ■ none
+
+//! run pump(2) with [read -> value {7}; read -> value {5}; read -> closed] => done total {12}
+//!     trace [read(2) -> value {7}; read(2) -> value {5}; read(2) -> closed {}]
+//! run pump(9) with [read -> closed] => stuck X7 E-Extern
+//! run pump(2) with [read -> value {700}] => violation
+//! run pump(2) with [read -> gone] => violation
+//! run pump(2) with [read -> value {true}] => violation
+//! run pump(2) with [read -> value {7}] => host-failed
+//! run twice_scaled(3) with [scale -> scaled {5}; scale -> scaled {5}] => done pair {5, 5} trace []
+//! run twice_scaled(3) with [scale -> scaled {5}; scale -> scaled {6}] => violation
+//! run twice_scaled(3) with [scale -> scaled {2}] => violation
+//! run quiet(1) with [read -> closed] => stuck X9 E-Effect
+//! run outer(1) with [read -> closed] => stuck X9 E-Effect

@@ -1,0 +1,31 @@
+┄ [E-Arith] Arithmetic belongs to a type. It is stuck when the mathematical
+┄ result is not a value of the type, and when a divisor is zero. Division
+┄ truncates toward zero and the remainder has the sign of the dividend.
+control add(a : u8, b : u8) ■ { sum {value : u8} }
+⊤ ▷ ■ sum {a + b}
+
+control quotient(a : i8, b : i8) ■ { result {q : i8, r : i8} }
+⊤ ▷ ■ result {a ÷ b, a mod b}
+
+control negate(a : i8) ■ { result {value : i8} }
+⊤ ▷ ■ result {-a}
+
+control widest(a : u64, b : u64) ■ { product {value : u64} }
+⊤ ▷ ■ product {a * b}
+
+control address(a : usize) ■ { next {value : usize} }
+⊤ ▷ ■ next {a + 1}
+
+//! run add(250, 5) => done sum {255}
+//! run add(250, 6) => stuck X7 E-Arith
+//! run quotient(-7, 2) => done result {-3, -1}
+//! run quotient(7, -2) => done result {-3, 1}
+//! run quotient(7, 0) => stuck X7 E-Arith
+//! run quotient(-128, -1) => stuck X7 E-Arith
+//! run negate(127) => done result {-127}
+//! run negate(-128) => stuck X7 E-Arith
+//! run widest(4294967296, 4294967295) => done product {18446744069414584320}
+//! run widest(4294967296, 4294967296) => stuck X7 E-Arith
+//! run address(4294967295) => done next {4294967296}
+//! run address(4294967295) usize 32 => stuck X7 E-Arith
+//! run add(256, 0) => not-an-execution

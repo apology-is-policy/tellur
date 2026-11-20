@@ -1,0 +1,27 @@
+┄ [E-Assign] An assignment writes the slot of a mutable name. A name without
+┄ a slot cannot be assigned.
+control count(a : u32) ■ { value {v : u32} }
+⊤ ▷ ~x := a
+⊤ ▷ x ← x + 1
+⊤ ▷ ■ value {x}
+
+control unbound(a : u32) ■ { value {v : u32} }
+⊤ ▷ t : ? a < 10
+t.true ▷ ~x := a
+⊤ ▷ x ← 5
+⊤ ▷ ■ value {x}
+
+control outer(n : u32) ■ { value {v : u32} }
+⊤ ▷ ~sum := 0
+⊤ ▷ s : ↻ walk(i : u32 := 0) {
+    ⊤ ▷ end : ? i = n
+    end.true ▷ □ out
+    ⊤ ▷ sum ← sum + i
+    ⊤ ▷ ↑ walk(i + 1)
+} ▸ out
+⊤ ▷ ■ value {sum}
+
+//! run count(4) => done value {5}
+//! run unbound(4) => done value {5}
+//! run unbound(40) => stuck X2 E-Assign
+//! run outer(5) => done value {10}

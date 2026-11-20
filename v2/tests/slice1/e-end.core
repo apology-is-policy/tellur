@@ -1,0 +1,8 @@
+┄ [E-End], [E-Skip] A statement whose selector does not hold is skipped. A
+┄ body never falls off its end.
+control partial(a : u32) ■ { small }
+⊤ ▷ t : ? a < 10
+t.true ▷ ■ small
+
+//! run partial(3) => done small
+//! run partial(30) => stuck X1 E-End

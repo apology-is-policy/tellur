@@ -57,7 +57,7 @@ state, then `docs/language-revision.md`. Older handoff notes lose to newer facts
 | Source | Holds |
 | --- | --- |
 | `docs/redesign-plan.md` | The roadmap: the accepted v2 redesign, its decisions, phases and design sketches. Section 5.5 is the adopted Rails surface syntax. |
-| `docs/v2/` | The v2 design on paper (phase 1): core calculus first, then fact logic, surface, reference model and the corpus. `README.md` there lists the state of each. Accepted on 20 November 2026 as the working specification; corrected when the oracle, the checker or a review finds an error. |
+| `docs/v2/` | The v2 specification: core calculus first, then fact logic, surface, reference model and the corpus. `README.md` there lists the state of each. Accepted on 20 November 2026; corrected when the oracle, the checker or a review finds an error, with the change recorded in the document. `oracle.md` describes the v2 crate, the core text form and the conformance suite. |
 | `docs/language-revision.md` | The v1 record. "Active checkpoint queue" is newest-first; later sections hold history, decisions and the six language milestones. |
 | `experiments/syntax_lab/` | Reference programs in Rails form, their word-form sources and the transpiler. Nothing in it compiles yet. |
 | `docs/collections-and-algorithms.md`, `library/COLLECTIONS.md` | Standard-library design, contracts and the measured performance table. |
@@ -122,6 +122,13 @@ python3 -B ci/check-collections.py --vnc /absolute/path/to/vnc   # library adopt
 (cd editors/vscode && npm test)                   # grammar and configuration tests
 ```
 
+The v2 crate builds on its own, in seconds, and needs no LLVM:
+
+```sh
+(cd v2 && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
+(cd v2 && cargo run --bin vn2 -- test tests/slice1/*.core)   # or: run FILE ENTRY VALUES, print FILE
+```
+
 Set `TELLUR_NATIVE_TARGET_DIR` to share the native dependency cache between
 builds. `./bin/vnc` is the installed release compiler when present; otherwise use
 `target/release/vnc`. `vnc --help` lists every command:
@@ -145,9 +152,17 @@ source adapters also need Cargo. `bin/`, `*.vsix`, `**/build/` and
 Every implementation checkpoint is a small release (0.3xx). A change to compiler
 or editor inputs runs the full workflow. A source- or docs-only checkpoint reuses
 the current release evidence and needs no version bump or reinstall.
-This workflow governs corrections to v1 and, from phase 2, compiler work on v2.
-Phase 1 is design on paper: its checkpoints are documents, validated by the
-manual checks and by the author's acceptance.
+This workflow governs corrections to v1, and v2 work from the point where v2
+code is linked into `vnc`.
+
+Until then v2 is the crate in `v2/`, which is not an input of the released
+compiler. A v2 checkpoint needs: tests that accept and tests that reject for
+every clause it implements, `cargo fmt --check`, `cargo clippy -D warnings`
+and `cargo test` in `v2/`, the documents under `docs/v2/` brought up to date
+(a question the code asks of the specification is answered in the
+specification, with an entry in that document's list of changes), and a green
+`v2` workflow after the push. It needs no version bump of the compiler, no
+release build and no reinstall: the v1 evidence stands for unchanged inputs.
 
 1. Implement with positive tests and rejection tests, a runnable example, and
    agreement between interpreter, LLVM and generated Rust, original and expanded,
@@ -229,4 +244,5 @@ Adapted from the Thylacine operational contract.
 | `applications/settings/` | The one maintained real application (settings service); also the style reference |
 | `examples/`, `playground/`, `experiments/` | Runnable examples, small live programs, performance and representation experiments |
 | `tests/` | About 115 integration suites: conformance, differential, native and live host tests |
+| `v2/` | The v2 crate (`villanelle-v2`, binary `vn2`), with no dependencies: mathematical integers, the core text form, `resolve` to the typed core, the oracle and its hosts, and the conformance suite under `v2/tests/` |
 | `ci/`, `.github/workflows/` | Release qualification, Windows, Linux and Thylacine pack scripts |

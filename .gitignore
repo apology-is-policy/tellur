@@ -1,5 +1,6 @@
 /target/
 /runtime/target/
+/v2/target/
 
 /editors/vscode/node_modules/
 /editors/vscode/dist/

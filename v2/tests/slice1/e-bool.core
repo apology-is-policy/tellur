@@ -1,0 +1,22 @@
+┄ [E-Bool] The right operand of ∧ and ∨ is evaluated only where it decides
+┄ the result, so it may rely on the left one.
+control guarded(a : u32, b : u32) ■ { yes │ no }
+⊤ ▷ t : ? b ≠ 0 ∧ a ÷ b > 1
+t.true ▷ ■ yes
+t.false ▷ ■ no
+
+control eager(a : u32, b : u32) ■ { yes │ no }
+⊤ ▷ t : ? a ÷ b > 1 ∧ b ≠ 0
+t.true ▷ ■ yes
+t.false ▷ ■ no
+
+control either(a : u32, b : u32) ■ { yes │ no }
+⊤ ▷ t : ? b = 0 ∨ a ÷ b > 1
+t.true ▷ ■ yes
+t.false ▷ ■ no
+
+//! run guarded(8, 2) => done yes
+//! run guarded(8, 0) => done no
+//! run eager(8, 0) => stuck X7 E-Arith
+//! run either(8, 0) => done yes
+//! run either(1, 2) => done no

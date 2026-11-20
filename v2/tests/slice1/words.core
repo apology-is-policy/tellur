@@ -1,0 +1,25 @@
+// The spellings in ASCII, which the reader takes wherever it takes a glyph.
+control spend(total : u32, used : u32) exits { left {value : u32} when value == total - used | over }
+top |> t : if used > total
+t.true |> exit over
+top |> mutable rest : u32 := total - used
+top |> where rest <= total && !(rest > total) || false
+top |> s : loop once(x : u32 := rest) {
+    where x >= 0
+    top |> z : if x != 0
+    z.true |> leave some {x}
+    z.false |> leave none
+} >> some {y} | none
+s.none |> rest <- 0
+s.some |> rest <- y / 1
+top |> exit left {rest}
+
+control unreachable(a : u32) exits { ok }
+top |> t : if a < 0
+t.true |> impossible
+top |> exit ok
+
+//! run spend(9, 4) => done left {5}
+//! run spend(4, 4) => done left {0}
+//! run spend(4, 9) => done over
+//! run unreachable(3) => done ok

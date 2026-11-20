@@ -1,0 +1,5 @@
+┄ [W5] The program is refused before it can run.
+function even(x : u32) : bool := x = 0 ∨ odd(x - 1)
+function odd(x : u32) : bool := x ≠ 0 ∧ even(x - 1)
+
+//! reject W5

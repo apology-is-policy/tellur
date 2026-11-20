@@ -1,0 +1,5 @@
+┄ [C3] The program is refused before it can run.
+control f(a : u32) ■ { ok }
+⊤ ▷ ■ fine
+
+//! reject C3

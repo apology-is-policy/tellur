@@ -1,0 +1,13 @@
+┄ [E-Bind] One name may have several binders, on histories that exclude each
+┄ other. Binding it twice in one run is stuck.
+control binders(a : u32) ■ { value {v : u32} }
+⊤ ▷ t : ? a < 10
+t.true ▷ x := 1
+⊤ ▷ u : ? a < 5
+u.true ▷ x := 2
+u.false ∧ t.false ▷ x := 3
+⊤ ▷ ■ value {x}
+
+//! run binders(7) => done value {1}
+//! run binders(20) => done value {3}
+//! run binders(3) => stuck X3 E-Bind

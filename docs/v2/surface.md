@@ -317,9 +317,10 @@ a value. In `{ Field,* }`, a name after `∈` that is followed by `:` begins
 the next field, and any other name there is one more origin.
 
 Operators, loosest first: `∨`; `∧`; `= ≠ < ≤ > ≥` (not associative); `+ -`;
-`* ÷ mod`; unary `¬` and `-`. `=` is equality, and binding is always `:=`. A
-formula is an expression of type `bool`; in a contract condition it may also
-use `old(name)` ([W7]).
+`* ÷ mod`; unary `¬` and `-`. `=` is equality, and binding is always `:=`.
+`∧` and `∨` evaluate their right operand only where it decides the result
+(core, [E-Bool]). A formula is an expression of type `bool`; in a contract
+condition it may also use `old(name)` ([W7]).
 
 ## 5. Paths
 
