@@ -1,8 +1,9 @@
 # Villanelle v2 fact logic
 
 Status: **draft 1**, 19 November 2026. Phase 1, deliverable 2 of the
-[redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
-normative when it is. Nothing here is implemented.
+[redesign plan](../redesign-plan.md). Accepted by the author on 20 November
+2026 as the working specification ([index](README.md)). Nothing here is
+implemented.
 
 One independent review has been folded in. It confirmed the worked proofs and
 most of the axioms. It also found that the first version of the theory was
@@ -812,8 +813,8 @@ Applied to `core.md` together with the repairs from its second review:
 
 ## 13. Choices and questions
 
-Choices of this draft that follow from the accepted decisions and are recorded
-for the author's acceptance of phase 1:
+Choices of this draft that follow from the accepted decisions. The author
+accepted them with phase 1 on 20 November 2026:
 
 1. **Formulas are Boolean expressions** ([S4]). There is no second language for
    specifications.
@@ -831,10 +832,10 @@ for the author's acceptance of phase 1:
 8. **An operation is pure only if nothing about it can touch the world**
    ([I10]): no effects, declared or inferred, no `async`, no resources.
 
-Questions for the author, each with a recommendation. The draft is written as
-if the recommendation were taken.
+The author answered the questions of this draft on 20 November 2026 and took
+the recommendation in each case:
 
-| | Question | Recommendation |
+| | Question | Decision |
 | --- | --- | --- |
 | Q6 | Is the width of `usize` fixed? | **No.** One constant between `2³² - 1` and `2⁶⁴ - 1` ([A2]), so that a checked program is checked for every supported target. The cost: converting `u64` to `usize` needs a proof or a decision, even in a program that will only run on 64-bit machines. A build could later be allowed to fix the constant. |
 | Q7 | May the compiler give up on a proof? | **Only as a counted limit** ([J6]), never as a verdict. Acceptance must not depend on the speed of a machine or on the compiler's release. |

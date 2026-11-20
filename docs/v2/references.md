@@ -1,11 +1,11 @@
 # Villanelle v2 references: borrows and views
 
 Status: **draft 1**, 19 November 2026. Phase 1, part of deliverable 2 of the
-[redesign plan](../redesign-plan.md) (its section 5.3). Not yet accepted by the
-author; it becomes normative when it is. Nothing here is implemented. One
-review, of all five phase 1 documents together, has been folded in. It found
-the 36 verdicts to agree with the clauses they cite, and corrected what
-section 12 says of the loans a task set holds.
+[redesign plan](../redesign-plan.md) (its section 5.3). Accepted by the author
+on 20 November 2026 as the working specification ([index](README.md)). Nothing
+here is implemented. One review, of all five phase 1 documents together, has
+been folded in. It found the 36 verdicts to agree with the clauses they cite,
+and corrected what section 12 says of the loans a task set holds.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -34,8 +34,8 @@ or the core is.
 
 Writing the examples showed places where the core and the surface had left
 something unsaid, and one case that calls for a rule. Section 13 lists them;
-they have been applied to those documents. Two questions for the author are in
-section 14.
+they have been applied to those documents. The two questions this raised, with
+the author's decisions, are in section 14.
 
 Draft 1 covers the synchronous language and, in section 12, tasks as the
 core's draft 2 defines them. Statements of the model carry
@@ -405,8 +405,8 @@ before those that do ([E-Operands]): `len(values)` is read first, and only
 then is `values` lent. In strict left-to-right order the read would come after
 the exclusive lending that the operation is about to use. [L3] would reject
 the program, and the instrumented semantics would be stuck on it: the read
-kills the tag the operation needs. Question Q17 asks the author to confirm the
-order.
+kills the tag the operation needs. The author confirmed the order as question
+Q17.
 
 ### 5.8 Two elements of one vector
 
@@ -1148,7 +1148,7 @@ Found and left open, for the corpus to weigh:
 
 ## 14. Choices and questions
 
-Choices of this draft, recorded for the author's acceptance of phase 1:
+Choices of this draft, accepted by the author with phase 1 on 20 November 2026:
 
 1. **The verdicts are conformance tests.** Every example carries the clause
    that decides it, and the index below is the start of the phase 2 suite for
@@ -1159,10 +1159,10 @@ Choices of this draft, recorded for the author's acceptance of phase 1:
    operation that may find something has two alternatives (6.1).
 4. **A view's promises travel in contracts**, as a predicate function (8.1).
 
-Questions for the author, each with a recommendation. The draft is written as
-if the recommendation were taken.
+The author answered the questions of this draft on 20 November 2026 and took
+the recommendation in each case:
 
-| | Question | Recommendation |
+| | Question | Decision |
 | --- | --- | --- |
 | Q16 | An exclusive borrow name `r` is given where an `&~τ` is expected. Is it written `r` or `~r`? | **Always `~r`**, which lends what is behind `r` again; `r` stays usable when that loan ends. One spelling for every slot of exclusive type, and every call that can change something shows the mark. The bare name is rejected with a message that suggests `~r`. The alternative accepts both and makes the bare name a move of the borrow, after which `r` is gone. |
 | Q17 | Is `values.push(len(values))` accepted? | **Yes**, by the order of evaluation: the operands of a command that do not lend are evaluated before those that do ([E-Operands], example 5.7). Expressions have no effects, so a program cannot observe the order; only the loan rules and the tags can. The alternative keeps strict left-to-right order, rejects the call, and has the programmer bind the length first. |

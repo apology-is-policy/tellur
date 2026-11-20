@@ -1,10 +1,11 @@
 # Villanelle v2 corpus on paper
 
 Status: **draft 1**, 19 November 2026. Phase 1, deliverable 3 of the
-[redesign plan](../redesign-plan.md). Not yet accepted by the author. Nothing
-here is implemented, and no tool has parsed or checked the programs: they were
-written and checked by hand against the other documents. One independent
-review has read them against the rules (section 8).
+[redesign plan](../redesign-plan.md). Accepted by the author on 20 November
+2026 with the rest of phase 1 ([index](README.md)). Nothing here is
+implemented, and no tool has parsed or checked the programs: they were written
+and checked by hand against the other documents. One independent review has
+read them against the rules (section 8).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Reference model](references.md) ·
@@ -221,7 +222,7 @@ work within, with the cost stated.
 | | Finding | Repair |
 | --- | --- | --- |
 | F1 | Five of the eight library modules declare a trait, and the surface had no form for one. | [G11], [Y11], [U20] of the surface: `trait`, `implement … for …`, drawn on a rail. The rules are v1's. |
-| F2 | Under the first draft's rule the generic library carried a move mark on every move: 76 in 231 lines. | The mark is asked only where the type is known to hold an obligation ([U11]). This is question Q19. |
+| F2 | Under the first draft's rule the generic library carried a move mark on every move: 76 in 231 lines. | The mark is asked only where the type is known to hold an obligation ([U11]). Decided as question Q19. |
 | F3 | A value that holds an obligation could not be marked in an assignment, a literal, a constructor or an adapter's payload. | [G7a] and the grammar accept `▾ place` there. |
 | F4 | `■ result`, for a captured outcome, reads as an exit with an alternative named `result`, and moves a value of kind `must` with no mark. | `■ ▾result` ([U14]). The reference program `server.txt` has the older spelling. |
 | F5 | The logic did not know that a new vector is empty, so no invariant over a vector that a control builds could be proved at entry. | `len([t₁, …, tₙ]) = n` and `len(∅) = 0` ([A3] of the fact logic), an instance for every literal in a query ([J3]). |
@@ -254,7 +255,7 @@ work within, with the cost stated.
 
 ## 7. Choices and questions
 
-Choices of this draft, recorded for the author's acceptance of phase 1:
+Choices of this draft, accepted by the author with phase 1 on 20 November 2026:
 
 1. **A rewrite keeps the public interface and the algorithm** and changes the
    inside of a control freely. The counts then measure the language and not a
@@ -267,13 +268,13 @@ Choices of this draft, recorded for the author's acceptance of phase 1:
 4. **An alternative that cannot occur is proved away or left to continue.** No
    arm of the corpus has a disposition that is believed never to run.
 5. **The repairs F1 to F13 are in the documents**, since each was a gap and
-   not a decision. F2 changes a rule of the first surface draft and is put to
+   not a decision. F2 changes a rule of the first surface draft and was put to
    the author as Q19.
 
-One question for the author, with a recommendation. The corpus and the
-surface are written as if it were taken.
+The author answered the one question of this draft on 20 November 2026 and
+took the recommendation:
 
-| | Question | Recommendation |
+| | Question | Decision |
 | --- | --- | --- |
 | Q19 | Is the move mark `▾` written where a value of a parameter type moves? | **No.** A type parameter has kind `must` ([T1a]), so marking every such move puts a mark on every third line of the library and tells the reader nothing: in generic code every move may hand over an obligation. The mark is written where the type is known to hold one (a resource, a captured outcome, an aggregate with either), and the call that instantiates the generic code carries it. |
 

@@ -148,6 +148,22 @@ Exit: the author accepts the specification; the rewritten library has no filler
 arm; the paper corpus shows no construct that v2 cannot express without a
 workaround; the reading test does not favor v1.
 
+State on 20 November 2026:
+
+- The author accepted the specification, with the recommendation of every
+  question the documents raised (Q1 to Q19). Phase 1 is complete.
+- The rewritten library has no filler arm, in 231 lines against 476.
+- Three of the thirteen limits that the corpus left open are workarounds that
+  phase 5 is meant to remove: consuming a vector element by element, receiving
+  a single result through a decision, and disposing of an empty vector. The
+  author accepted with these named, so the third condition is not met to the
+  letter.
+- The reading test, 24 runs with agents, showed no difference between the
+  versions on reading. The repair needs 8 edits in v2 against 14. People have
+  not taken the test.
+- The repairs to the task rules that the combined review led to have not been
+  reviewed again. They get a second review before the task slice.
+
 ### Phase 2. Oracle and harness
 
 - **Oracle.** A reference interpreter that implements the instrumented semantics

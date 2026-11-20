@@ -1,15 +1,15 @@
 # Villanelle v2 surface: Rails
 
 Status: **draft 1**, 19 November 2026. Phase 1, part of deliverable 2 of the
-[redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
-normative when it is. Nothing here is implemented. Writing the
-[corpus](corpus.md) amended it: traits, named boundaries, `copy` types, the
-move mark and five smaller points of grammar (section 12). One review, of all
-five phase 1 documents together, has been folded in. It found three forms
-that the grammar did not derive (a label in a loop, a decision on a Boolean
-expression, a constructor without braces), a `■ auto` that did not determine
-a contract, and a method rule narrower than the core's. The repairs have not
-been reviewed again.
+[redesign plan](../redesign-plan.md). Accepted by the author on 20 November
+2026 as the working specification ([index](README.md)). Nothing here is
+implemented. Writing the [corpus](corpus.md) amended it: traits, named
+boundaries, `copy` types, the move mark and five smaller points of grammar
+(section 12). One review, of all five phase 1 documents together, has been
+folded in. It found three forms that the grammar did not derive (a label in a
+loop, a decision on a Boolean expression, a constructor without braces), a `■
+auto` that did not determine a contract, and a method rule narrower than the
+core's. The repairs have not been reviewed again.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Reference model](references.md) ·
@@ -687,7 +687,8 @@ changed [W12] and [E-Cancel] there.
 ## 13. Choices and questions
 
 Choices of this draft that follow from the accepted decisions and from the
-reference programs, recorded for the author's acceptance of phase 1:
+reference programs. The author accepted them with phase 1 on 20 November
+2026:
 
 1. **Rails are syntax** ([Y10]). The parser reads block structure from them
    and does not repair them.
@@ -716,10 +717,10 @@ reference programs, recorded for the author's acceptance of phase 1:
     else types is `u32`** ([G3]), as in v1. A group that is passed on whole
     stays a group in the inferred contract.
 
-Questions for the author, each with a recommendation. The draft is written as
-if the recommendation were taken.
+The author answered the questions of this draft on 20 November 2026 and took
+the recommendation in each case:
 
-| | Question | Recommendation |
+| | Question | Decision |
 | --- | --- | --- |
 | Q11 | Is the input spelling a second grammar or the same one? | **The same one** ([G8], [G9]): Rails with words for glyphs and braces for rails, names before types. One grammar to specify, to parse and to learn. The plan's table shows the type-first form `type name = value` as the word for a binding; taking the recommendation retires that form, and the migrator of decision D8 reads v1 instead. |
 | Q12 | How is assignment written? | **`x ← e`**, typed `<-`. The reference programs never assign, so nothing was adopted. `=` is equality and `:=` binds. |

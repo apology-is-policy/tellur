@@ -57,7 +57,7 @@ state, then `docs/language-revision.md`. Older handoff notes lose to newer facts
 | Source | Holds |
 | --- | --- |
 | `docs/redesign-plan.md` | The roadmap: the accepted v2 redesign, its decisions, phases and design sketches. Section 5.5 is the adopted Rails surface syntax. |
-| `docs/v2/` | The v2 design on paper (phase 1): core calculus first, then fact logic, surface, reference model and the corpus. `README.md` there lists the state of each. Drafts until the author accepts them. |
+| `docs/v2/` | The v2 design on paper (phase 1): core calculus first, then fact logic, surface, reference model and the corpus. `README.md` there lists the state of each. Accepted on 20 November 2026 as the working specification; corrected when the oracle, the checker or a review finds an error. |
 | `docs/language-revision.md` | The v1 record. "Active checkpoint queue" is newest-first; later sections hold history, decisions and the six language milestones. |
 | `experiments/syntax_lab/` | Reference programs in Rails form, their word-form sources and the transpiler. Nothing in it compiles yet. |
 | `docs/collections-and-algorithms.md`, `library/COLLECTIONS.md` | Standard-library design, contracts and the measured performance table. |
@@ -80,8 +80,8 @@ plan's phase sections are authoritative for scope and exit conditions.
 | Phase | Work | State |
 | --- | --- | --- |
 | 0 | Close out v1 | Done; tagged `v1-final` |
-| 1 | Design on paper: core specification, fact logic, reference model, surface, the corpus rewritten by hand, a reading and repair test. No compiler code. | Active |
-| 2 | Oracle interpreter, program generator, differential harness, mutation tests | |
+| 1 | Design on paper: core specification, fact logic, reference model, surface, the corpus rewritten by hand, a reading and repair test. No compiler code. | Done; accepted 20 November 2026 |
+| 2 | Oracle interpreter, program generator, differential harness, mutation tests | Active: slice 1, scalars and decisions |
 | 3 | Checker on a typed core, with the formatter that owns the rails | |
 | 4 | Typed backend; exit is 1.2× optimized Rust on every kernel under `experiments/` | |
 | 5 | Language breadth: numbers, functions, loops as decisions, recursion, closures, recursive data, views | |

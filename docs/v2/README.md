@@ -1,21 +1,45 @@
 # Villanelle v2 design
 
-Phase 1 of the [redesign plan](../redesign-plan.md): the design on paper. No
-compiler code belongs to this phase. The documents here become normative when the
-author accepts them; until then they are drafts, and nothing in them is
-implemented.
+Phase 1 of the [redesign plan](../redesign-plan.md): the design on paper. The
+author accepted it on 20 November 2026, and the documents here are the working
+specification of v2 ([Acceptance](#acceptance)). Nothing in them is implemented
+yet.
 
 v1, the language and compiler at 0.306, is described by the
 [language reference](../language-reference.md) and stays as it is.
 
 | Document | Deliverable | State |
 | --- | --- | --- |
-| [Core calculus](core.md) | The core language, its instrumented semantics, the checker's judgments, and the claims to test and mechanize | Draft 2. The synchronous language has two reviews folded in. Tasks and named boundaries were read by the combined review, which found four programs that the task rules accepted and the semantics left stuck, and no checking rule for named boundaries; the repairs are in and not yet reviewed again. Raises Q18. |
-| [Fact logic](facts.md) | The interpreted fragment behind `⊨`, the decision procedure, certificates, counterexamples, worked examples | Draft 1, two reviews folded in; raises five questions (Q6 to Q10). The corpus added the length of a vector literal. |
-| [Reference model](references.md) | Second-class borrows and views: the model, 36 worked examples in Rails and core form with verdicts, the tag semantics on an example | Draft 1, one review folded in, which found the 36 verdicts to agree with their clauses; raises two questions (Q16, Q17) |
-| [Surface](surface.md) | The Rails grammar, layout, and the elaboration into the core, including the acknowledgement rule and outcome groups | Draft 1, with the task forms of the core's draft 2 and the forms the corpus needed (traits, named boundaries, `copy` types); one review folded in; raises six questions (Q11 to Q15, Q19) |
-| [Corpus on paper](corpus.md) | The settings application, the eight collection modules and three new programs, rewritten by hand, with counts and findings | Draft 1, checked by hand and read by one review, which found no error in the programs. Library 476 to 231 lines, application 635 to 304, no filler arm; thirteen gaps repaired in the other documents, thirteen limits left open. |
+| [Core calculus](core.md) | The core language, its instrumented semantics, the checker's judgments, and the claims to test and mechanize | Draft 2, accepted. The synchronous language has two reviews folded in. Tasks and named boundaries were read by the combined review, which found four programs that the task rules accepted and the semantics left stuck, and no checking rule for named boundaries; the repairs are in and not yet reviewed again. Records the decisions on Q1 to Q5 and Q18. |
+| [Fact logic](facts.md) | The interpreted fragment behind `⊨`, the decision procedure, certificates, counterexamples, worked examples | Draft 1, accepted; two reviews folded in. Records the decisions on Q6 to Q10. The corpus added the length of a vector literal. |
+| [Reference model](references.md) | Second-class borrows and views: the model, 36 worked examples in Rails and core form with verdicts, the tag semantics on an example | Draft 1, accepted; one review folded in, which found the 36 verdicts to agree with their clauses. Records the decisions on Q16 and Q17. |
+| [Surface](surface.md) | The Rails grammar, layout, and the elaboration into the core, including the acknowledgement rule and outcome groups | Draft 1, accepted, with the task forms of the core's draft 2 and the forms the corpus needed (traits, named boundaries, `copy` types); one review folded in. Records the decisions on Q11 to Q15 and Q19. |
+| [Corpus on paper](corpus.md) | The settings application, the eight collection modules and three new programs, rewritten by hand, with counts and findings | Draft 1, accepted; checked by hand and read by one review, which found no error in the programs. Library 476 to 231 lines, application 635 to 304, no filler arm; thirteen gaps repaired in the other documents, thirteen limits left open. |
 | [Reading and repair test](reading-test.md) | v1 and v2 versions of the same programs, given to people and to agents | First run with agents done: 24 runs, 23 fully correct, so no difference between the versions is shown on reading. The repair needs 8 edits in v2 against 14. People have not taken it. |
+
+## Acceptance
+
+The author accepted phase 1 on 20 November 2026, and with it the choices that
+each document lists and the recommendation of every question, Q1 to Q19 (Q1 to
+Q5 on 19 November). The documents are normative for the phases that follow.
+They are corrected, with a note of what changed, when the oracle, the checker
+or a review finds an error. A change to an accepted decision goes to the
+author.
+
+Three things were open at acceptance, and the author accepted with them named:
+
+- **The task rules.** The repairs that the combined review led to have not
+  been reviewed again: [TK3] to [TK6], [E-Await], [E-AwaitHost], [E-Stop],
+  [N5], [F5] and [F6] of the core, [J3] and [I10] of the fact logic, [G3] of
+  the surface. They get a second review before the task slice, which is the
+  last of the four.
+- **Workarounds.** The plan's exit asks that the corpus show no construct that
+  v2 cannot express without a workaround. Three of the thirteen open limits of
+  the [corpus](corpus.md) (section 6.2) are workarounds until phase 5:
+  consuming a vector element by element (O1), receiving a single result
+  through a decision (O2) and disposing of an empty vector (O5).
+- **The reading test.** It showed no difference between the versions in either
+  direction, with agents only. People have not taken it.
 
 ## Conventions
 
@@ -44,3 +68,4 @@ v1, the language and compiler at 0.306, is described by the
    soundness (done; the repairs it led to have not been reviewed again).
 7. The reading and repair test (first run with agents done; people are the
    author's part and open).
+8. The author's acceptance of phase 1 (20 November 2026).

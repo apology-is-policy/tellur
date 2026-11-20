@@ -1,8 +1,9 @@
 # Villanelle v2 core calculus
 
 Status: **draft 2**, 19 November 2026. Phase 1, deliverable 1 of the
-[redesign plan](../redesign-plan.md). Not yet accepted by the author; it becomes
-normative when it is. Nothing here is implemented.
+[redesign plan](../redesign-plan.md). Accepted by the author on 20 November
+2026 as the working specification ([index](README.md)). Nothing here is
+implemented.
 
 Two independent reviews have been folded in. The first found seven programs
 that the checking rules accepted and the semantics left stuck, most of them in
@@ -1270,7 +1271,7 @@ declarations. Recursion and `box⟨τ⟩` belong to phase 5; the
 ## 11. Choices made in this draft
 
 These follow from the accepted decisions but were not spelled out in the plan.
-They are recorded for the author's acceptance of phase 1.
+The author accepted them with phase 1 on 20 November 2026.
 
 1. **A body is a flat list of guarded statements.** Nesting exists only in the
    surface. Names and atoms belong to the whole body.
@@ -1320,8 +1321,7 @@ They are recorded for the author's acceptance of phase 1.
     condition has one value, the one at entry.
 19. **Reads before loans** ([E-Operands]). The operands of a command that lend
     are evaluated after the others. It is question Q17 of the
-    [reference model](references.md), and the draft follows its
-    recommendation.
+    [reference model](references.md), which the author decided this way.
 20. **Task sets are the only form of concurrency** ([W10], [W11]). v1's single
     task handles, deferred tasks and `yield` are not carried over; a single
     child is a set with one member. This is question Q18 below.
@@ -1358,9 +1358,9 @@ took the recommendation in each case:
 | Q4 | Is `¬` allowed in a Rails path label? | **Yes, sparingly.** The surface document says when. |
 | Q5 | An arm disposes an alternative that the checker can prove impossible. | **A warning** in non-generic code, suggesting `⊥`. Silent in generic code, where the arm may be reachable in another instance. |
 
-Draft 2 raises one question. The draft is written as if the recommendation
-were taken.
+Draft 2 raised one question. The author answered it on 20 November 2026 and
+took the recommendation.
 
-| | Question | Recommendation |
+| | Question | Decision |
 | --- | --- | --- |
 | Q18 | Does v2.0 keep v1's single task handles (`child := spawn f(…)`, `await child`), deferred tasks (`defer`) and `yield`? | **No.** Task sets only, as the plan's list of words has it (`spawn … into`, `await`, `next`, `cancel`, `run`). A handle is a set with one member, a deferred task is a call made later, and `yield` only made schedules observable. One form means one ownership rule and one loan rule for all concurrency. |
