@@ -4,7 +4,8 @@
 //! its directives. The suite carries them out, and then checks that the
 //! files together reach what the slice must reach: every rule of the
 //! semantics applied, every way of being stuck met, and every refusal of
-//! `resolve` given, each by the clause it is named after.
+//! `resolve` given, each by the clause it is named after. Each run that ends
+//! is compared with the erased semantics on the way (`script::check`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -71,6 +72,7 @@ fn slice_one_conforms() {
     let mut stuck = BTreeSet::new();
     let mut refusals = BTreeSet::new();
     let mut runs = 0;
+    let mut compared = 0;
     for (name, source) in files() {
         let report = script::check(&source);
         if report.runs == 0 && report.rejected.is_none() && report.failures.is_empty() {
@@ -83,6 +85,7 @@ fn slice_one_conforms() {
                 .map(|failure| format!("{name}: {failure}")),
         );
         runs += report.runs;
+        compared += report.compared;
         for (clause, count) in report.rules {
             *rules.entry(clause).or_insert(0) += count;
         }
@@ -106,6 +109,8 @@ fn slice_one_conforms() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     assert!(runs > 0);
+    // Every run that ends is also carried out under the erased semantics.
+    assert!(compared > 0 && compared < runs);
 }
 
 /// Printing a program and reading the print gives the same program.

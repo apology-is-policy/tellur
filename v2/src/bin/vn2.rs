@@ -1,10 +1,10 @@
 //! `vn2`: the command line of the v2 oracle.
 
 use std::process::ExitCode;
-use villanelle_v2::host::{Arithmetic, Script};
+use villanelle_v2::host::{Arithmetic, Host, Script};
 use villanelle_v2::int::Int;
 use villanelle_v2::oracle::{Config, End, Value, run};
-use villanelle_v2::{load, script, text};
+use villanelle_v2::{erased, load, script, text};
 
 const USAGE: &str = "\
 vn2 test FILE...                          carry out the directives of core text files
@@ -15,6 +15,7 @@ Options of `run`:
   --arithmetic   the host computes the checked arithmetic of the prelude
   --usize 32     the greatest usize is 2^32 - 1 (default: 2^64 - 1)
   --fuel N       stop after N steps (default: 1000000)
+  --erased       run under the erased semantics, which checks nothing
 ";
 
 fn read(path: &str) -> Result<String, String> {
@@ -24,15 +25,20 @@ fn read(path: &str) -> Result<String, String> {
 fn test(files: &[String]) -> Result<bool, String> {
     let mut failed = 0;
     let mut runs = 0;
+    let mut compared = 0;
     for path in files {
         let report = script::check(&read(path)?);
         runs += report.runs;
+        compared += report.compared;
         for failure in &report.failures {
             println!("{path}: {failure}");
         }
         failed += report.failures.len();
     }
-    println!("{} files, {runs} runs, {failed} failures", files.len());
+    println!(
+        "{} files, {runs} runs, {compared} of them compared with the erased semantics, {failed} failures",
+        files.len()
+    );
     Ok(failed == 0)
 }
 
@@ -53,11 +59,13 @@ fn run_one(arguments: &[String]) -> Result<bool, String> {
     let program = load(&read(path)?)?;
     let mut config = Config::default();
     let mut arithmetic = false;
+    let mut erase = false;
     let mut values = Vec::new();
     let mut rest = rest.iter();
     while let Some(argument) = rest.next() {
         match argument.as_str() {
             "--arithmetic" => arithmetic = true,
+            "--erased" => erase = true,
             "--usize" => {
                 let bits = rest
                     .next()
@@ -75,11 +83,16 @@ fn run_one(arguments: &[String]) -> Result<bool, String> {
         }
     }
     let mut host = Arithmetic(Script::default());
-    let outcome = if arithmetic {
-        run(&program, entry, values, &mut host, &config)
-    } else {
-        run(&program, entry, values, &mut host.0, &config)
-    };
+    let host: &mut dyn Host = if arithmetic { &mut host } else { &mut host.0 };
+    if erase {
+        let outcome = erased::run(&program, entry, values, host, &config);
+        for event in &outcome.trace {
+            println!("{event}");
+        }
+        println!("{}", outcome.end);
+        return Ok(matches!(outcome.end, erased::End::Done { .. }));
+    }
+    let outcome = run(&program, entry, values, host, &config);
     for event in &outcome.trace {
         println!("{event}");
     }

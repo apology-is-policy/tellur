@@ -1,0 +1,120 @@
+┄ [R1], [R2], [R3] The erased semantics is the instrumented one with the
+┄ bookkeeping removed. Nothing is checked: arithmetic wraps at the width of
+┄ its type, and no obligation, precondition, condition of an alternative or
+┄ allowance of an effect is evaluated. Where the oracle is stuck the erased
+┄ run goes on, and what it then computes means nothing. `⊥`, the end of a
+┄ body, an alternative that is not listed and a division by zero have no
+┄ machine behavior at all.
+function half(x : u32) ⊢ x mod 2 = 0 : u32 := x ÷ 2
+
+extern control read(port : u32) ⊢ port < 4 ■ { value {v : u32} ⇐ v ≤ 100 │ closed } uses io
+
+control add(a : u8, b : u8) ■ { sum {value : u8} }
+⊤ ▷ ■ sum {a + b}
+
+control quotient(a : i8, b : i8) ■ { result {q : i8, r : i8} }
+⊤ ▷ ■ result {a ÷ b, a mod b}
+
+control negate(a : i8) ■ { result {value : i8} }
+⊤ ▷ ■ result {-a}
+
+control address(a : usize) ■ { next {value : usize} }
+⊤ ▷ ■ next {a + 1}
+
+┄ A comparison is that of the type: of numbers with a sign here.
+control ordered(a : i8, b : i8) ■ { less │ not_less }
+⊤ ▷ t : ? a < b
+t.true ▷ ■ less
+t.false ▷ ■ not_less
+
+control obliged(x : u32) ■ { same {y : u32} }
+⊤ ▷ ⊢ x < 5
+⊤ ▷ ■ same {x}
+
+control halved(x : u32) ■ { halves {y : u32} ⇐ y < 3 }
+⊤ ▷ ■ halves {half(x)}
+
+control guarded(x : u32) ⊢ x < 10 ■ { same {y : u32} }
+⊤ ▷ ■ same {x}
+
+control calls(x : u32) ■ { out {y : u32} }
+⊤ ▷ d : Δ guarded(x) ▸ same {y}
+⊤ ▷ ■ out {y}
+
+control counted(n : u32) ■ { reached {i : u32} }
+⊤ ▷ s : ↻ count(i : u32 := 0) {
+    ⊢ i ≤ 3
+    ⊤ ▷ t : ? i < n
+    t.true ▷ ↑ count(i + 1)
+    t.false ▷ □ end {i}
+} ▸ end {last}
+⊤ ▷ ■ reached {last}
+
+control unreachable(x : u32) ■ { never }
+⊤ ▷ ⊥
+
+control falls(x : u32) ■ { low }
+⊤ ▷ t : ? x < 5
+t.true ▷ ■ low
+
+control quiet(port : u32) ■ { got {v : u32} │ none }
+⊤ ▷ r : Δ read(port) ▸ value {v} │ closed
+r.value ▷ ■ got {v}
+r.closed ▷ ■ none
+
+control partial(port : u32) ■ { got {v : u32} } uses io
+⊤ ▷ r : Δ read(port) ▸ value {v}
+r.value ▷ ■ got {v}
+
+┄ [R3] The one atom that a selector mentions here is `even.true`. Its bit is
+┄ cleared when a run of the loop's body begins.
+control rounds(n : u32) ■ { total {evens : u32} }
+⊤ ▷ s : ↻ round(i : u32 := 0, evens : u32 := 0) {
+    ⊤ ▷ last : ? i = n
+    last.true ▷ □ end {evens}
+    ⊤ ▷ even : ? i mod 2 = 0
+    even.true ▷ ↑ round(i + 1, evens + 1)
+    ¬even.true ▷ ↑ round(i + 1, evens)
+} ▸ end {all}
+⊤ ▷ ■ total {all}
+
+//! run add(250, 5) => done sum {255}
+//! run add(250, 6) => stuck X7 E-Arith
+//! erased add(250, 6) => done sum {0}
+//! erased quotient(-7, 2) => done result {-3, -1}
+//! run quotient(-128, -1) => stuck X7 E-Arith
+//! erased quotient(-128, -1) => done result {-128, 0}
+//! erased quotient(7, 0) => undefined
+//! erased negate(-128) => done result {-128}
+//! erased address(4294967295) => done next {4294967296}
+//! erased address(4294967295) usize 32 => done next {0}
+//! run ordered(-1, 1) => done less
+//! erased ordered(1, -1) => done not_less
+//! run obliged(8) => stuck X7 E-Oblige
+//! erased obliged(8) => done same {8}
+//! run halved(4) => done halves {2}
+//! run halved(7) => stuck X7 E-Fn
+//! erased halved(7) => done halves {3}
+//! run halved(8) => stuck X7 E-Exit
+//! erased halved(8) => done halves {4}
+//! run calls(12) => stuck X7 E-Call
+//! erased calls(12) => done out {12}
+//! run counted(3) => done reached {3}
+//! run counted(5) => stuck X7 E-Again
+//! erased counted(5) => done reached {5}
+//! run unreachable(1) => stuck X6 E-Impossible
+//! erased unreachable(1) => undefined
+//! run falls(9) => stuck X1 E-End
+//! erased falls(9) => undefined
+//! run quiet(2) with [read -> value {7}] => stuck X9 E-Effect
+//! erased quiet(2) with [read -> value {7}] => done got {7} trace [read(2) -> value {7}]
+//! run partial(9) with [read -> value {7}] => stuck X7 E-Extern
+//! erased partial(9) with [read -> value {7}] => done got {7}
+//! run partial(2) with [read -> value {700}] => violation
+//! erased partial(2) with [read -> value {700}] => done got {700}
+//! run partial(2) with [read -> closed] => stuck X10 E-Decide
+//! erased partial(2) with [read -> closed] => undefined
+//! erased partial(2) => host-failed
+//! run rounds(5) => done total {3}
+//! run rounds(1000000) fuel 500 => fuel
+//! erased rounds(1000000) fuel 500 => fuel

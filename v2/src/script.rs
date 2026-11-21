@@ -21,11 +21,18 @@
 //! continues on the following `//!` lines until the next `run` or `reject`.
 //!
 //! `reject` names the clause by which `resolve` must refuse the program.
+//!
+//! Every `run` that ends in `done` or in `fuel` is also carried out under the
+//! erased semantics, with the answers of the host replayed, and the two
+//! observations must be the same (Theorem 3). `erased` in the place of `run`
+//! states a run of the erased semantics alone; it may also end in
+//! `undefined`.
 
-use crate::host::{Answer, Arithmetic, Script};
+use crate::differential::{Verdict, compare};
+use crate::host::{Answer, Arithmetic, Host, Script};
 use crate::int::Int;
-use crate::oracle::{Config, End, Event, Value, run};
-use crate::{resolve, text};
+use crate::oracle::{Config, End, Event, Value};
+use crate::{erased, resolve, text};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -184,6 +191,8 @@ impl std::fmt::Display for Expect {
 #[derive(Clone, Debug)]
 struct RunSpec {
     line: usize,
+    /// A run of the erased semantics alone.
+    erased: bool,
     entry: String,
     arguments: Vec<Value>,
     arithmetic: bool,
@@ -204,14 +213,14 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
         pieces: pieces(text)?,
         at: 0,
     };
-    let kind = reader.word("`run` or `reject`")?;
+    let kind = reader.word("`run`, `erased` or `reject`")?;
     if kind == "reject" {
         return Ok(Directive::Reject {
             line,
             clause: reader.word("a clause")?,
         });
     }
-    if kind != "run" {
+    if kind != "run" && kind != "erased" {
         return Err(format!("`{kind}` is not a directive"));
     }
     let entry = reader.word("an entry control")?;
@@ -219,6 +228,7 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
     let arguments = reader.values(")")?;
     let mut spec = RunSpec {
         line,
+        erased: kind == "erased",
         entry,
         arguments,
         arithmetic: false,
@@ -271,10 +281,11 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
                 payload,
             }
         }
-        "stuck" => Expect::Stuck {
+        "stuck" if !spec.erased => Expect::Stuck {
             state: reader.word("a stuck state, X1 to X10")?,
             clause: reader.word("a clause")?,
         },
+        "undefined" if spec.erased => Expect::Other("undefined"),
         "violation" => Expect::Other("violation"),
         "host-failed" => Expect::Other("host-failed"),
         "fuel" => Expect::Other("fuel"),
@@ -318,7 +329,9 @@ fn directives(source: &str) -> Result<Vec<Directive>, String> {
             continue;
         };
         let rest = rest.trim();
-        let starts = rest.starts_with("run ") || rest.starts_with("reject ");
+        let starts = ["run ", "erased ", "reject "]
+            .iter()
+            .any(|word| rest.starts_with(word));
         match joined.last_mut() {
             Some((_, text)) if !starts => {
                 text.push(' ');
@@ -337,6 +350,8 @@ fn directives(source: &str) -> Result<Vec<Directive>, String> {
 #[derive(Clone, Debug, Default)]
 pub struct Report {
     pub runs: usize,
+    /// The runs that were also carried out under the erased semantics.
+    pub compared: usize,
     pub failures: Vec<String>,
     /// How often each rule of the semantics was applied, over all runs.
     pub rules: BTreeMap<&'static str, u64>,
@@ -355,6 +370,11 @@ fn kind(end: &End) -> &'static str {
         End::OutOfFuel => "fuel",
         End::NotAnExecution(_) => "not-an-execution",
     }
+}
+
+fn events(trace: &[Event]) -> String {
+    let shown: Vec<String> = trace.iter().map(Event::to_string).collect();
+    shown.join("; ")
 }
 
 /// Reads a core text file and carries out its directives.
@@ -418,23 +438,75 @@ pub fn check(source: &str) -> Report {
         let mut host = Arithmetic(Script {
             answers: spec.answers.iter().cloned().collect(),
         });
-        let outcome = if spec.arithmetic {
-            run(
-                &program,
-                &spec.entry,
-                spec.arguments.clone(),
-                &mut host,
-                &spec.config,
-            )
+        let host: &mut dyn Host = if spec.arithmetic {
+            &mut host
         } else {
-            run(
+            &mut host.0
+        };
+        if spec.erased {
+            let outcome = erased::run(
                 &program,
                 &spec.entry,
                 spec.arguments.clone(),
-                &mut host.0,
+                host,
                 &spec.config,
-            )
-        };
+            );
+            let as_expected = match (&spec.expect, &outcome.end) {
+                (
+                    Expect::Done {
+                        alternative,
+                        payload,
+                    },
+                    erased::End::Done {
+                        alternative: a,
+                        payload: p,
+                    },
+                ) => alternative == a && payload == p,
+                (Expect::Other(expected), end) => {
+                    *expected
+                        == match end {
+                            erased::End::Done { .. } => "done",
+                            erased::End::Undefined(_) => "undefined",
+                            erased::End::HostFailed(_) => "host-failed",
+                            erased::End::OutOfFuel => "fuel",
+                            erased::End::NotAnExecution(_) => "not-an-execution",
+                        }
+                }
+                _ => false,
+            };
+            if !as_expected {
+                report.failures.push(format!(
+                    "line {}: erased {}: expected {}, got: {}",
+                    spec.line, spec.entry, spec.expect, outcome.end
+                ));
+            } else if let Some(expected) = &spec.trace
+                && *expected != outcome.trace
+            {
+                report.failures.push(format!(
+                    "line {}: erased {}: the trace is [{}]",
+                    spec.line,
+                    spec.entry,
+                    events(&outcome.trace)
+                ));
+            }
+            continue;
+        }
+        let compared = compare(
+            &program,
+            &spec.entry,
+            spec.arguments.clone(),
+            host,
+            &spec.config,
+        );
+        match &compared.verdict {
+            Verdict::Same => report.compared += 1,
+            Verdict::NotCompared => {}
+            Verdict::Differ(difference) => report.failures.push(format!(
+                "line {}: run {}: {difference}",
+                spec.line, spec.entry
+            )),
+        }
+        let outcome = compared.oracle;
         for (clause, count) in &outcome.rules {
             *report.rules.entry(clause).or_insert(0) += count;
         }
@@ -468,12 +540,11 @@ pub fn check(source: &str) -> Report {
         if let Some(expected) = &spec.trace
             && *expected != outcome.trace
         {
-            let got: Vec<String> = outcome.trace.iter().map(Event::to_string).collect();
             report.failures.push(format!(
                 "line {}: run {}: the trace is [{}]",
                 spec.line,
                 spec.entry,
-                got.join("; ")
+                events(&outcome.trace)
             ));
         }
     }

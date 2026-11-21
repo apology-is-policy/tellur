@@ -1,10 +1,11 @@
 # Villanelle v2 oracle
 
-Status: **slice 1, first checkpoint**, 20 November 2026. Phase 2 of the
-[redesign plan](../redesign-plan.md). The oracle runs the scalar core. The
-program generator, the erased semantics, the differential harness, the
-mutation tests and the reader of Rails are the next checkpoints of this slice
-(section 8).
+Status: **slice 1, second checkpoint**, 21 November 2026. Phase 2 of the
+[redesign plan](../redesign-plan.md). The oracle and the erased semantics run
+the scalar core, compared run by run by the differential harness across the
+conformance suite and the random program generator, with single-step mutation
+tests and property tests of the fact logic's arithmetic axioms. The reader of
+Rails is the next checkpoint of this slice (section 9).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -27,8 +28,13 @@ can be read on its own. Nothing in it is built for speed.
 | `syntax`, `text` | The core text form (section 3): its tree, printer and reader |
 | `typed`, `resolve` | The typed core, and what is checked on the way to it (section 4) |
 | `oracle` | Section 6 of the core, one function for each rule |
-| `host` | Hosts for extern controls (section 5) |
+| `erased` | Section 9 of the core ([R1] to [R3]): machine-word slots, wrapping arithmetic and one bit for each atom a selector mentions |
+| `differential` | Theorem 3 tested run by run: where the oracle is not stuck, the erased run with the host's answers replayed gives the same observation |
+| `host` | Hosts for extern controls (section 5): `Script`, `Arithmetic` and `Seeded` |
 | `script` | The directives that state runs beside a program (section 6) |
+| `rng` | A seeded SplitMix64 generator and stateless word mixer |
+| `generate` | Random core programs (`valid` and `free`) as `syntax::Program` trees, and a counter for the 61 constructs of the slice (section 8) |
+| `mutate` | Single-step mutations of valid programs, classified by the oracle (section 8) |
 
 Slice 1 is the scalar language: `bool`, the integer types, functions, tests,
 decisions on defined and extern controls, loops, exits, obligations and `⊥`.
@@ -52,8 +58,8 @@ stuck X7 E-Arith at add:5: 250 + 6 = 256 is not a value of u8
 ```
 
 `--arithmetic` gives the run a host that computes checked arithmetic,
-`--usize 32` makes the greatest `usize` `2³² - 1`, and `--fuel N` bounds the
-steps.
+`--usize 32` makes the greatest `usize` `2³² - 1`, `--fuel N` bounds the
+steps, and `--erased` runs the program under the erased semantics.
 
 ## 3. The core text form
 
@@ -172,12 +178,17 @@ an effect gives the same answer to the same arguments. An answer that fails
 ends the run in `violation`. That is a fault of the trusted host and not a
 stuck state. A step of a control with an effect is recorded as an event.
 
-Two hosts exist. `Script` answers from a list, in order, and a run whose list
+Three hosts exist. `Script` answers from a list, in order, and a run whose list
 is exhausted or names another control ends in `host-failed`: a defect of the
 test. `Arithmetic` computes the checked arithmetic of the prelude: a control
 whose name begins with `checked_add`, `checked_sub`, `checked_mul`,
 `checked_div` or `checked_rem`, with two alternatives of which the first
-carries the result, and passes every other call on.
+carries the result, and passes every other call on. `Seeded` draws answers from
+a seeded generator and checks each candidate against the alternative's
+condition (`signature_holds`) before returning it; a control without an effect
+derives its generator from the host's seed, the control's name and the
+arguments (`rng::mix`), so two calls with the same arguments get the same
+answer.
 
 ## 6. Directives
 
@@ -202,9 +213,16 @@ the precondition of the entry is false; section 8 of the core does not count
 such a run as an execution). `trace [...]` states the events. `reject` names
 the clause by which `resolve` must refuse the program.
 
+Every `run` that ends in `done` or `fuel` is also carried out under the erased
+semantics with the host's answers replayed, and the two observations must agree
+(Theorem 3). `erased` in the place of `run` states a run of the erased
+semantics alone; it may also end in `undefined` (`⊥`, the end of a body, an
+alternative that the waiting decision does not list, or a division by zero).
+
 ## 7. Conformance of slice 1
 
-`v2/tests/slice1` holds 40 programs with 86 runs. The suite carries them out
+`v2/tests/slice1` holds 41 programs with 126 runs (62 of them compared with the
+erased semantics). The suite carries them out
 and then checks that together they reach what the slice has: each of the
 twelve rules a statement can apply, each of the fifteen ways of being stuck,
 and each of the nine clauses of refusal.
@@ -225,6 +243,7 @@ and each of the nine clauses of refusal.
 | [E-Impossible] | `e-impossible.core` |
 | [E-Extern], [E-Host], [E-Effect] | `e-extern.core` |
 | [E-Loop], [E-Again], [E-Leave], [H1], [H4] | `e-loop.core` |
+| [R1], [R2], [R3] | `r-erasure.core` |
 | [C3], [W9] | `c3-leave-types.core` |
 | [G8] | `words.core` |
 | [W1] to [W5], [W7], [C1] to [C3] | `reject-*.core`, 24 files |
@@ -233,16 +252,40 @@ The clauses of checking (K, N, P) have no test here. They are judgments, and
 their accepting and rejecting tests come with the checker. Each has its
 stuck state above: coverage [K7] is X1, [P1] to [P5] are X7, and [P6] is X6.
 
-## 8. What this checkpoint leaves open
+## 8. Generator, differential harness, mutations and axioms
 
-- **The rest of the slice in phase 2.** A generator of random core programs
-  with a count of the constructs it reaches, the erased semantics
-  ([core](core.md), section 9) as a second interpreter, the differential
-  harness between the two, and the mutations that the checker will have to
-  reject.
+- **Fact-logic axioms (`v2/tests/axioms.rs`).** The nonlinear axioms of the
+  [fact logic](facts.md) — division by a constant ([A7]), division by a term
+  ([A8]) and the four bounding planes of a product ([A9]) — are tested across
+  100,000 random and boundary integer draws against `Int::divide` and
+  `Int::times`, and across 20,000 runs as `⊢` obligations of a core program in
+  the oracle.
+- **Program generator (`generate`, `v2/tests/harness.rs`).** Every generated
+  program is built as a `syntax::Program`, printed as core text, parsed back
+  and resolved. `generate::valid` builds programs whose expressions, selectors,
+  contracts, effects and loops are valid by construction; across 80 seeds and
+  both 32-bit and 64-bit `usize`, every run ends in `done`, applies all 12
+  statement rules, reaches all 61 syntactic constructs of the slice, and
+  yields `Verdict::Same` against the erased semantics. `generate::free` builds
+  unconstrained well-resolved programs; across 250 seeds it reaches all 61
+  constructs, and every run that is not stuck in the oracle agrees with the
+  erased semantics.
+- **Mutations (`mutate`, `v2/tests/harness.rs`).** `mutate::mutate` produces
+  all single-step mutants of a valid program across five kinds: `RemoveArm`
+  ([C2], X10), `RemoveDisposition` ([K7], X1), `DropGuard` ([O2] to [O4], [P1]
+  to [P8], X2, X3, X6, X7), `DropInvariant` ([K4], [P4]) and `DropEffect`
+  ([F3], X9). `mutate::classify` runs each mutant in the oracle; across 16
+  seeds of `generate::valid`, the stuck mutants reach all 15 stuck states of
+  slice 1. They are the target rejection set for the phase 3 checker.
+
+## 9. What this checkpoint leaves open
+
 - **The reader of Rails.** The corpus is written in Rails. The plan's exit
   for phase 2, that the oracle runs the whole paper corpus, needs the reader
   and the elaboration of the [surface](surface.md), and the later slices.
+- **The slice 1 checker (phase 3).** Checked on the typed core, tested against
+  `generate::valid` (no checked program is stuck in the oracle) and
+  `mutate::mutate` (stuck mutants are rejected).
 - **Operators that the surface does not have yet.** The wrapping and
   saturating operators and the numeric conversions are named in the core and
   the fact logic and have no spelling. They belong to phase 5.

@@ -966,6 +966,23 @@ impl<'a> Machine<'a> {
     }
 }
 
+/// Whether `formula`, over the parameters of a signature and the fields of one
+/// alternative, holds for `arguments` and `payload` ([E-Formula]).
+pub fn signature_holds(
+    program: &Program,
+    config: &Config,
+    formula: &Expr,
+    arguments: &[Value],
+    payload: &[Value],
+) -> bool {
+    let env = SignatureEnv {
+        parameters: arguments,
+        fields: payload,
+    };
+    let evaluator = Evaluator { program, config };
+    evaluator.holds(formula, &env).unwrap_or(false)
+}
+
 /// Runs the control `entry` on `arguments` until the execution ends, is
 /// stuck, or the fuel runs out.
 pub fn run(
