@@ -3,10 +3,12 @@
 
 outcome lookup_res: hit {value: u32} │ miss
 
-control sum_vector(values: [u32]) ■ total {sum: u32}
+control sum_vector(values: [u32]) ■ total {sum: u32} │ overflow
 │ ~acc: u32 := 0
 │ ∀ item ∈ values
+│ ║ ? acc > 1000000000 ∨ item > 1000000000 → □ overflow
 │ ║ acc ← acc + item
+╞═ overflow: ■ overflow
 │ ■ total {acc}
 ╵
 
@@ -21,17 +23,19 @@ control forward_captured(values: [u32], limit: u32) ■ lookup_res
 │ ■ ▾result
 ╵
 
-control collect_and_map() ■ ok {sum: u32, count: usize, popped: u32}
+control collect_and_map() ■ ok {sum: u32, count: usize, popped: u32} │ missing
 │ ~nums: [u32] := [10, 20]
 │ nums.push(30)
 │ Δ nums.pop(): item {last} │ empty → ⊥
 │ ~table: string ⇀ u32 := ∅
 │ Δ table.insert("k", last): inserted │ replaced {prev} → ⊥
-│ Δ table.get("k"): found {v} │ missing → ⊥
-│ Δ sum_vector(nums): total {s}
+│ Δ table.get("k"): found {v} │ missing → ■ missing
+│ Δ sum_vector(nums): total {s} │ overflow → ■ missing
+│ ? s > 1000000000 ∨ v > 1000000000 → ■ missing
 │ ■ ok {s + v, len(table), last}
 ╵
 
+//! check
 //! run sum_vector([1, 2, 3, 4]) => done total {10}
 //! run forward_captured([2, 8, 5], 6) => done hit {8}
 //! run forward_captured([1, 2, 3], 10) => done miss

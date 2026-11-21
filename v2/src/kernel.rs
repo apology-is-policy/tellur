@@ -139,7 +139,7 @@ pub fn validate_lemma(lemma: &TheoryLemma, theory_atoms: &[Row]) -> Result<(), S
 
 /// Validates a complete [`Certificate`] ([V1] to [V4]).
 pub fn validate(certificate: &Certificate) -> Result<(), String> {
-    const VALID_CLAUSES: [&str; 6] = ["A1", "A2", "A7", "A8", "A9", "I10"];
+    const VALID_CLAUSES: [&str; 10] = ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "I10"];
     for instance in &certificate.instances {
         if !VALID_CLAUSES.contains(&instance.clause) {
             return Err(format!(

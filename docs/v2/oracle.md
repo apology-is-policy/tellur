@@ -489,12 +489,53 @@ and Rails surface reader, elaborator, and formatter (`surface.rs`):
   accepting, rejecting, stuck-state, core round-trip, formatter idempotence,
   and oracle-vs-erased differential checks.
 
-## 13. What this checkpoint leaves open
+## 13. Slice 2 Phase 3: Ownership, Faults, Boundaries, and Data Fact Logic
 
-- **Slice 2 Phases 3 and 4.** Phase 3 checker ownership (`[O0]`–`[O6]`),
-  faults and boundaries (`[F1]`–`[F6]`), and data fact logic (`[A3]`–`[A6]`,
-  `[I9]`, `[I11]`, `[I12]`, `[M7]`), followed by Phase 4 expansion and typed
-  LLVM IR lowering for Slice 2.
+Slice 2 Phase 3 extends the checker (`check.rs`), fact logic (`facts.rs`), and
+independent certificate kernel (`kernel.rs`) to verify all data, resource,
+ownership, fault, and boundary constructs of slice 2:
+
+- **Ownership (`[O0]`–`[O6]`, `[P8]`).** Tracks movedness `M(x)` alongside
+  definedness `D(x)` on ROBDD histories (availability `D(x) ∧ ¬M(x)`). Checks
+  non-lending-before-lending operand order (`[O0]`), disjoint binding (`[O1]`),
+  availability at reads, moves, and borrows (`[O2]`), move-on-consume and
+  rejection of non-copy partial moves (`[O3]`) and discarded `must` temporaries
+  (`O3a`), assignment rules including preventing overwrite of available `must`
+  values and mutating places of non-`must` type (`[O4]`), scope-exit
+  completion obligations at `■`, `□`, `↑`, `terminate`, `recover ↑`, and
+  lexical boundary fallthrough (`[O5]`), outer-name loop invariance at `↑`
+  and across `□ a` leaves (`[O6]`), and `[O3]`/`[O3a]` inside functions
+  (`[P8]`).
+- **Faults and boundaries (`[F1]`–`[F6]`).** Enforces fault permission
+  (`faults` signature or enclosing boundary, `[F1]`), emptiness of live
+  non-fault-releasable values at any faulting statement (`[F2]`), effects of
+  calls, `emit` (`console.write`), and `supervise` (`[F3]`), `assume ⊥`
+  obligations (`[F4]`), lexical boundary capture moves, `B₁` fallthrough
+  completion, contingency `in_contingency` restrictions (`[F5]`), and named
+  boundary `B₁`/`B₂` checking including retained-parameter availability across
+  possible faults (`[F6]`).
+- **Data fact logic and kernel (`[A3]`–`[A6]`, `[I7]`, `[I9]`, `[I11]`, `[I12]`,
+  `[M7]`).** Extends `AtomTerm` with `Len`, `StrLit`, `EmptyMap`, `VecLit`,
+  `StructCtor`, `Field`, `VariantCtor`, `VariantTag`, `Index`, `Update`, and
+  `Trim`; instantiates measure bounds and literals (`[A3]`), struct field
+  projection, injectivity, and extensionality (`[A4]`), variant constructor
+  distinctness, injectivity, and decision facts (`[A5]`, `[I11]`), vector update
+  length preservation, read-after-write, and `[J3]`-finite frame axioms
+  (`[A6]`, `[I9]`), `&~` post-exit parameters and `old(y)` (`[P4]`), vector
+  index bounds `0 ≤ i < len(v)` (`[P5]`), captured-outcome contract propagation
+  (`[I12]`), built-in collection contracts (`push`, `pop`, `take`, `insert`,
+  `remove`, `get`, `entry_at`), kernel clause validation for `A3`–`A6` in
+  `kernel::validate`, and `[M7]` counterexample extensionality notes.
+- **Conformance (`v2/tests/checker_slice2.rs`, `tests/slice2_surface/*.rails`).**
+  Tests accepting and rejecting cases for every Slice 2 Phase 3 clause,
+  validates all generated certificates across all four canonical Slice 2
+  `.rails` files (over 148 certificates), and confirms every stuck control of
+  `tests/slice2/*.core` is rejected by its corresponding Phase 3 clause.
+
+## 14. What this checkpoint leaves open
+
+- **Slice 2 Phase 4.** Call expansion (Theorem 4) and typed LLVM IR / C ABI
+  lowering for slice 2 data, moves, `on fault release` unwinding, and boundaries.
 - **Later slices in phases 2, 3 and 4.** Slice 3 (borrows and views) and
   slice 4 (tasks), which will allow the oracle, the checker and the typed
   backend to run, verify and compile the full paper corpus.

@@ -11,31 +11,38 @@ variant shape
 ├ circle {radius: u32}
 └ rect {w: u32, h: u32}
 
-function sum_point(p: &point): u32 := p.x + p.y
+function sum_point(p: &point) ⊢ p.x ≤ 1000000000 ∧ p.y ≤ 1000000000: u32 := p.x + p.y
 
-control eval_op(kind: op, a: u32, b: u32) ■ result {value: u32}
+control eval_op(kind: op, a: u32, b: u32)
+    ⊢ a ≤ 10000 ∧ b ≤ 10000 ∧ a * b ≤ 100000000
+    ■ result {value: u32}
 │ Δ kind
 │ ├ add → ■ result {a + b}
-│ ├ sub → ■ result {a - b}
+│ ├ sub →
+│ │ ┆ ? a < b → ■ result {0}
+│ │ ┆ ■ result {a - b}
 │ └ mul → ■ result {a * b}
 ╵
 
-control describe_shape(s: shape, raw: string) ■ ok {area: u32, title: string}
+control describe_shape(s: shape, raw: string) ■ ok {area: u32, title: string} │ overflow
 │ ~p: point := point {1, 2}
 │ p.x ← 10
 │ p.y ← sum_point(p)
 │ Δ ▾s
 │ ├ circle {r} →
-│ │ ┆ a: u32 := r * r + p.y
+│ │ ┆ ? r > 1000000 → ■ overflow
+│ │ ┆ a: u32 := 2 * r + p.y
 │ └ rect {w, h} →
-│   ┆ a: u32 := w * h + p.y
+│   ┆ ? w > 1000000 ∨ h > 1000000 → ■ overflow
+│   ┆ a: u32 := 2 * w + 2 * h + p.y
 │ cleaned: string := trim(raw)
 │ item: labeled := labeled {clone(cleaned), a}
 │ labeled {name, total} := item
 │ ■ ok {total, name}
 ╵
 
+//! check
 //! run eval_op(op.add, 6, 7) => done result {13}
 //! run eval_op(op.mul, 4, 5) => done result {20}
-//! run describe_shape(shape.circle {4}, "  circle  ") => done ok {28, "circle"}
-//! run describe_shape(shape.rect {3, 5}, " box ") => done ok {27, "box"}
+//! run describe_shape(shape.circle {4}, "  circle  ") => done ok {20, "circle"}
+//! run describe_shape(shape.rect {3, 5}, " box ") => done ok {28, "box"}

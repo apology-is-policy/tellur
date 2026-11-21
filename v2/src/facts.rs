@@ -5,7 +5,7 @@
 
 use crate::bdd::{self, Bdd, Formula};
 use crate::int::Int;
-use crate::typed::{ControlId, IntType};
+use crate::typed::{ControlId, IntType, StructId, Type, VariantId};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 
@@ -81,6 +81,92 @@ pub enum AtomTerm {
     PureAlt(ControlId, Vec<LinearTerm>),
     /// Uninterpreted payload `pay_{f, alt, field}(args)` of a pure operation ([I10]).
     PurePay(ControlId, usize, usize, Vec<LinearTerm>),
+    /// `len(t)` for vectors, strings, and maps ([A3]).
+    Len(LinearTerm),
+    /// String literal ([A3]).
+    StrLit(String),
+    /// Empty map literal `∅` ([A3]).
+    EmptyMap,
+    /// Vector literal `[t₁, …, tₙ]` ([A3]).
+    VecLit(Vec<LinearTerm>),
+    /// Struct constructor `S {t̄}` ([A4]).
+    StructCtor(StructId, Vec<LinearTerm>),
+    /// Struct field projection `t.xᵢ` ([A4], [A1]).
+    Field {
+        base: LinearTerm,
+        struct_id: StructId,
+        field_idx: usize,
+        int_ty: Option<IntType>,
+        is_bool: bool,
+        is_value_term: bool,
+    },
+    /// Variant constructor `V.c {t̄}` ([A5]).
+    VariantCtor {
+        variant_id: VariantId,
+        ctor_idx: usize,
+        fields: Vec<LinearTerm>,
+        num_ctors: usize,
+    },
+    /// Variant constructor tag `tag(t)` in `0..num_ctors` ([A5]).
+    VariantTag {
+        base: LinearTerm,
+        variant_id: VariantId,
+        num_ctors: usize,
+    },
+    /// Vector element `t[i]` ([A6], [A1]).
+    Index {
+        base: LinearTerm,
+        index: LinearTerm,
+        int_ty: Option<IntType>,
+        is_bool: bool,
+        is_value_term: bool,
+    },
+    /// Vector element update `t[i ↦ e]` ([A6]).
+    Update {
+        base: LinearTerm,
+        index: LinearTerm,
+        value: LinearTerm,
+    },
+    /// Uninterpreted `trim(s)` on strings ([S5]).
+    Trim(LinearTerm),
+}
+
+/// Sort tag of a logical term for `[J3]` and `[M7]`.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SortTag {
+    Bool,
+    Int,
+    String,
+    Struct(StructId),
+    Variant(VariantId),
+    Resource(usize),
+    Outcome(usize),
+    Vector(String),
+    Map(String, String),
+}
+
+impl SortTag {
+    pub fn from_type(ty: &Type) -> Option<SortTag> {
+        match ty.deref_type() {
+            Type::Bool => Some(SortTag::Bool),
+            Type::Int(_) => Some(SortTag::Int),
+            Type::String => Some(SortTag::String),
+            Type::Struct(id, _) => Some(SortTag::Struct(*id)),
+            Type::Variant(id, _) => Some(SortTag::Variant(*id)),
+            Type::Resource(id, _) => Some(SortTag::Resource(*id)),
+            Type::Outcome(id, _) => Some(SortTag::Outcome(*id)),
+            Type::Vector(elem) => Some(SortTag::Vector(elem.to_string())),
+            Type::Map(k, v) => Some(SortTag::Map(k.to_string(), v.to_string())),
+            Type::Named(_) | Type::OutcomeNamed(_) | Type::Ref(_, _) => None,
+        }
+    }
+
+    pub fn is_extensional_collection(&self) -> bool {
+        matches!(
+            self,
+            SortTag::Vector(_) | SortTag::Map(_, _) | SortTag::String
+        )
+    }
 }
 
 /// A linear combination `constant + Σ coeff_i · u_i` ([S6]).
@@ -114,6 +200,18 @@ impl LinearTerm {
     pub fn as_constant(&self) -> Option<Int> {
         if self.coeffs.is_empty() {
             Some(self.constant.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_var(&self) -> Option<TermId> {
+        if self.constant.is_zero()
+            && self.coeffs.len() == 1
+            && let Some((&id, coeff)) = self.coeffs.iter().next()
+            && *coeff == Int::from_u64(1)
+        {
+            Some(id)
         } else {
             None
         }
@@ -353,7 +451,7 @@ impl fmt::Display for Certificate {
     }
 }
 
-/// A validated counterexample model when an entailment fails ([M1] to [M6]).
+/// A validated counterexample model when an entailment fails ([M1] to [M7]).
 #[derive(Clone, Debug)]
 pub struct Counterexample {
     /// The history atoms that hold in the counterexample (`(site_name, alt_name)`).
@@ -363,6 +461,9 @@ pub struct Counterexample {
     /// Remark when the failure depends on an operator the logic does not
     /// interpret completely ([M3]).
     pub assumed_remark: Option<String>,
+    /// Note when two collections or strings agree on length and mentioned
+    /// elements but are assigned different values by the model ([M7]).
+    pub extensionality_note: Option<String>,
     /// Whether the obligation is inside a loop body ([M4]).
     pub in_loop: bool,
     /// Raw Boolean assignment `h` and integer valuation `ν`.
@@ -392,6 +493,9 @@ impl fmt::Display for Counterexample {
         }
         if let Some(remark) = &self.assumed_remark {
             let _ = write!(formatter, " ({remark})");
+        }
+        if let Some(note) = &self.extensionality_note {
+            let _ = write!(formatter, " [{note}]");
         }
         if self.in_loop {
             let _ = write!(
@@ -424,6 +528,8 @@ pub struct Solver {
     /// Interned atomic integer terms.
     pub terms: Vec<AtomTerm>,
     term_ids: HashMap<AtomTerm, TermId>,
+    pub term_sorts: BTreeMap<TermId, SortTag>,
+    pub struct_arities: BTreeMap<StructId, usize>,
     pub usize_max_term: TermId,
     /// Canonical positive linear inequality rows, each mapped to BDD variable
     /// `first_theory_var + id`.
@@ -439,6 +545,8 @@ pub struct Solver {
     pub instances: Vec<AxiomInstance>,
     instantiated_terms: HashSet<TermId>,
     instantiated_pairs: HashSet<(TermId, TermId)>,
+    instantiated_ext: HashSet<(TermId, TermId)>,
+    instantiated_update_frames: HashSet<(TermId, LinearTerm)>,
     /// Theory lemmas learned across queries of this body.
     pub lemmas: Vec<TheoryLemma>,
 }
@@ -452,6 +560,8 @@ impl Solver {
             first_theory_var,
             terms: Vec::new(),
             term_ids: HashMap::new(),
+            term_sorts: BTreeMap::new(),
+            struct_arities: BTreeMap::new(),
             usize_max_term: 0,
             theory_atoms: Vec::new(),
             atom_ids: HashMap::new(),
@@ -461,10 +571,52 @@ impl Solver {
             instances: Vec::new(),
             instantiated_terms: HashSet::new(),
             instantiated_pairs: HashSet::new(),
+            instantiated_ext: HashSet::new(),
+            instantiated_update_frames: HashSet::new(),
             lemmas: Vec::new(),
         };
         solver.usize_max_term = solver.intern_term(AtomTerm::UsizeMax);
         solver
+    }
+
+    pub fn register_sort(&mut self, id: TermId, ty: &Type) {
+        if let Some(tag) = SortTag::from_type(ty) {
+            self.term_sorts.insert(id, tag);
+        }
+    }
+
+    pub fn register_struct_arity(&mut self, sid: StructId, arity: usize) {
+        self.struct_arities.insert(sid, arity);
+    }
+
+    pub fn term_sort(&self, term: &LinearTerm) -> Option<&SortTag> {
+        term.as_var().and_then(|id| self.term_sorts.get(&id))
+    }
+
+    pub fn is_value_term_linear(&self, term: &LinearTerm) -> bool {
+        let Some(id) = term.as_var() else {
+            return false;
+        };
+        matches!(
+            self.terms[id],
+            AtomTerm::Var {
+                is_value_term: true,
+                ..
+            } | AtomTerm::Field {
+                is_value_term: true,
+                ..
+            } | AtomTerm::Index {
+                is_value_term: true,
+                ..
+            }
+        )
+    }
+
+    pub fn sorts_compatible(a: Option<&SortTag>, b: Option<&SortTag>) -> bool {
+        match (a, b) {
+            (Some(x), Some(y)) => x == y,
+            _ => true,
+        }
     }
 
     pub fn intern_term(&mut self, term: AtomTerm) -> TermId {
@@ -559,193 +711,716 @@ impl Solver {
             .push((guard, var_id, DefRhs::BoolFormula(phi)));
     }
 
-    /// Instantiates `[A1]`, `[A2]`, `[A7]`, `[A8]`, `[A9]` and `[I10]` for all
-    /// terms currently in `self.terms` ([J3]).
+    fn int_range_formula(&mut self, u: &LinearTerm, int_ty: IntType) -> Formula {
+        if int_ty == IntType::Usize {
+            let low = self.le(&LinearTerm::from_i128(0), u);
+            let umax = LinearTerm::var(self.usize_max_term);
+            let high = self.le(u, &umax);
+            self.bdd.and(low, high)
+        } else {
+            let (lo, hi) = int_ty.literal_bounds();
+            let low = self.le(&LinearTerm::constant(lo), u);
+            let high = self.le(u, &LinearTerm::constant(hi));
+            self.bdd.and(low, high)
+        }
+    }
+
+    fn usize_range_formula(&mut self, u: &LinearTerm) -> Formula {
+        let low = self.le(&LinearTerm::from_i128(0), u);
+        let umax = LinearTerm::var(self.usize_max_term);
+        let high = self.le(u, &umax);
+        self.bdd.and(low, high)
+    }
+
+    /// Instantiates `[A1]`–`[A9]` and congruence (`[I10]`, `[J3]`) for all terms
+    /// currently in `self.terms`.
     pub fn instantiate_all(&mut self) {
         let mut idx = 0;
-        while idx < self.terms.len() {
-            if self.instantiated_terms.insert(idx) {
-                let term = self.terms[idx].clone();
-                let u = LinearTerm::var(idx);
-                match term {
-                    AtomTerm::Var {
-                        ty: Some(int_ty),
-                        is_value_term: true,
-                        ..
-                    } => {
-                        let formula = if int_ty == IntType::Usize {
-                            let low = self.le(&LinearTerm::from_i128(0), &u);
-                            let umax = LinearTerm::var(self.usize_max_term);
-                            let high = self.le(&u, &umax);
-                            self.bdd.and(low, high)
-                        } else {
-                            let (lo, hi) = int_ty.literal_bounds();
+        loop {
+            let prev_len = self.terms.len();
+            while idx < self.terms.len() {
+                if self.instantiated_terms.insert(idx) {
+                    let term = self.terms[idx].clone();
+                    let u = LinearTerm::var(idx);
+                    match term {
+                        AtomTerm::Var {
+                            ty: Some(int_ty),
+                            is_value_term: true,
+                            ..
+                        }
+                        | AtomTerm::Field {
+                            int_ty: Some(int_ty),
+                            is_value_term: true,
+                            ..
+                        }
+                        | AtomTerm::Index {
+                            int_ty: Some(int_ty),
+                            is_value_term: true,
+                            ..
+                        } => {
+                            let formula = self.int_range_formula(&u, int_ty);
+                            self.instances.push(AxiomInstance {
+                                clause: "A1",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::Field {
+                            is_bool: true,
+                            is_value_term: true,
+                            ..
+                        }
+                        | AtomTerm::Index {
+                            is_bool: true,
+                            is_value_term: true,
+                            ..
+                        } => {
+                            let lo = self.le(&LinearTerm::from_i128(0), &u);
+                            let hi = self.le(&u, &LinearTerm::from_i128(1));
+                            let formula = self.bdd.and(lo, hi);
+                            self.instances.push(AxiomInstance {
+                                clause: "A1",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::UsizeMax => {
+                            let lo = Int::power_of_two(32).minus(&Int::from_u64(1));
+                            let hi = Int::power_of_two(64).minus(&Int::from_u64(1));
                             let low = self.le(&LinearTerm::constant(lo), &u);
                             let high = self.le(&u, &LinearTerm::constant(hi));
-                            self.bdd.and(low, high)
-                        };
-                        self.instances.push(AxiomInstance {
-                            clause: "A1",
-                            term: idx,
-                            formula,
-                        });
-                    }
-                    AtomTerm::UsizeMax => {
-                        let lo = Int::power_of_two(32).minus(&Int::from_u64(1));
-                        let hi = Int::power_of_two(64).minus(&Int::from_u64(1));
-                        let low = self.le(&LinearTerm::constant(lo), &u);
-                        let high = self.le(&u, &LinearTerm::constant(hi));
-                        let formula = self.bdd.and(low, high);
-                        self.instances.push(AxiomInstance {
-                            clause: "A2",
-                            term: idx,
-                            formula,
-                        });
-                    }
-                    AtomTerm::DivConst(t, k) => {
-                        // [A7]:
-                        // t ≥ 0 ⇒ k·q ≤ t ≤ k·q + (k - 1)
-                        // t ≤ 0 ⇒ k·q - (k - 1) ≤ t ≤ k·q
-                        let zero = LinearTerm::from_i128(0);
-                        let kq = u.scale(&k);
-                        let slack = LinearTerm::constant(k.minus(&Int::from_u64(1)));
+                            let formula = self.bdd.and(low, high);
+                            self.instances.push(AxiomInstance {
+                                clause: "A2",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::Len(_) => {
+                            let formula = self.usize_range_formula(&u);
+                            self.instances.push(AxiomInstance {
+                                clause: "A3",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::VecLit(items) => {
+                            let len_id = self.intern_term(AtomTerm::Len(u));
+                            let eq = self.eq(
+                                &LinearTerm::var(len_id),
+                                &LinearTerm::from_i128(items.len() as i128),
+                            );
+                            self.instances.push(AxiomInstance {
+                                clause: "A3",
+                                term: idx,
+                                formula: eq,
+                            });
+                        }
+                        AtomTerm::EmptyMap => {
+                            let len_id = self.intern_term(AtomTerm::Len(u));
+                            let eq = self.eq(&LinearTerm::var(len_id), &LinearTerm::from_i128(0));
+                            self.instances.push(AxiomInstance {
+                                clause: "A3",
+                                term: idx,
+                                formula: eq,
+                            });
+                        }
+                        AtomTerm::VariantCtor {
+                            variant_id,
+                            ctor_idx,
+                            num_ctors,
+                            ..
+                        } => {
+                            self.term_sorts.insert(idx, SortTag::Variant(variant_id));
+                            let tag_id = self.intern_term(AtomTerm::VariantTag {
+                                base: u,
+                                variant_id,
+                                num_ctors,
+                            });
+                            let eq = self.eq(
+                                &LinearTerm::var(tag_id),
+                                &LinearTerm::from_i128(ctor_idx as i128),
+                            );
+                            self.instances.push(AxiomInstance {
+                                clause: "A5",
+                                term: idx,
+                                formula: eq,
+                            });
+                        }
+                        AtomTerm::VariantTag { num_ctors, .. } => {
+                            let max_tag = (num_ctors.saturating_sub(1)) as i128;
+                            let lo = self.le(&LinearTerm::from_i128(0), &u);
+                            let hi = self.le(&u, &LinearTerm::from_i128(max_tag));
+                            let formula = self.bdd.and(lo, hi);
+                            self.instances.push(AxiomInstance {
+                                clause: "A5",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::StructCtor(sid, fields) => {
+                            self.term_sorts.insert(idx, SortTag::Struct(sid));
+                            self.struct_arities.entry(sid).or_insert(fields.len());
+                        }
+                        AtomTerm::Update { base, index, value } => {
+                            if let Some(sort) = self.term_sort(&base).cloned() {
+                                self.term_sorts.insert(idx, sort);
+                            }
+                            let len_u_id = self.intern_term(AtomTerm::Len(u.clone()));
+                            let len_b_id = self.intern_term(AtomTerm::Len(base));
+                            let len_eq =
+                                self.eq(&LinearTerm::var(len_u_id), &LinearTerm::var(len_b_id));
+                            self.instances.push(AxiomInstance {
+                                clause: "A6",
+                                term: idx,
+                                formula: len_eq,
+                            });
 
-                        let t_ge_0 = self.le(&zero, &t);
-                        let pos_lo = self.le(&kq, &t);
-                        let pos_hi = self.le(&t, &kq.add(&slack));
-                        let pos_both = self.bdd.and(pos_lo, pos_hi);
-                        let pos_imp = self.bdd.implies(t_ge_0, pos_both);
+                            let at_i_id = self.intern_term(AtomTerm::Index {
+                                base: u,
+                                index: index.clone(),
+                                int_ty: None,
+                                is_bool: false,
+                                is_value_term: false,
+                            });
+                            let zero = LinearTerm::from_i128(0);
+                            let ge_zero = self.le(&zero, &index);
+                            let lt_len = self.lt(&index, &LinearTerm::var(len_b_id));
+                            let in_range = self.bdd.and(ge_zero, lt_len);
+                            let eq_val = self.eq(&LinearTerm::var(at_i_id), &value);
+                            let rw_formula = self.bdd.implies(in_range, eq_val);
+                            self.instances.push(AxiomInstance {
+                                clause: "A6",
+                                term: idx,
+                                formula: rw_formula,
+                            });
+                        }
+                        AtomTerm::DivConst(t, k) => {
+                            // [A7]:
+                            // t ≥ 0 ⇒ k·q ≤ t ≤ k·q + (k - 1)
+                            // t ≤ 0 ⇒ k·q - (k - 1) ≤ t ≤ k·q
+                            let zero = LinearTerm::from_i128(0);
+                            let kq = u.scale(&k);
+                            let slack = LinearTerm::constant(k.minus(&Int::from_u64(1)));
 
-                        let t_le_0 = self.le(&t, &zero);
-                        let neg_lo = self.le(&kq.sub(&slack), &t);
-                        let neg_hi = self.le(&t, &kq);
-                        let neg_both = self.bdd.and(neg_lo, neg_hi);
-                        let neg_imp = self.bdd.implies(t_le_0, neg_both);
+                            let t_ge_0 = self.le(&zero, &t);
+                            let pos_lo = self.le(&kq, &t);
+                            let pos_hi = self.le(&t, &kq.add(&slack));
+                            let pos_both = self.bdd.and(pos_lo, pos_hi);
+                            let pos_imp = self.bdd.implies(t_ge_0, pos_both);
 
-                        let formula = self.bdd.and(pos_imp, neg_imp);
-                        self.instances.push(AxiomInstance {
-                            clause: "A7",
-                            term: idx,
-                            formula,
-                        });
+                            let t_le_0 = self.le(&t, &zero);
+                            let neg_lo = self.le(&kq.sub(&slack), &t);
+                            let neg_hi = self.le(&t, &kq);
+                            let neg_both = self.bdd.and(neg_lo, neg_hi);
+                            let neg_imp = self.bdd.implies(t_le_0, neg_both);
+
+                            let formula = self.bdd.and(pos_imp, neg_imp);
+                            self.instances.push(AxiomInstance {
+                                clause: "A7",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::Div(s, t) => {
+                            let formula = self.instantiate_a8_div(&u, &s, &t);
+                            self.instances.push(AxiomInstance {
+                                clause: "A8",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::Rem(s, t) => {
+                            let formula = self.instantiate_a8_rem(&u, &s, &t);
+                            self.instances.push(AxiomInstance {
+                                clause: "A8",
+                                term: idx,
+                                formula,
+                            });
+                        }
+                        AtomTerm::Mul {
+                            left: s,
+                            right: t,
+                            left_bounds: (a, big_a),
+                            right_bounds: (b, big_b),
+                        } => {
+                            let mut conj = bdd::TRUE;
+                            // w ≥ a·t + b·s - a·b
+                            if let (Some(a), Some(b)) = (&a, &b) {
+                                let plane = t
+                                    .scale(a)
+                                    .add(&s.scale(b))
+                                    .sub(&LinearTerm::constant(a.times(b)));
+                                let c = self.le(&plane, &u);
+                                conj = self.bdd.and(conj, c);
+                            }
+                            // w ≥ A·t + B·s - A·B
+                            if let (Some(big_a), Some(big_b)) = (&big_a, &big_b) {
+                                let plane = t
+                                    .scale(big_a)
+                                    .add(&s.scale(big_b))
+                                    .sub(&LinearTerm::constant(big_a.times(big_b)));
+                                let c = self.le(&plane, &u);
+                                conj = self.bdd.and(conj, c);
+                            }
+                            // w ≤ A·t + b·s - A·b
+                            if let (Some(big_a), Some(b)) = (&big_a, &b) {
+                                let plane = t
+                                    .scale(big_a)
+                                    .add(&s.scale(b))
+                                    .sub(&LinearTerm::constant(big_a.times(b)));
+                                let c = self.le(&u, &plane);
+                                conj = self.bdd.and(conj, c);
+                            }
+                            // w ≤ a·t + B·s - a·B
+                            if let (Some(a), Some(big_b)) = (&a, &big_b) {
+                                let plane = t
+                                    .scale(a)
+                                    .add(&s.scale(big_b))
+                                    .sub(&LinearTerm::constant(a.times(big_b)));
+                                let c = self.le(&u, &plane);
+                                conj = self.bdd.and(conj, c);
+                            }
+                            self.instances.push(AxiomInstance {
+                                clause: "A9",
+                                term: idx,
+                                formula: conj,
+                            });
+                        }
+                        AtomTerm::Var { .. }
+                        | AtomTerm::Field { .. }
+                        | AtomTerm::Index { .. }
+                        | AtomTerm::PureAlt(_, _)
+                        | AtomTerm::PurePay(_, _, _, _)
+                        | AtomTerm::StrLit(_)
+                        | AtomTerm::Trim(_) => {}
                     }
-                    AtomTerm::Div(s, t) => {
-                        let formula = self.instantiate_a8_div(&u, &s, &t);
-                        self.instances.push(AxiomInstance {
-                            clause: "A8",
-                            term: idx,
-                            formula,
-                        });
+                }
+                idx += 1;
+            }
+
+            // [A6] frame axiom for every `Update` together with every index `j`
+            // used on a vector of the same sort ([J3]).
+            let mut updates = Vec::new();
+            let mut indices = Vec::new();
+            for (tid, term) in self.terms.iter().enumerate() {
+                match term {
+                    AtomTerm::Update { base, index, .. } => {
+                        updates.push((
+                            tid,
+                            base.clone(),
+                            index.clone(),
+                            self.term_sorts.get(&tid).cloned(),
+                        ));
                     }
-                    AtomTerm::Rem(s, t) => {
-                        let formula = self.instantiate_a8_rem(&u, &s, &t);
-                        self.instances.push(AxiomInstance {
-                            clause: "A8",
-                            term: idx,
-                            formula,
-                        });
-                    }
-                    AtomTerm::Mul {
-                        left: s,
-                        right: t,
-                        left_bounds: (a, big_a),
-                        right_bounds: (b, big_b),
+                    AtomTerm::Index {
+                        base,
+                        index,
+                        int_ty,
+                        is_bool,
+                        ..
                     } => {
-                        let mut conj = bdd::TRUE;
-                        // w ≥ a·t + b·s - a·b
-                        if let (Some(a), Some(b)) = (&a, &b) {
-                            let plane = t
-                                .scale(a)
-                                .add(&s.scale(b))
-                                .sub(&LinearTerm::constant(a.times(b)));
-                            let c = self.le(&plane, &u);
-                            conj = self.bdd.and(conj, c);
-                        }
-                        // w ≥ A·t + B·s - A·B
-                        if let (Some(big_a), Some(big_b)) = (&big_a, &big_b) {
-                            let plane = t
-                                .scale(big_a)
-                                .add(&s.scale(big_b))
-                                .sub(&LinearTerm::constant(big_a.times(big_b)));
-                            let c = self.le(&plane, &u);
-                            conj = self.bdd.and(conj, c);
-                        }
-                        // w ≤ A·t + b·s - A·b
-                        if let (Some(big_a), Some(b)) = (&big_a, &b) {
-                            let plane = t
-                                .scale(big_a)
-                                .add(&s.scale(b))
-                                .sub(&LinearTerm::constant(big_a.times(b)));
-                            let c = self.le(&u, &plane);
-                            conj = self.bdd.and(conj, c);
-                        }
-                        // w ≤ a·t + B·s - a·B
-                        if let (Some(a), Some(big_b)) = (&a, &big_b) {
-                            let plane = t
-                                .scale(a)
-                                .add(&s.scale(big_b))
-                                .sub(&LinearTerm::constant(a.times(big_b)));
-                            let c = self.le(&u, &plane);
-                            conj = self.bdd.and(conj, c);
-                        }
-                        self.instances.push(AxiomInstance {
-                            clause: "A9",
-                            term: idx,
-                            formula: conj,
-                        });
+                        indices.push((
+                            index.clone(),
+                            self.term_sort(base).cloned(),
+                            *int_ty,
+                            *is_bool,
+                        ));
                     }
-                    AtomTerm::Var { .. }
-                    | AtomTerm::PureAlt(_, _)
-                    | AtomTerm::PurePay(_, _, _, _) => {}
+                    _ => {}
                 }
             }
-            idx += 1;
+            for (upd_id, base, i_term, upd_sort) in updates {
+                let u_upd = LinearTerm::var(upd_id);
+                let base_is_val = self.is_value_term_linear(&base);
+                for (j_term, vec_sort, elem_int_ty, elem_is_bool) in &indices {
+                    if *j_term == i_term {
+                        continue;
+                    }
+                    if !Solver::sorts_compatible(upd_sort.as_ref(), vec_sort.as_ref()) {
+                        continue;
+                    }
+                    if !self
+                        .instantiated_update_frames
+                        .insert((upd_id, j_term.clone()))
+                    {
+                        continue;
+                    }
+                    let u_at_j = self.intern_term(AtomTerm::Index {
+                        base: u_upd.clone(),
+                        index: j_term.clone(),
+                        int_ty: None,
+                        is_bool: false,
+                        is_value_term: false,
+                    });
+                    let b_at_j = self.intern_term(AtomTerm::Index {
+                        base: base.clone(),
+                        index: j_term.clone(),
+                        int_ty: *elem_int_ty,
+                        is_bool: *elem_is_bool,
+                        is_value_term: base_is_val,
+                    });
+                    let j_neq_i = self.ne(j_term, &i_term);
+                    let eq_frame = self.eq(&LinearTerm::var(u_at_j), &LinearTerm::var(b_at_j));
+                    let formula = self.bdd.implies(j_neq_i, eq_frame);
+                    self.instances.push(AxiomInstance {
+                        clause: "A6",
+                        term: upd_id,
+                        formula,
+                    });
+                }
+            }
+
+            // Pairwise theory and congruence instances ([A3], [A4], [A5], [I10]).
+            let len = self.terms.len();
+            for i in 0..len {
+                for j in (i + 1)..len {
+                    if !self.instantiated_pairs.insert((i, j)) {
+                        continue;
+                    }
+                    self.instantiate_term_pair(i, j);
+                }
+            }
+
+            // [A4] struct extensionality across pairs where both have full fields.
+            self.instantiate_struct_extensionality();
+
+            if self.terms.len() == prev_len {
+                break;
+            }
+        }
+    }
+
+    fn instantiate_term_pair(&mut self, i: TermId, j: TermId) {
+        enum PairRule {
+            Congruence {
+                clause: &'static str,
+                args1: Vec<LinearTerm>,
+                args2: Vec<LinearTerm>,
+                iff: bool,
+            },
+            Distinct {
+                clause: &'static str,
+            },
+            FieldOfCtor {
+                base: LinearTerm,
+                field_idx: usize,
+                ctor_id: TermId,
+                fields: Vec<LinearTerm>,
+            },
         }
 
-        // Congruence instances for uninterpreted applications ([S5], [I10]).
-        let len = self.terms.len();
-        for i in 0..len {
-            for j in (i + 1)..len {
-                if self.instantiated_pairs.contains(&(i, j)) {
-                    continue;
+        let rule = match (&self.terms[i], &self.terms[j]) {
+            (AtomTerm::Div(s1, t1), AtomTerm::Div(s2, t2))
+            | (AtomTerm::Rem(s1, t1), AtomTerm::Rem(s2, t2))
+            | (
+                AtomTerm::Mul {
+                    left: s1,
+                    right: t1,
+                    ..
+                },
+                AtomTerm::Mul {
+                    left: s2,
+                    right: t2,
+                    ..
+                },
+            ) => Some(PairRule::Congruence {
+                clause: "I10",
+                args1: vec![s1.clone(), t1.clone()],
+                args2: vec![s2.clone(), t2.clone()],
+                iff: false,
+            }),
+            (AtomTerm::Trim(a1), AtomTerm::Trim(a2)) => Some(PairRule::Congruence {
+                clause: "I10",
+                args1: vec![a1.clone()],
+                args2: vec![a2.clone()],
+                iff: false,
+            }),
+            (AtomTerm::PureAlt(c1, a1), AtomTerm::PureAlt(c2, a2)) if c1 == c2 => {
+                Some(PairRule::Congruence {
+                    clause: "I10",
+                    args1: a1.clone(),
+                    args2: a2.clone(),
+                    iff: false,
+                })
+            }
+            (AtomTerm::PurePay(c1, alt1, f1, a1), AtomTerm::PurePay(c2, alt2, f2, a2))
+                if c1 == c2 && alt1 == alt2 && f1 == f2 =>
+            {
+                Some(PairRule::Congruence {
+                    clause: "I10",
+                    args1: a1.clone(),
+                    args2: a2.clone(),
+                    iff: false,
+                })
+            }
+            (AtomTerm::Len(b1), AtomTerm::Len(b2)) => Some(PairRule::Congruence {
+                clause: "A3",
+                args1: vec![b1.clone()],
+                args2: vec![b2.clone()],
+                iff: false,
+            }),
+            (AtomTerm::StrLit(s1), AtomTerm::StrLit(s2)) if s1 != s2 => {
+                Some(PairRule::Distinct { clause: "A3" })
+            }
+            (AtomTerm::StructCtor(sid1, f1), AtomTerm::StructCtor(sid2, f2)) if sid1 == sid2 => {
+                Some(PairRule::Congruence {
+                    clause: "A4",
+                    args1: f1.clone(),
+                    args2: f2.clone(),
+                    iff: true,
+                })
+            }
+            (
+                AtomTerm::Field {
+                    base: b1,
+                    struct_id: sid1,
+                    field_idx: fidx1,
+                    ..
+                },
+                AtomTerm::Field {
+                    base: b2,
+                    struct_id: sid2,
+                    field_idx: fidx2,
+                    ..
+                },
+            ) if sid1 == sid2 && fidx1 == fidx2 => Some(PairRule::Congruence {
+                clause: "A4",
+                args1: vec![b1.clone()],
+                args2: vec![b2.clone()],
+                iff: false,
+            }),
+            (
+                AtomTerm::Field {
+                    base,
+                    struct_id,
+                    field_idx,
+                    ..
+                },
+                AtomTerm::StructCtor(sid2, fields),
+            ) if struct_id == sid2 && *field_idx < fields.len() => Some(PairRule::FieldOfCtor {
+                base: base.clone(),
+                field_idx: *field_idx,
+                ctor_id: j,
+                fields: fields.clone(),
+            }),
+            (
+                AtomTerm::StructCtor(sid2, fields),
+                AtomTerm::Field {
+                    base,
+                    struct_id,
+                    field_idx,
+                    ..
+                },
+            ) if struct_id == sid2 && *field_idx < fields.len() => Some(PairRule::FieldOfCtor {
+                base: base.clone(),
+                field_idx: *field_idx,
+                ctor_id: i,
+                fields: fields.clone(),
+            }),
+            (
+                AtomTerm::VariantCtor {
+                    variant_id: v1,
+                    ctor_idx: c1,
+                    fields: f1,
+                    ..
+                },
+                AtomTerm::VariantCtor {
+                    variant_id: v2,
+                    ctor_idx: c2,
+                    fields: f2,
+                    ..
+                },
+            ) if v1 == v2 => {
+                if c1 == c2 {
+                    Some(PairRule::Congruence {
+                        clause: "A5",
+                        args1: f1.clone(),
+                        args2: f2.clone(),
+                        iff: true,
+                    })
+                } else {
+                    Some(PairRule::Distinct { clause: "A5" })
                 }
-                let args_pair: Option<(Vec<LinearTerm>, Vec<LinearTerm>)> =
-                    match (&self.terms[i], &self.terms[j]) {
-                        (AtomTerm::Div(s1, t1), AtomTerm::Div(s2, t2))
-                        | (AtomTerm::Rem(s1, t1), AtomTerm::Rem(s2, t2))
-                        | (
-                            AtomTerm::Mul {
-                                left: s1,
-                                right: t1,
-                                ..
-                            },
-                            AtomTerm::Mul {
-                                left: s2,
-                                right: t2,
-                                ..
-                            },
-                        ) => Some((vec![s1.clone(), t1.clone()], vec![s2.clone(), t2.clone()])),
-                        (AtomTerm::PureAlt(c1, a1), AtomTerm::PureAlt(c2, a2)) if c1 == c2 => {
-                            Some((a1.clone(), a2.clone()))
-                        }
-                        (
-                            AtomTerm::PurePay(c1, alt1, f1, a1),
-                            AtomTerm::PurePay(c2, alt2, f2, a2),
-                        ) if c1 == c2 && alt1 == alt2 && f1 == f2 => Some((a1.clone(), a2.clone())),
-                        _ => None,
-                    };
-                if let Some((args1, args2)) = args_pair {
-                    self.instantiated_pairs.insert((i, j));
-                    let mut eq_args = bdd::TRUE;
-                    for (a, b) in args1.iter().zip(&args2) {
-                        let e = self.eq(a, b);
-                        eq_args = self.bdd.and(eq_args, e);
+            }
+            (
+                AtomTerm::VariantTag {
+                    base: b1,
+                    variant_id: v1,
+                    ..
+                },
+                AtomTerm::VariantTag {
+                    base: b2,
+                    variant_id: v2,
+                    ..
+                },
+            ) if v1 == v2 => Some(PairRule::Congruence {
+                clause: "A5",
+                args1: vec![b1.clone()],
+                args2: vec![b2.clone()],
+                iff: false,
+            }),
+            (
+                AtomTerm::Index {
+                    base: b1,
+                    index: idx1,
+                    ..
+                },
+                AtomTerm::Index {
+                    base: b2,
+                    index: idx2,
+                    ..
+                },
+            ) if Solver::sorts_compatible(self.term_sort(b1), self.term_sort(b2)) => {
+                Some(PairRule::Congruence {
+                    clause: "A6",
+                    args1: vec![b1.clone(), idx1.clone()],
+                    args2: vec![b2.clone(), idx2.clone()],
+                    iff: false,
+                })
+            }
+            (
+                AtomTerm::Update {
+                    base: b1,
+                    index: i1,
+                    value: v1,
+                },
+                AtomTerm::Update {
+                    base: b2,
+                    index: i2,
+                    value: v2,
+                },
+            ) if Solver::sorts_compatible(self.term_sort(b1), self.term_sort(b2)) => {
+                Some(PairRule::Congruence {
+                    clause: "A6",
+                    args1: vec![b1.clone(), i1.clone(), v1.clone()],
+                    args2: vec![b2.clone(), i2.clone(), v2.clone()],
+                    iff: false,
+                })
+            }
+            _ => None,
+        };
+
+        let Some(rule) = rule else {
+            return;
+        };
+
+        match rule {
+            PairRule::Congruence {
+                clause,
+                args1,
+                args2,
+                iff,
+            } => {
+                let mut eq_args = bdd::TRUE;
+                for (a, b) in args1.iter().zip(&args2) {
+                    let e = self.eq(a, b);
+                    eq_args = self.bdd.and(eq_args, e);
+                }
+                let eq_res = self.eq(&LinearTerm::var(i), &LinearTerm::var(j));
+                let formula = if iff {
+                    self.bdd.iff(eq_args, eq_res)
+                } else {
+                    self.bdd.implies(eq_args, eq_res)
+                };
+                self.instances.push(AxiomInstance {
+                    clause,
+                    term: i,
+                    formula,
+                });
+            }
+            PairRule::Distinct { clause } => {
+                let formula = self.ne(&LinearTerm::var(i), &LinearTerm::var(j));
+                self.instances.push(AxiomInstance {
+                    clause,
+                    term: i,
+                    formula,
+                });
+            }
+            PairRule::FieldOfCtor {
+                base,
+                field_idx,
+                ctor_id,
+                fields,
+            } => {
+                let is_ctor = self.eq(&base, &LinearTerm::var(ctor_id));
+                let field_tid = if ctor_id == j { i } else { j };
+                let eq_val = self.eq(&LinearTerm::var(field_tid), &fields[field_idx]);
+                let formula = self.bdd.implies(is_ctor, eq_val);
+                self.instances.push(AxiomInstance {
+                    clause: "A4",
+                    term: field_tid,
+                    formula,
+                });
+            }
+        }
+    }
+
+    fn instantiate_struct_extensionality(&mut self) {
+        // Collect struct field terms already present for non-ctor terms.
+        let mut fields_by_base_struct: BTreeMap<(TermId, StructId), Vec<Option<LinearTerm>>> =
+            BTreeMap::new();
+        for (tid, term) in self.terms.iter().enumerate() {
+            if let AtomTerm::Field {
+                base,
+                struct_id,
+                field_idx,
+                ..
+            } = term
+                && let Some(base_id) = base.as_var()
+                && !matches!(self.terms[base_id], AtomTerm::StructCtor(_, _))
+                && let Some(&arity) = self.struct_arities.get(struct_id)
+                && *field_idx < arity
+            {
+                fields_by_base_struct
+                    .entry((base_id, *struct_id))
+                    .or_insert_with(|| vec![None; arity])[*field_idx] = Some(LinearTerm::var(tid));
+            }
+        }
+        let mut by_struct: BTreeMap<StructId, Vec<(TermId, Vec<LinearTerm>)>> = BTreeMap::new();
+        for ((base_id, sid), slots) in fields_by_base_struct {
+            if slots.iter().all(Option::is_some) {
+                let full: Vec<LinearTerm> = slots.into_iter().map(Option::unwrap).collect();
+                by_struct.entry(sid).or_default().push((base_id, full));
+            }
+        }
+        for (tid, term) in self.terms.iter().enumerate() {
+            if let AtomTerm::StructCtor(sid, fields) = term {
+                by_struct
+                    .entry(*sid)
+                    .or_default()
+                    .push((tid, fields.clone()));
+            }
+        }
+
+        for (_sid, entries) in by_struct {
+            for idx_a in 0..entries.len() {
+                for idx_b in (idx_a + 1)..entries.len() {
+                    let (id_a, ref f_a) = entries[idx_a];
+                    let (id_b, ref f_b) = entries[idx_b];
+                    if matches!(self.terms[id_a], AtomTerm::StructCtor(_, _))
+                        && matches!(self.terms[id_b], AtomTerm::StructCtor(_, _))
+                    {
+                        continue;
                     }
-                    let eq_res = self.eq(&LinearTerm::var(i), &LinearTerm::var(j));
-                    let formula = self.bdd.implies(eq_args, eq_res);
+                    let key = if id_a < id_b {
+                        (id_a, id_b)
+                    } else {
+                        (id_b, id_a)
+                    };
+                    if !self.instantiated_ext.insert(key) {
+                        continue;
+                    }
+                    let mut eq_fields = bdd::TRUE;
+                    for (fa, fb) in f_a.iter().zip(f_b) {
+                        let e = self.eq(fa, fb);
+                        eq_fields = self.bdd.and(eq_fields, e);
+                    }
+                    let eq_whole = self.eq(&LinearTerm::var(id_a), &LinearTerm::var(id_b));
+                    let formula = self.bdd.implies(eq_fields, eq_whole);
                     self.instances.push(AxiomInstance {
-                        clause: "I10",
-                        term: i,
+                        clause: "A4",
+                        term: key.0,
                         formula,
                     });
                 }
@@ -895,9 +1570,31 @@ impl Solver {
                     AtomTerm::Mul { left, right, .. } => {
                         Some(left.eval(int_model).times(&right.eval(int_model)))
                     }
+                    AtomTerm::Len(base) => base.as_var().and_then(|bid| match &self.terms[bid] {
+                        AtomTerm::VecLit(items) => Some(Int::from_u64(items.len() as u64)),
+                        AtomTerm::EmptyMap => Some(Int::zero()),
+                        _ => None,
+                    }),
+                    AtomTerm::VariantTag { base, .. } => {
+                        base.as_var().and_then(|bid| match &self.terms[bid] {
+                            AtomTerm::VariantCtor { ctor_idx, .. } => {
+                                Some(Int::from_u64(*ctor_idx as u64))
+                            }
+                            _ => None,
+                        })
+                    }
                     AtomTerm::Var { .. }
                     | AtomTerm::PureAlt(_, _)
-                    | AtomTerm::PurePay(_, _, _, _) => None,
+                    | AtomTerm::PurePay(_, _, _, _)
+                    | AtomTerm::StrLit(_)
+                    | AtomTerm::EmptyMap
+                    | AtomTerm::VecLit(_)
+                    | AtomTerm::StructCtor(_, _)
+                    | AtomTerm::Field { .. }
+                    | AtomTerm::VariantCtor { .. }
+                    | AtomTerm::Index { .. }
+                    | AtomTerm::Update { .. }
+                    | AtomTerm::Trim(_) => None,
                 };
                 if let Some(v) = val
                     && int_model.get(&id) != Some(&v)
@@ -1158,10 +1855,97 @@ impl Solver {
             }
         }
 
+        // [M7]: Check if two vectors, strings, or maps have distinct model values
+        // although they agree in length and every mentioned element.
+        let mut extensionality_note = None;
+        let len_for_val = |v: &Int| -> Option<Int> {
+            for (tid, term) in self.terms.iter().enumerate() {
+                if let AtomTerm::Len(base) = term
+                    && base.eval(&int_model) == *v
+                {
+                    return Some(int_model.get(&tid).cloned().unwrap_or_default());
+                }
+            }
+            None
+        };
+        let mut idx_entries: Vec<(Int, Int, Int)> = Vec::new();
+        for (tid, term) in self.terms.iter().enumerate() {
+            if let AtomTerm::Index { base, index, .. } = term {
+                idx_entries.push((
+                    base.eval(&int_model),
+                    index.eval(&int_model),
+                    int_model.get(&tid).cloned().unwrap_or_default(),
+                ));
+            }
+        }
+        'm7: for i in 0..visible_vars.len() {
+            let (ref name1, tid1, _) = visible_vars[i];
+            if name1.starts_with('_') {
+                continue;
+            }
+            let Some(sort1) = self.term_sorts.get(&tid1) else {
+                continue;
+            };
+            if !sort1.is_extensional_collection() {
+                continue;
+            }
+            let val1 = int_model.get(&tid1).cloned().unwrap_or_default();
+            for (name2, tid2, _) in visible_vars.iter().skip(i + 1) {
+                if name2.starts_with('_') || tid1 == *tid2 {
+                    continue;
+                }
+                if self.term_sorts.get(tid2) != Some(sort1) {
+                    continue;
+                }
+                let val2 = int_model.get(tid2).cloned().unwrap_or_default();
+                if val1 == val2 {
+                    continue;
+                }
+                let queried_together = bool_model.iter().any(|(&bdd_var, _)| {
+                    bdd_var >= self.first_theory_var && {
+                        let row = &self.theory_atoms[bdd_var - self.first_theory_var];
+                        row.coeffs.contains_key(&tid1) && row.coeffs.contains_key(tid2)
+                    }
+                });
+                if !queried_together {
+                    continue;
+                }
+                let lens_disagree = match (len_for_val(&val1), len_for_val(&val2)) {
+                    (Some(l1), Some(l2)) => l1 != l2,
+                    _ => false,
+                };
+                if lens_disagree {
+                    continue;
+                }
+                let mut elem_disagrees = false;
+                for (b1, j1, e1) in &idx_entries {
+                    if *b1 != val1 {
+                        continue;
+                    }
+                    for (b2, j2, e2) in &idx_entries {
+                        if *b2 == val2 && j1 == j2 && e1 != e2 {
+                            elem_disagrees = true;
+                            break;
+                        }
+                    }
+                    if elem_disagrees {
+                        break;
+                    }
+                }
+                if !elem_disagrees {
+                    extensionality_note = Some(format!(
+                        "the checker cannot conclude `{name1}` and `{name2}` are equal from their length and elements alone"
+                    ));
+                    break 'm7;
+                }
+            }
+        }
+
         Counterexample {
             history,
             values,
             assumed_remark,
+            extensionality_note,
             in_loop,
             bool_model,
             int_model,

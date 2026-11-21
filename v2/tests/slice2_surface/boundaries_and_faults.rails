@@ -32,6 +32,7 @@ control direct_fault() ■ ok faults
 │ assume ⊥ "invariant failed"
 ╵
 
+//! check
 //! run run_worker(false) with [open_conn -> opened {conn#1}; close_conn -> closed] => done done trace [open_conn() -> opened {conn#1}; close_conn(conn#1) -> closed]
 //! run run_worker(true) with [open_conn -> opened {conn#1}] => done done trace [open_conn() -> opened {conn#1}; conn.release(conn#1) -> released; emit("job1") -> done; emit("worker crashed") -> done]
 //! run direct_fault() => faulted "invariant failed"

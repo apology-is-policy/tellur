@@ -31,6 +31,7 @@ control show_file(filename: string) ■ auto
 │ ┆ ■ failed
 ╵
 
+//! check
 //! run show_file("notes.txt") with [open -> opened {file_handle#1}; read -> data {"hello"}; close -> closed; decode_utf8 -> text {"hello"}] => done done trace [open("notes.txt") -> opened {file_handle#1}; read(file_handle#1) -> data {"hello"}; close(file_handle#1) -> closed; emit("hello") -> done]
 //! run show_file("absent.txt") with [open -> not_found] => done missing trace [open("absent.txt") -> not_found]
 //! run show_file("secret.txt") with [open -> denied] => done failed trace [open("secret.txt") -> denied]
