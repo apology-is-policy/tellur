@@ -561,3 +561,176 @@ control inv_fails(n: u32) ■ ok
         assert_eq!(printed, reparsed.print(), "{name}");
     }
 }
+
+#[test]
+fn g10_formatter_canonical_rails_idempotence_and_semantic_equivalence() {
+    // [G10]: Every Rails file is either already a fixed point of `surface::format`
+    // (for canonical Rails files) or formats plain-form declarations into
+    // canonical Rails while preserving elaborated core semantics and idempotence.
+    for (name, source) in surface_files() {
+        let formatted =
+            surface::format(&source).unwrap_or_else(|e| panic!("{name}: format failed: {e}"));
+        let reformatted =
+            surface::format(&formatted).unwrap_or_else(|e| panic!("{name}: reformat failed: {e}"));
+        assert_eq!(
+            formatted, reformatted,
+            "{name}: surface::format is not idempotent"
+        );
+        let orig_core = surface::elaborate(&source).unwrap().print();
+        let fmt_core = surface::elaborate(&formatted).unwrap().print();
+        assert_eq!(
+            orig_core, fmt_core,
+            "{name}: formatting changed elaborated core program"
+        );
+        // `show_file.rails`, `groups_and_auto.rails`, and `loops_and_paths.rails`
+        // are written entirely in canonical Rails form and must be fixed points.
+        if name != "spend.rails" {
+            assert_eq!(
+                source, formatted,
+                "{name} is not in canonical Rails form ([G10])"
+            );
+        }
+    }
+
+    // [G10] accepting: word-form ([G8]) and plain braced form ([G9]) format into
+    // canonical Rails glyph form with aligned arrows and aligned short labels.
+    let plain_and_word = "\
+// Top-level comment in slash form.
+pub outcome err { bad_input {code: u32} |-> 2, timeout |-> 3 }
+
+extern control check_item(x: u32) exits ok {val: u32} when val == x | missing | denied
+
+pub control handle(x: u32) where x <= 100 exits done {out: u32} | absent | failed {
+    if x == 0 => exit absent
+    delta check_item(x) {
+        ok {~v: u32},
+        missing => no_item,
+        denied => {
+            where x > 0;
+            exit failed
+        }
+    }
+    [ok]: v <- v + 1; exit done {v}
+    [no_item]: exit absent
+}
+";
+    let expected_rails = "\
+┄ Top-level comment in slash form.
+pub outcome err
+├ bad_input {code: u32} ↦ 2
+└ timeout ↦ 3
+
+extern control check_item(x: u32)
+    ■ ok {val: u32} ⇐ val = x
+    ■ missing
+    ■ denied
+
+pub control handle(x: u32) ⊢ x ≤ 100 ■ done {out: u32} │ absent │ failed
+│ ? x = 0 → ■ absent
+│ Δ check_item(x)
+│ ├ ok {~v: u32}
+│ ├ missing → no_item
+│ └ denied →
+│   ┆ ⊢ x > 0
+│   ┆ ■ failed
+╞═ ok:      v ← v + 1; ■ done {v}
+╞═ no_item: ■ absent
+╵
+";
+    let formatted = surface::format(plain_and_word).expect("format plain_and_word");
+    assert_eq!(formatted, expected_rails);
+    assert_eq!(
+        surface::format(&formatted).unwrap(),
+        formatted,
+        "idempotence on formatted plain_and_word"
+    );
+    assert_eq!(
+        surface::elaborate(plain_and_word).unwrap().print(),
+        surface::elaborate(&formatted).unwrap().print(),
+        "elaborated core semantics preserved by format"
+    );
+
+    // [G10] rejecting: invalid surface text is refused by `surface::format` with
+    // the exact clause of the violation.
+    let invalid = "\
+control bad(x: u32) ■ ok
+│ ? x = 0
+│ ■ ok
+╵
+";
+    let err = surface::format(invalid).expect_err("invalid test line must be refused");
+    assert_eq!(err.clause, "Y6");
+}
+
+#[test]
+fn u5_u17_u18_surface_warnings() {
+    // [U5] / [U18]: Warn when `¬` is applied to a path of a decision that has
+    // only one other continuing path, and suggest that path.
+    let two_path_negation = "\
+extern control step(x: u32) ■ a │ b │ c
+
+pub control run_two(x: u32) ■ done
+│ Δ step(x): a │ b │ c → ■ done
+╞═ a:  ■ done
+╞═ ¬a: ■ done
+╵
+//! check
+//! warn U5
+//! warn U18
+";
+    let report = script::check_surface(two_path_negation);
+    assert!(
+        report.failures.is_empty(),
+        "expected U5/U18 warning, got failures: {:?}",
+        report.failures
+    );
+    let elab = surface::elaborate_with_warnings(two_path_negation).unwrap();
+    assert_eq!(elab.warnings.len(), 1);
+    assert_eq!(elab.warnings[0].clause, "U5");
+    assert!(
+        elab.warnings[0].message.contains("`b`"),
+        "expected suggestion of `b`, got: {}",
+        elab.warnings[0].message
+    );
+
+    // When a decision has TWO other continuing paths (`b` and `c`), `¬a` does
+    // NOT trigger [U5] / [U18].
+    let three_path_negation = "\
+extern control step(x: u32) ■ a │ b │ c
+
+pub control run_three(x: u32) ■ done
+│ Δ step(x): a │ b │ c
+╞═ a:  ■ done
+╞═ ¬a: ■ done
+╵
+";
+    let elab3 = surface::elaborate_with_warnings(three_path_negation).unwrap();
+    assert!(
+        elab3.warnings.is_empty(),
+        "expected no warning on 3-continuing-path negation, got {:?}",
+        elab3.warnings
+    );
+
+    // [U17]: Warn when an arm introduces a route `→ name` and no later label in
+    // the body mentions `name`.
+    let unused_route = "\
+extern control step(x: u32) ■ a │ b
+
+pub control bad_route(x: u32) ■ done
+│ Δ step(x): a → unused_path │ b → ■ done
+│ ■ done
+╵
+//! check
+//! warn U17
+";
+    let report_u17 = script::check_surface(unused_route);
+    assert!(
+        report_u17.failures.is_empty(),
+        "expected U17 warning, got failures: {:?}",
+        report_u17.failures
+    );
+    let elab_u17 = surface::elaborate_with_warnings(unused_route).unwrap();
+    assert_eq!(elab_u17.warnings.len(), 1);
+    assert_eq!(elab_u17.warnings[0].clause, "U17");
+    assert!(elab_u17.warnings[0].message.contains("unused_path"));
+}

@@ -36,3 +36,5 @@ jobs:
         run: cargo run --locked --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
       - name: Check Rails surface programs and validate certificates
         run: cargo run --locked --bin vn2 -- check tests/slice1_surface/*.rails
+      - name: Check canonical Rails surface formatting
+        run: cargo run --locked --bin vn2 -- format tests/slice1_surface/show_file.rails tests/slice1_surface/groups_and_auto.rails tests/slice1_surface/loops_and_paths.rails --check

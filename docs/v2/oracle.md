@@ -1,14 +1,15 @@
 # Villanelle v2 oracle and checker
 
-Status: **slice 1, fourth checkpoint (phases 2 and 3 complete for slice 1)**, 21
-November 2026. Phases 2 and 3 of the [redesign plan](../redesign-plan.md). The
-oracle and the erased semantics run the scalar core, compared run by run by the
-differential harness across the conformance suite, the Rails surface programs
-and the random program generator, with single-step mutation tests, property
-tests of the fact logic's arithmetic axioms, the reader and elaborator of the
-Rails surface syntax, and the phase 3 checker with its ROBDD engine, `Th_Z`
-decision procedure, independent certificate kernel and counterexample model
-builder. The slice 1 native backend (phase 4) is next (section 11).
+Status: **slice 1, fifth checkpoint (phases 2 and 3 complete for slice 1, with
+the canonical Rails formatter and compiler warnings)**, 21 November 2026. Phases
+2 and 3 of the [redesign plan](../redesign-plan.md). The oracle and the erased
+semantics run the scalar core, compared run by run by the differential harness
+across the conformance suite, the Rails surface programs and the random program
+generator, with single-step mutation tests, property tests of the fact logic's
+arithmetic axioms, the reader, elaborator and canonical formatter of the Rails
+surface syntax, and the phase 3 checker with its ROBDD engine, `Th_Z` decision
+procedure, independent certificate kernel, counterexample model builder and
+warnings. The slice 1 native backend (phase 4) is next (section 11).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -29,10 +30,10 @@ can be read on its own. Nothing in it is built for speed.
 | --- | --- |
 | `int` | Mathematical integers. A formula is evaluated over them ([E-Formula]), and a result fits its type when the mathematical result lies within the type's bounds ([E-Arith]). |
 | `syntax`, `text` | The core text form (section 3): its tree, printer and reader |
-| `surface` | The Rails surface syntax ([surface](surface.md)): layout ([Y1] to [Y10]), grammar ([G1] to [G9]) and elaboration ([U1] to [U15]) into `syntax::Program` (section 9) |
+| `surface` | The Rails surface syntax ([surface](surface.md)): layout ([Y1] to [Y10]), grammar ([G1] to [G10]), elaboration ([U1] to [U15]) into `syntax::Program` and surface warnings ([U5], [U17], [U18]) (section 9) |
 | `typed`, `resolve` | The typed core, and what is checked on the way to it (section 4) |
 | `bdd`, `facts`, `kernel` | The ROBDD engine, the `Th_Z` fact logic, the certificate format and the independent certificate validator ([V1] to [V5], [M1] to [M6]) (section 10) |
-| `check` | The phase 3 checker: coverage ([K1] to [K8]), conditional facts and SSA renaming ([N1] to [N5]), acknowledgement ([C2]), availability ([O1], [O2], [O4], [O6]), obligations ([P1] to [P8]) and effects ([F3]) (section 10) |
+| `check` | The phase 3 checker: coverage ([K1] to [K8]), conditional facts and SSA renaming ([N1] to [N5]), acknowledgement ([C2]), availability ([O1], [O2], [O4], [O6]), obligations ([P1] to [P8]), effects ([F3]) and impossible-arm warnings ([U16]) (section 10) |
 | `oracle` | Section 6 of the core, one function for each rule |
 | `erased` | Section 9 of the core ([R1] to [R3]): machine-word slots, wrapping arithmetic and one bit for each atom a selector mentions |
 | `differential` | Theorem 3 tested run by run: where the oracle is not stuck, the erased run with the host's answers replayed gives the same observation |
@@ -53,6 +54,7 @@ cd v2
 cargo test                                     # unit tests and the conformance suite
 cargo run --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
 cargo run --bin vn2 -- check tests/slice1_surface/*.rails --certificates
+cargo run --bin vn2 -- format tests/slice1_surface/show_file.rails --check
 cargo run --bin vn2 -- run tests/slice1/e-loop.core gcd 48 18
 cargo run --bin vn2 -- run tests/slice1_surface/spend.rails spend 10 4 --arithmetic
 cargo run --bin vn2 -- print tests/slice1_surface/show_file.rails
@@ -302,30 +304,38 @@ clause of [surface.md](surface.md) that excludes the text:
   `  ┆ ` blocks, and horizontal arms `: a │ b` ([Y7]); content-indented
   statement continuations ([Y8]); blank rail lines and `┄` / `//` comments
   ([Y9]); prefix mismatch rejection ([Y10]).
-- **Grammar ([G1] to [G9]).** Multi-line `■` contract entries ([G1]); `outcome`
-  declarations, `…group` entries and single-name outcome contracts ([G2]);
-  callee-first `■ auto` contract inference on private controls with group
-  preservation and literal type agreement ([G3]); `↦ number` process exit
-  statuses on outcome alternatives ([G4]); mask precedence and single-path `¬`
-  ([G5]); first-line `⊢` loop invariants ([G6]); ASCII word spellings for all
-  glyphs ([G7], [G8]); plain braced bodies, arms and `[mask]:` labels ([G9]).
-- **Elaboration ([U1] to [U4], [U6] to [U9], [U13] to [U15]).** Default and
+- **Grammar and formatter ([G1] to [G10]).** Multi-line `■` contract entries
+  ([G1]); `outcome` declarations, `…group` entries and single-name outcome
+  contracts ([G2]); callee-first `■ auto` contract inference on private controls
+  with group preservation and literal type agreement ([G3]); `↦ number` process
+  exit statuses on outcome alternatives ([G4]); mask precedence and single-path
+  `¬` ([G5]); first-line `⊢` loop invariants ([G6]); ASCII word spellings for
+  all glyphs ([G7], [G8]); plain braced bodies, arms and `[mask]:` labels
+  ([G9]); and `surface::format` (`vn2 format FILE... [--write | --check]`),
+  which writes Rails, word-form and plain-form programs in canonical Rails glyph
+  text with aligned vertical `→` arrows and aligned consecutive short labels
+  while preserving elaborated core semantics and idempotence ([G10]).
+- **Elaboration and warnings ([U1] to [U9], [U13] to [U18]).** Default and
   explicit (`name : Δ`) site names with collision checking ([U1]); path names
   from continuing arms, routes `→ name` and loop leaves `□ a`, and suppression
   on terminators and blocks ([U2]); qualified `site.alt` and unqualified path
   disjunctions with default-name ambiguity checking and route merging ([U3]);
-  preceding-site scope checking ([U4]); statement elaboration under selection
-  `σ`, including `? e → B`, Boolean decisions `Δ e` and single-outcome bare
-  calls ([U6]); the acknowledgement rule for explicit and `…group` arms ([U7]);
-  arm patterns `[~] name [: Type]`, patternless arms with hidden payload vars,
-  and targets including `→ ■` ([U8]); loop alternatives collected from `□`,
+  preceding-site scope checking ([U4]); two-path negation warnings ([U5],
+  [U18]); statement elaboration under selection `σ`, including `? e → B`,
+  Boolean decisions `Δ e` and single-outcome bare calls ([U6]); the
+  acknowledgement rule for explicit and `…group` arms ([U7]); arm patterns
+  `[~] name [: Type]`, patternless arms with hidden payload vars, and targets
+  including `→ ■` ([U8]); loop alternatives collected from `□`,
   `{name, field: expr}` outputs, inner variable renaming for [W4], bare `□` and
   zero-`□` loops ([U9]); adapters `■ Δ` ([U13]); `forward` with group and
-  entry matching ([U14]); and exit arity checking ([U15]).
+  entry matching ([U14]); exit arity checking ([U15]); impossible-arm warnings
+  when the fact logic proves an alternative cannot happen and the arm is not `⊥`
+  ([U16]); and unused-route warnings when a route `→ name` is never mentioned in
+  a later label mask ([U17]).
 
-`v2/tests/surface.rs` and `v2/tests/slice1_surface/*.rails` test every one of
-the 29 clauses with both an accepting program (executed in the oracle and
-compared with the erased semantics) and a rejecting program (`//! reject`).
+`v2/tests/surface.rs`, `v2/tests/checker.rs` and `v2/tests/slice1_surface/*.rails`
+test every one of the 33 surface clauses of slice 1 with both an accepting
+program and a rejecting or warning (`//! reject` / `//! warn`) test.
 
 ## 10. The phase 3 checker, certificates and counterexamples
 

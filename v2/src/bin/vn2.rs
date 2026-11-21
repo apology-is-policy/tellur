@@ -9,6 +9,7 @@ use villanelle_v2::{check, erased, load, load_surface, script, surface, text};
 const USAGE: &str = "\
 vn2 test FILE...                          carry out the directives of core or Rails files
 vn2 check FILE... [--certificates]        check core or Rails files in the Phase 3 checker
+vn2 format FILE... [--write | --check]    format Rails files into canonical Rails glyph form
 vn2 run FILE ENTRY [VALUE...] [OPTIONS]   run one control in the oracle
 vn2 print FILE                            print a core or Rails program in the core glyph form
 
@@ -168,11 +169,53 @@ fn check_files(arguments: &[String]) -> Result<bool, String> {
     Ok(failed == 0)
 }
 
+fn format_files(arguments: &[String]) -> Result<bool, String> {
+    let mut write_in_place = false;
+    let mut check_only = false;
+    let mut files = Vec::new();
+    for argument in arguments {
+        match argument.as_str() {
+            "--write" => write_in_place = true,
+            "--check" => check_only = true,
+            _ => files.push(argument),
+        }
+    }
+    if files.is_empty() || (write_in_place && check_only) {
+        return Err(USAGE.to_string());
+    }
+    let mut ok = true;
+    for path in &files {
+        let source = read(path)?;
+        let formatted = match surface::format(&source) {
+            Ok(text) => text,
+            Err(error) => {
+                println!("{path}:{error}");
+                ok = false;
+                continue;
+            }
+        };
+        if check_only {
+            if formatted != source {
+                println!("{path}: not in canonical Rails form");
+                ok = false;
+            }
+        } else if write_in_place {
+            if formatted != source {
+                std::fs::write(path, formatted).map_err(|error| format!("{path}: {error}"))?;
+            }
+        } else {
+            print!("{formatted}");
+        }
+    }
+    Ok(ok)
+}
+
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let result = match arguments.split_first() {
         Some((command, rest)) if command == "test" && !rest.is_empty() => test(rest),
         Some((command, rest)) if command == "check" && !rest.is_empty() => check_files(rest),
+        Some((command, rest)) if command == "format" && !rest.is_empty() => format_files(rest),
         Some((command, rest)) if command == "run" => run_one(rest),
         Some((command, [path])) if command == "print" => read(path).and_then(|source| {
             let tree = if is_core_file(path) {

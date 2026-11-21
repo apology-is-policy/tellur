@@ -935,3 +935,67 @@ fn every_stuck_mutation_and_dropped_invariant_is_rejected_by_the_checker() {
     );
     assert_eq!(dropped_invariants, 8, "expected 8 DropInvariant mutants");
 }
+
+#[test]
+fn u16_warns_when_alternative_is_proved_impossible_without_bottom() {
+    // [U16]: When the fact logic proves that an alternative of a decision
+    // cannot happen and the arm is not `⊥`, the compiler warns and suggests `⊥`.
+    let with_exit_instead_of_bottom = "\
+extern control checked_sub(a: u32, b: u32)
+    ■ difference {value: u32} ⇐ value = a - b
+    ■ underflow ⇐ a < b
+
+pub control spend(total: u32, used: u32) ■ left {value: u32} │ over
+│ ? used > total → ■ over
+│ Δ checked_sub(total, used): difference {value} │ underflow → ■ over
+│ ■ left {value}
+╵
+//! warn U16
+";
+    let report = villanelle_v2::script::check_surface(with_exit_instead_of_bottom);
+    assert!(
+        report.failures.is_empty(),
+        "expected U16 warning, got failures: {:?}",
+        report.failures
+    );
+
+    // When the arm IS marked `→ ⊥`, no [U16] warning is emitted.
+    let with_bottom = "\
+extern control checked_sub(a: u32, b: u32)
+    ■ difference {value: u32} ⇐ value = a - b
+    ■ underflow ⇐ a < b
+
+pub control spend(total: u32, used: u32) ■ left {value: u32} │ over
+│ ? used > total → ■ over
+│ Δ checked_sub(total, used): difference {value} │ underflow → ⊥
+│ ■ left {value}
+╵
+";
+    let prog = villanelle_v2::load_surface(with_bottom).unwrap();
+    let checked = check::check(&prog).unwrap();
+    assert!(
+        checked.warnings.is_empty(),
+        "expected no U16 warning when `→ ⊥` is used, got {:?}",
+        checked.warnings
+    );
+
+    // Pure operation Determinism ([I10]) also triggers [U16] when a second call
+    // with the same arguments leaves a contradicting arm without `→ ⊥`.
+    let pure_second_call = "\
+extern control classify(x: u32) ■ low │ high
+
+pub control twice(x: u32) ■ same │ diff
+│ Δ classify(x)
+│ ├ low →
+│ │ ┆ Δ classify(x): low → ■ same │ high → ■ diff
+│ └ high → ■ same
+╵
+//! warn U16
+";
+    let report2 = villanelle_v2::script::check_surface(pure_second_call);
+    assert!(
+        report2.failures.is_empty(),
+        "expected U16 warning on second pure call, got failures: {:?}",
+        report2.failures
+    );
+}

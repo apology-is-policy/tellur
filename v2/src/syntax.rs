@@ -255,6 +255,14 @@ fn print_expr(out: &mut String, expr: &Expr, minimum: u8) {
     }
 }
 
+impl std::fmt::Display for Expr {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = String::new();
+        print_expr(&mut s, self, 0);
+        formatter.write_str(&s)
+    }
+}
+
 fn print_list(out: &mut String, items: &[Expr]) {
     for (index, item) in items.iter().enumerate() {
         if index > 0 {

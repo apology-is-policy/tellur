@@ -57,20 +57,25 @@ impl fmt::Display for Error {
 #[derive(Clone, Debug)]
 pub struct CheckedProgram {
     pub certificates: Vec<(String, u32, &'static str, Certificate)>,
+    pub warnings: Vec<crate::surface::Warning>,
 }
 
 /// Checks every function and defined control of `program`.
 pub fn check(program: &Program) -> Result<CheckedProgram, Error> {
     let mut certificates = Vec::new();
+    let mut warnings = Vec::new();
     for (id, function) in program.functions.iter().enumerate() {
         check_function(program, id, function, &mut certificates)?;
     }
     for (id, control) in program.controls.iter().enumerate() {
         if control.body.is_some() {
-            check_control(program, id, control, &mut certificates)?;
+            check_control(program, id, control, &mut certificates, &mut warnings)?;
         }
     }
-    Ok(CheckedProgram { certificates })
+    Ok(CheckedProgram {
+        certificates,
+        warnings,
+    })
 }
 
 #[derive(Clone)]
@@ -968,6 +973,7 @@ struct BodyChecker<'a> {
     /// Constant local map ([I3]).
     constants: HashMap<VarId, Int>,
     certificates: &'a mut Vec<(String, u32, &'static str, Certificate)>,
+    warnings: &'a mut Vec<crate::surface::Warning>,
 }
 
 impl<'a> BodyChecker<'a> {
@@ -1441,6 +1447,54 @@ impl<'a> BodyChecker<'a> {
                         }
                     }
 
+                    // [U16]: When the fact logic proves that an alternative of
+                    // a decision cannot happen and the arm is not `⊥`, warn and
+                    // suggest `⊥`.
+                    let mut checked_r_i_feasible: Option<bool> = None;
+                    for (pos, arm) in arms.iter().enumerate() {
+                        let atom = arm_atoms[pos];
+                        let contract_alt = &callee.contract[arm.alternative];
+                        if contract_alt.condition.is_none() && !callee.is_pure() {
+                            continue;
+                        }
+                        let has_impossible = statements.iter().any(|s| {
+                            if matches!(s.command, Command::Impossible) {
+                                let sel = self.selector(&s.selector);
+                                self.solver.bdd.implies(atom, sel) == bdd::TRUE
+                            } else {
+                                false
+                            }
+                        });
+                        if has_impossible {
+                            continue;
+                        }
+                        let r_i_feasible = *checked_r_i_feasible.get_or_insert_with(|| {
+                            matches!(
+                                self.solver.decide(r_i, &visible_vars, in_loop),
+                                Decision::Refuted(_)
+                            )
+                        });
+                        if !r_i_feasible {
+                            break;
+                        }
+                        if let Decision::Proved(cert) =
+                            self.solver.decide(atom, &visible_vars, in_loop)
+                        {
+                            kernel::validate(&cert).expect("valid U16 certificate");
+                            self.certificates
+                                .push((self.control.name.clone(), line, "U16", cert));
+                            self.warnings.push(crate::surface::Warning {
+                                control: self.control.name.clone(),
+                                line,
+                                clause: "U16",
+                                message: format!(
+                                    "the alternative `{}` of `{}` cannot happen here; mark its arm `→ ⊥`",
+                                    contract_alt.name, callee.name
+                                ),
+                            });
+                        }
+                    }
+
                     // [K3]: Lᵢ₊₁ = Lᵢ ∧ (gᵢ → d.a₁ ∨ … ∨ d.aₙ)
                     let g_imp_any = self.solver.bdd.implies(g_i, any_arm);
                     live = self.solver.bdd.and(live, g_imp_any);
@@ -1801,6 +1855,7 @@ fn check_control(
     _id: ControlId,
     control: &Control,
     certificates: &mut Vec<(String, u32, &'static str, Certificate)>,
+    warnings: &mut Vec<crate::surface::Warning>,
 ) -> Result<(), Error> {
     let body = control.body.as_ref().expect("a defined control");
     let mut history_names = Vec::new();
@@ -1829,6 +1884,7 @@ fn check_control(
         entry_parameters: Vec::new(),
         constants,
         certificates,
+        warnings,
     };
 
     for param_idx in 0..control.parameters.len() {

@@ -207,6 +207,7 @@ enum Directive {
     Run(Box<RunSpec>),
     Reject { line: usize, clause: String },
     Check { line: usize },
+    Warn { line: usize, clause: String },
 }
 
 fn directive(line: usize, text: &str) -> Result<Directive, String> {
@@ -214,12 +215,19 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
         pieces: pieces(text)?,
         at: 0,
     };
-    let kind = reader.word("`run`, `erased`, `check` or `reject`")?;
+    let kind = reader.word("`run`, `erased`, `check`, `warn` or `reject`")?;
     if kind == "check" {
         if reader.at != reader.pieces.len() {
             return Err("text after `check`".to_string());
         }
         return Ok(Directive::Check { line });
+    }
+    if kind == "warn" {
+        let clause = reader.word("a warning clause")?;
+        if reader.at != reader.pieces.len() {
+            return Err("text after `warn` clause".to_string());
+        }
+        return Ok(Directive::Warn { line, clause });
     }
     if kind == "reject" {
         return Ok(Directive::Reject {
@@ -336,7 +344,7 @@ fn directives(source: &str) -> Result<Vec<Directive>, String> {
             continue;
         };
         let rest = rest.trim();
-        let starts = ["run ", "erased ", "reject ", "check"]
+        let starts = ["run ", "erased ", "reject ", "warn ", "check"]
             .iter()
             .any(|word| rest.starts_with(word));
         match joined.last_mut() {
@@ -406,11 +414,15 @@ fn check_with(source: &str, is_surface: bool) -> Report {
     };
     let rejection = directives.iter().find_map(|directive| match directive {
         Directive::Reject { line, clause } => Some((*line, clause.clone())),
-        Directive::Run(_) | Directive::Check { .. } => None,
+        Directive::Run(_) | Directive::Check { .. } | Directive::Warn { .. } => None,
     });
+    let mut all_warnings: Vec<surface::Warning> = Vec::new();
     let tree = if is_surface {
-        match (surface::elaborate(source), &rejection) {
-            (Ok(tree), _) => tree,
+        match (surface::elaborate_with_warnings(source), &rejection) {
+            (Ok(elaborated), _) => {
+                all_warnings.extend(elaborated.warnings);
+                elaborated.program
+            }
             (Err(error), Some((_, clause))) if error.clause == *clause => {
                 report.rejected = Some(clause.clone());
                 if directives.len() > 1 {
@@ -491,13 +503,38 @@ fn check_with(source: &str, is_surface: bool) -> Report {
         },
         (Ok(program), None) => program,
     };
+    let needs_checker = directives
+        .iter()
+        .any(|d| matches!(d, Directive::Check { .. } | Directive::Warn { .. }));
+    if needs_checker {
+        match check::check(&program) {
+            Ok(checked) => {
+                all_warnings.extend(checked.warnings);
+            }
+            Err(error) => {
+                for directive in &directives {
+                    if let Directive::Check { line } | Directive::Warn { line, .. } = directive {
+                        report
+                            .failures
+                            .push(format!("line {line}: check failed: {error}"));
+                    }
+                }
+            }
+        }
+    }
     for directive in &directives {
-        if let Directive::Check { line } = directive
-            && let Err(error) = check::check(&program)
-        {
-            report
-                .failures
-                .push(format!("line {line}: check failed: {error}"));
+        if let Directive::Warn { line, clause } = directive {
+            let matched = all_warnings.iter().any(|w| {
+                w.clause == clause.as_str()
+                    || (clause == "U18" && w.clause == "U5")
+                    || (clause == "U5" && w.clause == "U18")
+            });
+            if !matched {
+                report.failures.push(format!(
+                    "line {line}: expected a warning by [{clause}], got {:?}",
+                    all_warnings
+                ));
+            }
         }
     }
     for directive in directives {

@@ -15,8 +15,8 @@ pub control load(id: u32) ■ loaded {value: u32} │ …storage_error
 │ ■ Δ raw_load(id)
 │ ├ loaded
 │ ├ too_large
-│ ├ missing           → loaded {0}
-│ ├ invalid {code}    → invalid_file {code}
+│ ├ missing            → loaded {0}
+│ ├ invalid {code}     → invalid_file {code}
 │ └ read_failed {code} → storage_failed {code}
 ╵
 
