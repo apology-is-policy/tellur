@@ -33,11 +33,11 @@ jobs:
       - name: Test
         run: cargo test --locked
       - name: Conformance suite through the command line
-        run: cargo run --locked --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
+        run: cargo run --locked --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails tests/slice2/*.core tests/slice2_surface/*.rails
       - name: Check Rails surface programs and validate certificates
-        run: cargo run --locked --bin vn2 -- check tests/slice1_surface/*.rails
+        run: cargo run --locked --bin vn2 -- check tests/slice1_surface/*.rails tests/slice2_surface/*.rails
       - name: Check canonical Rails surface formatting
-        run: cargo run --locked --bin vn2 -- format tests/slice1_surface/show_file.rails tests/slice1_surface/groups_and_auto.rails tests/slice1_surface/loops_and_paths.rails --check
+        run: cargo run --locked --bin vn2 -- format tests/slice1_surface/show_file.rails tests/slice1_surface/groups_and_auto.rails tests/slice1_surface/loops_and_paths.rails tests/slice2_surface/*.rails --check
       - name: Expand calls (Theorem 4) and emit Phase 4 typed LLVM IR and C ABI
         run: |
           cargo run --locked --bin vn2 -- expand tests/slice1_surface/groups_and_auto.rails > /dev/null
