@@ -1,0 +1,21 @@
+┄ Section 2.1 of `docs/v2/facts.md` in Rails form and in the plain form ([G9]).
+extern control checked_sub(a: u32, b: u32)
+    ■ difference {value: u32} ⇐ value = a - b
+    ■ underflow ⇐ a < b
+
+pub control spend(total: u32, used: u32) ■ left {value: u32} │ over
+│ ? used > total → ■ over
+│ Δ checked_sub(total, used): difference {value} │ underflow → ⊥
+│ ■ left {value}
+╵
+
+control spend_plain(total: u32, used: u32) exits left {value: u32} | over {
+    if used > total => exit over
+    delta checked_sub(total, used) { difference {value}, underflow => impossible }
+    exit left {value}
+}
+
+//! run spend(10, 4) with arithmetic => done left {6}
+//! run spend(4, 10) with arithmetic => done over
+//! run spend_plain(10, 4) with arithmetic => done left {6}
+//! run spend_plain(4, 10) with arithmetic => done over

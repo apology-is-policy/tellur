@@ -4,12 +4,12 @@ use std::process::ExitCode;
 use villanelle_v2::host::{Arithmetic, Host, Script};
 use villanelle_v2::int::Int;
 use villanelle_v2::oracle::{Config, End, Value, run};
-use villanelle_v2::{erased, load, script, text};
+use villanelle_v2::{erased, load, load_surface, script, surface, text};
 
 const USAGE: &str = "\
-vn2 test FILE...                          carry out the directives of core text files
+vn2 test FILE...                          carry out the directives of core or Rails files
 vn2 run FILE ENTRY [VALUE...] [OPTIONS]   run one control in the oracle
-vn2 print FILE                            print a program in the glyph form
+vn2 print FILE                            print a core or Rails program in the core glyph form
 
 Options of `run`:
   --arithmetic   the host computes the checked arithmetic of the prelude
@@ -17,6 +17,10 @@ Options of `run`:
   --fuel N       stop after N steps (default: 1000000)
   --erased       run under the erased semantics, which checks nothing
 ";
+
+fn is_core_file(path: &str) -> bool {
+    path.ends_with(".core")
+}
 
 fn read(path: &str) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|error| format!("{path}: {error}"))
@@ -27,7 +31,12 @@ fn test(files: &[String]) -> Result<bool, String> {
     let mut runs = 0;
     let mut compared = 0;
     for path in files {
-        let report = script::check(&read(path)?);
+        let source = read(path)?;
+        let report = if is_core_file(path) {
+            script::check(&source)
+        } else {
+            script::check_surface(&source)
+        };
         runs += report.runs;
         compared += report.compared;
         for failure in &report.failures {
@@ -56,7 +65,12 @@ fn run_one(arguments: &[String]) -> Result<bool, String> {
     let [path, entry, rest @ ..] = arguments else {
         return Err(USAGE.to_string());
     };
-    let program = load(&read(path)?)?;
+    let source = read(path)?;
+    let program = if is_core_file(path) {
+        load(&source)?
+    } else {
+        load_surface(&source)?
+    };
     let mut config = Config::default();
     let mut arithmetic = false;
     let mut erase = false;
@@ -106,7 +120,11 @@ fn main() -> ExitCode {
         Some((command, rest)) if command == "test" && !rest.is_empty() => test(rest),
         Some((command, rest)) if command == "run" => run_one(rest),
         Some((command, [path])) if command == "print" => read(path).and_then(|source| {
-            let tree = text::parse(&source).map_err(|error| error.to_string())?;
+            let tree = if is_core_file(path) {
+                text::parse(&source).map_err(|error| error.to_string())?
+            } else {
+                surface::elaborate(&source).map_err(|error| error.to_string())?
+            };
             print!("{}", tree.print());
             Ok(true)
         }),

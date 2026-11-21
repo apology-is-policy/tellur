@@ -1,0 +1,38 @@
+┄ Adapted from section 2 of `docs/v2/surface.md` (`show_file`), with scalar
+┄ handles so that it runs in the oracle of slice 1.
+extern control open(id: u32) ■ opened {file: u32} │ not_found │ denied uses io
+extern control read(file: u32) ■ data {contents: u32} │ failed uses io
+extern control close(file: u32) ■ closed │ failed uses io
+extern control decode(contents: u32) ■ text {value: u32} │ invalid
+extern control emit(value: u32) ■ sent uses io
+
+control show_file(id: u32) ■ auto uses io
+│ Δ open(id)
+│ ├ opened {file}
+│ ├ not_found → ■ missing
+│ └ denied    → ■ failed
+│ Δ read(file): data {contents} │ failed
+│
+│ ┄ Always attempt close, even if reading failed.
+│ Δ close(file): closed │ failed
+│
+╞═ data
+│ ┆ Δ decode(contents): text {text} → decoded │ invalid
+│
+╞═ decoded ∧ closed
+│ ┆ emit(text)
+│ ┆ ■ done {text}
+╞═ read.failed ∨ close.failed ∨ invalid
+│ ┆ ■ failed
+╵
+
+//! run show_file(1) with [open -> not_found] => done missing
+//!     trace [open(1) -> not_found {}]
+//! run show_file(1) with [open -> denied] => done failed
+//!     trace [open(1) -> denied {}]
+//! run show_file(1) with [open -> opened {10}; read -> data {42}; close -> closed; decode -> text {42}; emit -> sent] => done done {42}
+//!     trace [open(1) -> opened {10}; read(10) -> data {42}; close(10) -> closed {}; emit(42) -> sent {}]
+//! run show_file(1) with [open -> opened {10}; read -> failed; close -> closed] => done failed
+//!     trace [open(1) -> opened {10}; read(10) -> failed {}; close(10) -> closed {}]
+//! run show_file(1) with [open -> opened {10}; read -> data {42}; close -> closed; decode -> invalid] => done failed
+//!     trace [open(1) -> opened {10}; read(10) -> data {42}; close(10) -> closed {}]

@@ -1,11 +1,12 @@
 # Villanelle v2 oracle
 
-Status: **slice 1, second checkpoint**, 21 November 2026. Phase 2 of the
-[redesign plan](../redesign-plan.md). The oracle and the erased semantics run
-the scalar core, compared run by run by the differential harness across the
-conformance suite and the random program generator, with single-step mutation
-tests and property tests of the fact logic's arithmetic axioms. The reader of
-Rails is the next checkpoint of this slice (section 9).
+Status: **slice 1, third checkpoint (phase 2 complete for slice 1)**, 21
+November 2026. Phase 2 of the [redesign plan](../redesign-plan.md). The oracle
+and the erased semantics run the scalar core, compared run by run by the
+differential harness across the conformance suite, the Rails surface programs
+and the random program generator, with single-step mutation tests, property
+tests of the fact logic's arithmetic axioms, and the reader and elaborator of
+the Rails surface syntax. The slice 1 checker (phase 3) is next (section 10).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -26,6 +27,7 @@ can be read on its own. Nothing in it is built for speed.
 | --- | --- |
 | `int` | Mathematical integers. A formula is evaluated over them ([E-Formula]), and a result fits its type when the mathematical result lies within the type's bounds ([E-Arith]). |
 | `syntax`, `text` | The core text form (section 3): its tree, printer and reader |
+| `surface` | The Rails surface syntax ([surface](surface.md)): layout ([Y1] to [Y10]), grammar ([G1] to [G9]) and elaboration ([U1] to [U15]) into `syntax::Program` (section 9) |
 | `typed`, `resolve` | The typed core, and what is checked on the way to it (section 4) |
 | `oracle` | Section 6 of the core, one function for each rule |
 | `erased` | Section 9 of the core ([R1] to [R3]): machine-word slots, wrapping arithmetic and one bit for each atom a selector mentions |
@@ -45,9 +47,10 @@ Every value has kind `copy`, so no slot is moved and no borrow tag exists yet.
 ```sh
 cd v2
 cargo test                                     # unit tests and the conformance suite
-cargo run --bin vn2 -- test tests/slice1/*.core
+cargo run --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
 cargo run --bin vn2 -- run tests/slice1/e-loop.core gcd 48 18
-cargo run --bin vn2 -- print tests/slice1/words.core
+cargo run --bin vn2 -- run tests/slice1_surface/spend.rails spend 10 4 --arithmetic
+cargo run --bin vn2 -- print tests/slice1_surface/show_file.rails
 ```
 
 `vn2 run FILE ENTRY VALUES...` prints the events of the run and how it ends:
@@ -278,14 +281,55 @@ stuck state above: coverage [K7] is X1, [P1] to [P5] are X7, and [P6] is X6.
   seeds of `generate::valid`, the stuck mutants reach all 15 stuck states of
   slice 1. They are the target rejection set for the phase 3 checker.
 
-## 9. What this checkpoint leaves open
+## 9. The Rails surface reader and elaborator
 
-- **The reader of Rails.** The corpus is written in Rails. The plan's exit
-  for phase 2, that the oracle runs the whole paper corpus, needs the reader
-  and the elaboration of the [surface](surface.md), and the later slices.
+`surface::elaborate` reads a program in the Rails surface syntax (or the plain
+braced form of [G9]) and translates it into a `syntax::Program`, which
+`resolve::resolve` then turns into the typed core. Every refusal names the
+clause of [surface.md](surface.md) that excludes the text:
+
+- **Layout ([Y1] to [Y10]).** Column-1 declarations and 4-space signature
+  continuations ([Y1]); two-column rail segments `│ `, `║ `, `┆ ` and finished
+  arm rails `  ` before `┆ ` ([Y2]); control rails `│ ` closed by `╵` ([Y3]);
+  loop rails `║ ` ([Y4]); label junctions `╞═` on a control's rail and `╠═` on
+  a loop's rail, never inside a `┆ ` block ([Y5]); tests `? e →` on one line or
+  opening a `┆ ` block ([Y6]); vertical arms `├ ` and `└ ` with `│ ┆ ` and
+  `  ┆ ` blocks, and horizontal arms `: a │ b` ([Y7]); content-indented
+  statement continuations ([Y8]); blank rail lines and `┄` / `//` comments
+  ([Y9]); prefix mismatch rejection ([Y10]).
+- **Grammar ([G1] to [G9]).** Multi-line `■` contract entries ([G1]); `outcome`
+  declarations, `…group` entries and single-name outcome contracts ([G2]);
+  callee-first `■ auto` contract inference on private controls with group
+  preservation and literal type agreement ([G3]); `↦ number` process exit
+  statuses on outcome alternatives ([G4]); mask precedence and single-path `¬`
+  ([G5]); first-line `⊢` loop invariants ([G6]); ASCII word spellings for all
+  glyphs ([G7], [G8]); plain braced bodies, arms and `[mask]:` labels ([G9]).
+- **Elaboration ([U1] to [U4], [U6] to [U9], [U13] to [U15]).** Default and
+  explicit (`name : Δ`) site names with collision checking ([U1]); path names
+  from continuing arms, routes `→ name` and loop leaves `□ a`, and suppression
+  on terminators and blocks ([U2]); qualified `site.alt` and unqualified path
+  disjunctions with default-name ambiguity checking and route merging ([U3]);
+  preceding-site scope checking ([U4]); statement elaboration under selection
+  `σ`, including `? e → B`, Boolean decisions `Δ e` and single-outcome bare
+  calls ([U6]); the acknowledgement rule for explicit and `…group` arms ([U7]);
+  arm patterns `[~] name [: Type]`, patternless arms with hidden payload vars,
+  and targets including `→ ■` ([U8]); loop alternatives collected from `□`,
+  `{name, field: expr}` outputs, inner variable renaming for [W4], bare `□` and
+  zero-`□` loops ([U9]); adapters `■ Δ` ([U13]); `forward` with group and
+  entry matching ([U14]); and exit arity checking ([U15]).
+
+`v2/tests/surface.rs` and `v2/tests/slice1_surface/*.rails` test every one of
+the 29 clauses with both an accepting program (executed in the oracle and
+compared with the erased semantics) and a rejecting program (`//! reject`).
+
+## 10. What this checkpoint leaves open
+
 - **The slice 1 checker (phase 3).** Checked on the typed core, tested against
   `generate::valid` (no checked program is stuck in the oracle) and
   `mutate::mutate` (stuck mutants are rejected).
+- **Later slices in phase 2.** Slice 2 (data, moves, resources, captured
+  outcomes, faults, boundaries), slice 3 (borrows and views) and slice 4
+  (tasks), which will allow the oracle to run the full paper corpus.
 - **Operators that the surface does not have yet.** The wrapping and
   saturating operators and the numeric conversions are named in the core and
   the fact logic and have no spelling. They belong to phase 5.

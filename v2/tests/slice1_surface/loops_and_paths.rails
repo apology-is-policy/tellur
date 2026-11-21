@@ -1,0 +1,47 @@
+┄ Loops ([Y4], [G6], [U9]), Boolean decisions ([U6]), route merging ([U3]) and
+┄ vertical arm blocks (`│ ┆` and `  ┆`, [Y2], [Y7]).
+extern control classify(x: u32) ■ before │ equal │ after
+
+pub control step_search(start_in: u32, count_in: u32, upper: bool)
+    ■ position {index: u32}
+│ ↻ search(start: u32 := start_in, count: u32 := count_in)
+│ ║ ⊢ start + count ≤ start_in + count_in
+│ ║ ? count = 0 → ■ position {start}
+│ ║ half: u32 := count ÷ 2
+│ ║ middle: u32 := start + half
+│ ║ Δ classify(middle): before │ equal │ after
+│ ║
+│ ╠═ equal
+│ ║ ┆ Δ upper: true → high │ false → low
+│ ║
+│ ╠═ after ∨ low
+│ ║ ┆ ↑ search(start, half)
+│ ╠═ before ∨ high
+│ ║ ┆ ↑ search(middle + 1, count - half - 1)
+╵
+
+┄ Loop with `□ a {name, field: expr}` and inner variable renaming ([U9]), plus
+┄ a bare-`□` loop and vertical arm blocks.
+pub control sum_and_trim(n: u32) ■ done {result: u32}
+│ ↻ accumulate(i: u32 := 0, ~total: u32 := 0)
+│ ║ ? i = n → □ finished {total}
+│ ║ total ← total + i
+│ ║ ↑ accumulate(i + 1, total)
+╞═ finished: ⊢ total ≥ 0
+│ ~rem: u32 := total
+│ ↻ shrink
+│ ║ Δ classify(rem)
+│ ║ ├ before →
+│ ║ │ ┆ □
+│ ║ ├ equal →
+│ ║ │ ┆ rem ← rem + 1
+│ ║ │ ┆ □
+│ ║ └ after →
+│ ║   ┆ rem ← rem - 1
+│ ║   ┆ □
+│ ■ done {rem}
+╵
+
+//! run step_search(0, 4, false) with [classify -> equal; classify -> after; classify -> before] => done position {1}
+//! run sum_and_trim(4) with [classify -> after] => done done {5}
+//! run sum_and_trim(4) with [classify -> equal] => done done {7}

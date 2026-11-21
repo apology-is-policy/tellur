@@ -32,7 +32,7 @@ use crate::differential::{Verdict, compare};
 use crate::host::{Answer, Arithmetic, Host, Script};
 use crate::int::Int;
 use crate::oracle::{Config, End, Event, Value};
-use crate::{erased, resolve, text};
+use crate::{erased, resolve, surface, text};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -379,6 +379,16 @@ fn events(trace: &[Event]) -> String {
 
 /// Reads a core text file and carries out its directives.
 pub fn check(source: &str) -> Report {
+    check_with(source, false)
+}
+
+/// Reads a Rails surface file, elaborates it into the core form, and carries
+/// out its directives.
+pub fn check_surface(source: &str) -> Report {
+    check_with(source, true)
+}
+
+fn check_with(source: &str, is_surface: bool) -> Report {
     let mut report = Report::default();
     let directives = match directives(source) {
         Ok(directives) => directives,
@@ -391,13 +401,40 @@ pub fn check(source: &str) -> Report {
         Directive::Reject { line, clause } => Some((*line, clause.clone())),
         Directive::Run(_) => None,
     });
-    let tree = match text::parse(source) {
-        Ok(tree) => tree,
-        Err(error) => {
-            report
-                .failures
-                .push(format!("the text is not read: {error}"));
-            return report;
+    let tree = if is_surface {
+        match (surface::elaborate(source), &rejection) {
+            (Ok(tree), _) => tree,
+            (Err(error), Some((_, clause))) if error.clause == *clause => {
+                report.rejected = Some(clause.clone());
+                if directives.len() > 1 {
+                    report
+                        .failures
+                        .push("a refused program has no runs".to_string());
+                }
+                return report;
+            }
+            (Err(error), Some((line, clause))) => {
+                report.failures.push(format!(
+                    "line {line}: expected a refusal by [{clause}], got: {error}"
+                ));
+                return report;
+            }
+            (Err(error), None) => {
+                report
+                    .failures
+                    .push(format!("the program is refused: {error}"));
+                return report;
+            }
+        }
+    } else {
+        match text::parse(source) {
+            Ok(tree) => tree,
+            Err(error) => {
+                report
+                    .failures
+                    .push(format!("the text is not read: {error}"));
+                return report;
+            }
         }
     };
     let program = match (resolve::resolve(&tree), rejection) {

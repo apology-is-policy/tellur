@@ -33,4 +33,4 @@ jobs:
       - name: Test
         run: cargo test --locked
       - name: Conformance suite through the command line
-        run: cargo run --locked --bin vn2 -- test tests/slice1/*.core
+        run: cargo run --locked --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails

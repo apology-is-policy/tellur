@@ -8,6 +8,7 @@
 //! | --- | --- |
 //! | `int` | Mathematical integers |
 //! | `syntax`, `text` | The core text form: its tree, printer and reader |
+//! | `surface` | The Rails surface syntax: layout, grammar and elaboration into the core |
 //! | `typed`, `resolve` | The typed core, and the way to it from the tree |
 //! | `oracle`, `host` | The instrumented semantics and the hosts of a run |
 //! | `erased` | The erased semantics, which release code implements |
@@ -27,6 +28,7 @@ pub mod oracle;
 pub mod resolve;
 pub mod rng;
 pub mod script;
+pub mod surface;
 pub mod syntax;
 pub mod text;
 pub mod typed;
@@ -34,5 +36,11 @@ pub mod typed;
 /// Reads and resolves a program in the core text form.
 pub fn load(source: &str) -> Result<typed::Program, String> {
     let tree = text::parse(source).map_err(|error| error.to_string())?;
+    resolve::resolve(&tree).map_err(|error| error.to_string())
+}
+
+/// Reads, elaborates and resolves a program in the Rails surface syntax.
+pub fn load_surface(source: &str) -> Result<typed::Program, String> {
+    let tree = surface::elaborate(source).map_err(|error| error.to_string())?;
     resolve::resolve(&tree).map_err(|error| error.to_string())
 }

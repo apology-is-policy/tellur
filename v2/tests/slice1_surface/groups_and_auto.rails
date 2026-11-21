@@ -1,0 +1,36 @@
+┄ Outcome groups ([G2], [G4]), `■ auto` ([G3]), adapters ([U13]) and `forward` ([U14]).
+pub outcome storage_error
+├ invalid_file {code: u32} ↦ 2
+├ storage_failed {code: u32} ↦ 3
+└ too_large ↦ 4
+
+extern control raw_load(id: u32)
+    ■ loaded {value: u32}
+    ■ too_large
+    ■ missing
+    ■ invalid {code: u32}
+    ■ read_failed {code: u32}
+
+pub control load(id: u32) ■ loaded {value: u32} │ …storage_error
+│ ■ Δ raw_load(id)
+│ ├ loaded
+│ ├ too_large
+│ ├ missing           → loaded {0}
+│ ├ invalid {code}    → invalid_file {code}
+│ └ read_failed {code} → storage_failed {code}
+╵
+
+control load_auto(id: u32) ■ auto
+│ forward load(id)
+╵
+
+pub control inspect(id: u32) ■ ok {value: u32} │ …storage_error
+│ Δ load_auto(id): loaded {~v: u32} │ …storage_error → ■
+│ v ← v + 1
+│ ■ ok {v}
+╵
+
+//! run inspect(1) with [raw_load -> loaded {9}] => done ok {10}
+//! run inspect(1) with [raw_load -> missing] => done ok {1}
+//! run inspect(1) with [raw_load -> invalid {77}] => done invalid_file {77}
+//! run inspect(1) with [raw_load -> too_large] => done too_large
