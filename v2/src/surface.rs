@@ -4487,5 +4487,57 @@ pub fn elaborate(source: &str) -> Result<Program, Error> {
         }
     }
 
+    // [F3]: The effect of a private defined control is inferred as the union
+    // of the effects of the operations it calls.
+    infer_private_effects(&mut declarations);
+
     Ok(Program { declarations })
+}
+
+fn collect_called_operations(statements: &[Statement], callees: &mut Vec<String>) {
+    for statement in statements {
+        match &statement.command {
+            Command::Decide { operation, .. } => {
+                if !callees.contains(operation) {
+                    callees.push(operation.clone());
+                }
+            }
+            Command::Loop { body, .. } => collect_called_operations(body, callees),
+            _ => {}
+        }
+    }
+}
+
+fn infer_private_effects(declarations: &mut [Declaration]) {
+    loop {
+        let mut known_uses: HashMap<String, Vec<String>> = HashMap::new();
+        for declaration in declarations.iter() {
+            if let Declaration::Control(control) = declaration {
+                known_uses.insert(control.name.clone(), control.uses.clone());
+            }
+        }
+        let mut changed = false;
+        for declaration in declarations.iter_mut() {
+            if let Declaration::Control(control) = declaration
+                && !control.public
+                && !control.external
+            {
+                let mut callees = Vec::new();
+                collect_called_operations(&control.body, &mut callees);
+                for callee in callees {
+                    if let Some(effects) = known_uses.get(&callee) {
+                        for effect in effects {
+                            if !control.uses.contains(effect) {
+                                control.uses.push(effect.clone());
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
 }

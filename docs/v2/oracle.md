@@ -1,12 +1,14 @@
-# Villanelle v2 oracle
+# Villanelle v2 oracle and checker
 
-Status: **slice 1, third checkpoint (phase 2 complete for slice 1)**, 21
-November 2026. Phase 2 of the [redesign plan](../redesign-plan.md). The oracle
-and the erased semantics run the scalar core, compared run by run by the
+Status: **slice 1, fourth checkpoint (phases 2 and 3 complete for slice 1)**, 21
+November 2026. Phases 2 and 3 of the [redesign plan](../redesign-plan.md). The
+oracle and the erased semantics run the scalar core, compared run by run by the
 differential harness across the conformance suite, the Rails surface programs
 and the random program generator, with single-step mutation tests, property
-tests of the fact logic's arithmetic axioms, and the reader and elaborator of
-the Rails surface syntax. The slice 1 checker (phase 3) is next (section 10).
+tests of the fact logic's arithmetic axioms, the reader and elaborator of the
+Rails surface syntax, and the phase 3 checker with its ROBDD engine, `Th_Z`
+decision procedure, independent certificate kernel and counterexample model
+builder. The slice 1 native backend (phase 4) is next (section 11).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -29,6 +31,8 @@ can be read on its own. Nothing in it is built for speed.
 | `syntax`, `text` | The core text form (section 3): its tree, printer and reader |
 | `surface` | The Rails surface syntax ([surface](surface.md)): layout ([Y1] to [Y10]), grammar ([G1] to [G9]) and elaboration ([U1] to [U15]) into `syntax::Program` (section 9) |
 | `typed`, `resolve` | The typed core, and what is checked on the way to it (section 4) |
+| `bdd`, `facts`, `kernel` | The ROBDD engine, the `Th_Z` fact logic, the certificate format and the independent certificate validator ([V1] to [V5], [M1] to [M6]) (section 10) |
+| `check` | The phase 3 checker: coverage ([K1] to [K8]), conditional facts and SSA renaming ([N1] to [N5]), acknowledgement ([C2]), availability ([O1], [O2], [O4], [O6]), obligations ([P1] to [P8]) and effects ([F3]) (section 10) |
 | `oracle` | Section 6 of the core, one function for each rule |
 | `erased` | Section 9 of the core ([R1] to [R3]): machine-word slots, wrapping arithmetic and one bit for each atom a selector mentions |
 | `differential` | Theorem 3 tested run by run: where the oracle is not stuck, the erased run with the host's answers replayed gives the same observation |
@@ -48,6 +52,7 @@ Every value has kind `copy`, so no slot is moved and no borrow tag exists yet.
 cd v2
 cargo test                                     # unit tests and the conformance suite
 cargo run --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
+cargo run --bin vn2 -- check tests/slice1_surface/*.rails --certificates
 cargo run --bin vn2 -- run tests/slice1/e-loop.core gcd 48 18
 cargo run --bin vn2 -- run tests/slice1_surface/spend.rails spend 10 4 --arithmetic
 cargo run --bin vn2 -- print tests/slice1_surface/show_file.rails
@@ -322,14 +327,65 @@ clause of [surface.md](surface.md) that excludes the text:
 the 29 clauses with both an accepting program (executed in the oracle and
 compared with the erased semantics) and a rejecting program (`//! reject`).
 
-## 10. What this checkpoint leaves open
+## 10. The phase 3 checker, certificates and counterexamples
 
-- **The slice 1 checker (phase 3).** Checked on the typed core, tested against
-  `generate::valid` (no checked program is stuck in the oracle) and
-  `mutate::mutate` (stuck mutants are rejected).
-- **Later slices in phase 2.** Slice 2 (data, moves, resources, captured
+`check::check` judges a resolved `typed::Program` against every checking clause
+of slice 1:
+
+- **ROBDD histories and Boolean structure (`bdd`, [K1] to [K8]).** Each site
+  alternative `d.a` and each canonical positive linear inequality atom
+  `Σ aᵢ·uᵢ ≤ b` is a variable of one reduced ordered binary decision diagram.
+  Selectors ([K1]), statement reachability `Rᵢ = Lᵢ ∧ gᵢ` ([K2]), live-history
+  updates across dispositions, decisions and loops ([K3]), site implications
+  and mutual exclusion ([K4]), test totality ([K5]), generic loop iterations
+  with `L₁ = R_d` ([K6]), body coverage `Θ ⊨ ¬Lₙ₊₁` ([K7]) and exact loop-arm
+  reachability `d.a ↔ R_{j₁} ∨ … ∨ R_{jₖ}` ([K8]) are formulas of that diagram.
+- **Facts, SSA renaming and availability ([N1] to [N5], [C2], [O1], [O2], [O4],
+  [O6], [F3]).** Entry parameter bounds and preconditions ([N1]), binding and
+  assignment equalities with multiplexer collapse at joins ([N2]), `⊢`
+  assumptions ([N3]), test, decision and loop outcome facts ([N4]), fresh
+  logical versions on assignment and loop entry ([N5]), full decision
+  acknowledgement ([C2]), definedness `D(x)` on histories for disjoint binding
+  ([O1]), reads ([O2]), assignments ([O4]) and outer names across loops ([O6]),
+  and effect inclusion on feasible histories with private-control effect
+  inference in `surface::elaborate` ([F3]).
+- **Fact logic `Th_Z` and obligations (`facts`, [S1] to [S6], [I1] to [I13],
+  [A1], [A2], [A7] to [A9], [J1] to [J6], [P1] to [P8]).** Transparent function
+  unfolding ([I8]), pure operation congruence `alt_f` and `pay_{f,a,i}` ([I10]),
+  Boolean value terms ([I13]), fixed-width and `usize` ranges ([A1], [A2]),
+  division and remainder by constants ([A7]) and terms ([A8]), four-corner
+  product envelopes from declared intervals ([A9]), lazy CEGAR refinement over
+  `Ω`, `Ψ` and `[J3]`, and integer Fourier–Motzkin elimination with
+  Chvátal–Gomory `Round` cuts and proof-tree pruning. Checked obligations cover
+  `⊢ φ` ([P1]), loop invariants at entry and `↑` ([P2]), function and control
+  preconditions ([P3]), exit contract conditions `⇐ φₐ` ([P4]), arithmetic
+  bounds and non-zero divisors ([P5]), unreachable `⊥` ([P6]), left-to-right
+  and short-circuit `∧` / `∨` order ([P7]) and function bodies ([P8]).
+- **Independent certificate kernel and counterexamples (`kernel`, [V1] to [V5],
+  [M1] to [M6]).** Every proved entailment emits a `Certificate` validated by
+  `kernel::validate` before acceptance ([V1] to [V4]) and printable via
+  `vn2 check FILE --certificates` ([V5]). Every refuted obligation constructs
+  an integer valuation and history witness verified against the query ([M1],
+  [M2], [M6]), with nonlinear operator remarks ([M3]) and generic loop
+  iteration notes ([M4]).
+
+`v2/tests/checker.rs` tests every checking, fact-logic, certificate and
+counterexample clause of slice 1 with accepting and rejecting programs, verifies
+that corrupting a certificate causes `kernel::validate` to reject it, checks
+all four `.rails` programs in `v2/tests/slice1_surface/` and all 80 seeds of
+`generate::valid` (over 1,000 kernel-validated certificates), and verifies that
+every stuck mutant and every `DropInvariant` mutant of `generate::valid` is
+rejected by `resolve` or `check::check`.
+
+## 11. What this checkpoint leaves open
+
+- **The slice 1 native backend (phase 4).** Translating checked slice 1
+  programs under the erased semantics ([R1] to [R3]) and comparing compiled
+  runs against the oracle and the erased interpreter.
+- **Later slices in phases 2 and 3.** Slice 2 (data, moves, resources, captured
   outcomes, faults, boundaries), slice 3 (borrows and views) and slice 4
-  (tasks), which will allow the oracle to run the full paper corpus.
+  (tasks), which will allow the oracle and the checker to run and verify the
+  full paper corpus.
 - **Operators that the surface does not have yet.** The wrapping and
   saturating operators and the numeric conversions are named in the core and
   the fact logic and have no spelling. They belong to phase 5.

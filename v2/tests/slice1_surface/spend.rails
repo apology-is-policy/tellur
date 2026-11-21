@@ -15,6 +15,7 @@ control spend_plain(total: u32, used: u32) exits left {value: u32} | over {
     exit left {value}
 }
 
+//! check
 //! run spend(10, 4) with arithmetic => done left {6}
 //! run spend(4, 10) with arithmetic => done over
 //! run spend_plain(10, 4) with arithmetic => done left {6}

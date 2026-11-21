@@ -32,7 +32,7 @@ use crate::differential::{Verdict, compare};
 use crate::host::{Answer, Arithmetic, Host, Script};
 use crate::int::Int;
 use crate::oracle::{Config, End, Event, Value};
-use crate::{erased, resolve, surface, text};
+use crate::{check, erased, resolve, surface, text};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,6 +206,7 @@ struct RunSpec {
 enum Directive {
     Run(Box<RunSpec>),
     Reject { line: usize, clause: String },
+    Check { line: usize },
 }
 
 fn directive(line: usize, text: &str) -> Result<Directive, String> {
@@ -213,7 +214,13 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
         pieces: pieces(text)?,
         at: 0,
     };
-    let kind = reader.word("`run`, `erased` or `reject`")?;
+    let kind = reader.word("`run`, `erased`, `check` or `reject`")?;
+    if kind == "check" {
+        if reader.at != reader.pieces.len() {
+            return Err("text after `check`".to_string());
+        }
+        return Ok(Directive::Check { line });
+    }
     if kind == "reject" {
         return Ok(Directive::Reject {
             line,
@@ -329,7 +336,7 @@ fn directives(source: &str) -> Result<Vec<Directive>, String> {
             continue;
         };
         let rest = rest.trim();
-        let starts = ["run ", "erased ", "reject "]
+        let starts = ["run ", "erased ", "reject ", "check"]
             .iter()
             .any(|word| rest.starts_with(word));
         match joined.last_mut() {
@@ -399,7 +406,7 @@ fn check_with(source: &str, is_surface: bool) -> Report {
     };
     let rejection = directives.iter().find_map(|directive| match directive {
         Directive::Reject { line, clause } => Some((*line, clause.clone())),
-        Directive::Run(_) => None,
+        Directive::Run(_) | Directive::Check { .. } => None,
     });
     let tree = if is_surface {
         match (surface::elaborate(source), &rejection) {
@@ -459,14 +466,40 @@ fn check_with(source: &str, is_surface: bool) -> Report {
                 .push(format!("the program is refused: {error}"));
             return report;
         }
-        (Ok(_), Some((line, clause))) => {
-            report.failures.push(format!(
-                "line {line}: expected a refusal by [{clause}], and the program is accepted"
-            ));
-            return report;
-        }
+        (Ok(program), Some((line, clause))) => match check::check(&program) {
+            Err(error) if error.clause == clause => {
+                report.rejected = Some(clause);
+                if directives.len() > 1 {
+                    report
+                        .failures
+                        .push("a refused program has no runs".to_string());
+                }
+                return report;
+            }
+            Err(error) => {
+                report.failures.push(format!(
+                    "line {line}: expected a refusal by [{clause}], got: {error}"
+                ));
+                return report;
+            }
+            Ok(_) => {
+                report.failures.push(format!(
+                    "line {line}: expected a refusal by [{clause}], and the program is accepted"
+                ));
+                return report;
+            }
+        },
         (Ok(program), None) => program,
     };
+    for directive in &directives {
+        if let Directive::Check { line } = directive
+            && let Err(error) = check::check(&program)
+        {
+            report
+                .failures
+                .push(format!("line {line}: check failed: {error}"));
+        }
+    }
     for directive in directives {
         let Directive::Run(spec) = directive else {
             continue;

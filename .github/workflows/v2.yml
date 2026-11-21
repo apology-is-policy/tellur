@@ -34,3 +34,5 @@ jobs:
         run: cargo test --locked
       - name: Conformance suite through the command line
         run: cargo run --locked --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
+      - name: Check Rails surface programs and validate certificates
+        run: cargo run --locked --bin vn2 -- check tests/slice1_surface/*.rails

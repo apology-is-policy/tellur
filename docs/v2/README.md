@@ -15,7 +15,7 @@ v1, the language and compiler at 0.306, is described by the
 | [Reference model](references.md) | Second-class borrows and views: the model, 36 worked examples in Rails and core form with verdicts, the tag semantics on an example | Draft 1, accepted; one review folded in, which found the 36 verdicts to agree with their clauses. Records the decisions on Q16 and Q17. |
 | [Surface](surface.md) | The Rails grammar, layout, and the elaboration into the core, including the acknowledgement rule and outcome groups | Draft 1, accepted, with the task forms of the core's draft 2 and the forms the corpus needed (traits, named boundaries, `copy` types); one review folded in. Records the decisions on Q11 to Q15 and Q19. |
 | [Corpus on paper](corpus.md) | The settings application, the eight collection modules and three new programs, rewritten by hand, with counts and findings | Draft 1, accepted; checked by hand and read by one review, which found no error in the programs. Library 476 to 231 lines, application 635 to 304, no filler arm; thirteen gaps repaired in the other documents, thirteen limits left open. |
-| [Oracle](oracle.md) | Phase 2: the instrumented semantics as a program (the crate `v2/`), the core text form and the Rails surface form it reads, and the conformance suite | Slice 1 complete in phase 2: the scalar core runs in the oracle and under the erased semantics ([R1] to [R3]), with the differential harness, the seeded host, the random program generator (61 constructs, 12 statement rules), the mutation classifier (all 15 stuck states), property tests of axioms [A7] to [A9], and the Rails surface reader and elaborator (all 29 layout, grammar and elaboration clauses of slice 1). The slice 1 checker (phase 3) is next. |
+| [Oracle](oracle.md) | Phases 2 and 3: the instrumented semantics, the Rails surface reader and elaborator, and the certificate-producing checker (the crate `v2/`), with the conformance suite | Slice 1 complete in phases 2 and 3: the scalar core runs in the oracle and under the erased semantics ([R1] to [R3]), with the differential harness, the seeded host, the random program generator (61 constructs, 12 statement rules), the mutation classifier (all 15 stuck states), property tests of axioms [A7] to [A9], the Rails surface reader and elaborator (all 29 layout, grammar and elaboration clauses of slice 1), and the phase 3 checker ([K1] to [K8], [N1] to [N5], [C2], [O1], [O2], [O4], [O6], [P1] to [P8], [F3]) with the ROBDD engine, the `Th_Z` fact logic, the independent certificate kernel ([V1] to [V5]) and counterexample model builder ([M1] to [M6]). The slice 1 native backend (phase 4) is next. |
 | [Reading and repair test](reading-test.md) | v1 and v2 versions of the same programs, given to people and to agents | First run with agents done: 24 runs, 23 fully correct, so no difference between the versions is shown on reading. The repair needs 8 edits in v2 against 14. People have not taken it. |
 
 ## Acceptance
@@ -72,4 +72,8 @@ Three things were open at acceptance, and the author accepted with them named:
 8. The author's acceptance of phase 1 (20 November 2026).
 9. Phase 2 in slices: the oracle, erased semantics, generator, differential
    harness, mutation tests and Rails surface reader with elaboration for
-   scalars and decisions (done); the slice 1 checker (phase 3) is next.
+   scalars and decisions (done).
+10. Phase 3 for slice 1: the checker on the typed core with ROBDD histories,
+    the `Th_Z` fact logic, the independent certificate kernel and
+    counterexample models (done); the slice 1 native backend (phase 4) is
+    next.

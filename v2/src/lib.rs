@@ -10,6 +10,8 @@
 //! | `syntax`, `text` | The core text form: its tree, printer and reader |
 //! | `surface` | The Rails surface syntax: layout, grammar and elaboration into the core |
 //! | `typed`, `resolve` | The typed core, and the way to it from the tree |
+//! | `bdd`, `facts`, `kernel` | The ROBDD engine, the fact logic `Th_Z`, and the certificate validator |
+//! | `check` | The Phase 3 checker: coverage, acknowledgement, availability, obligations and effects |
 //! | `oracle`, `host` | The instrumented semantics and the hosts of a run |
 //! | `erased` | The erased semantics, which release code implements |
 //! | `differential` | The comparison of the two semantics, run by run |
@@ -18,11 +20,15 @@
 //! | `generate` | Random core programs and construct coverage |
 //! | `mutate` | Single-step mutations of valid programs, classified by the oracle |
 
+pub mod bdd;
+pub mod check;
 pub mod differential;
 pub mod erased;
+pub mod facts;
 pub mod generate;
 pub mod host;
 pub mod int;
+pub mod kernel;
 pub mod mutate;
 pub mod oracle;
 pub mod resolve;

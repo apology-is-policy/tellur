@@ -7,7 +7,7 @@
 use crate::int::Int;
 use std::fmt;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum IntType {
     U8,
     U16,

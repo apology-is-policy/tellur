@@ -933,6 +933,12 @@ pub fn valid(rng: &mut Rng) -> Program {
                             arguments: vec![int(9), name("cur")],
                         },
                     ),
+                    // Depends on the loop invariant `⊢ rem ≤ 3`; dropping the
+                    // invariant makes this obligation unprovable ([P1], [P5]).
+                    stmt(
+                        lt_true.clone(),
+                        Command::Oblige(bin(Binary::LessEqual, name("rem"), int(3))),
+                    ),
                     stmt(
                         lt_true.clone(),
                         Command::Assign {

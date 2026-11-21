@@ -26,6 +26,7 @@ control show_file(id: u32) ■ auto uses io
 │ ┆ ■ failed
 ╵
 
+//! check
 //! run show_file(1) with [open -> not_found] => done missing
 //!     trace [open(1) -> not_found {}]
 //! run show_file(1) with [open -> denied] => done failed

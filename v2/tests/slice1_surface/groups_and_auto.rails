@@ -26,10 +26,11 @@ control load_auto(id: u32) ■ auto
 
 pub control inspect(id: u32) ■ ok {value: u32} │ …storage_error
 │ Δ load_auto(id): loaded {~v: u32} │ …storage_error → ■
-│ v ← v + 1
+│ v ← v mod 100 + 1
 │ ■ ok {v}
 ╵
 
+//! check
 //! run inspect(1) with [raw_load -> loaded {9}] => done ok {10}
 //! run inspect(1) with [raw_load -> missing] => done ok {1}
 //! run inspect(1) with [raw_load -> invalid {77}] => done invalid_file {77}

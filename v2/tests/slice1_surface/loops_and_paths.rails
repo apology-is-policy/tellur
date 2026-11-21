@@ -3,6 +3,7 @@
 extern control classify(x: u32) ■ before │ equal │ after
 
 pub control step_search(start_in: u32, count_in: u32, upper: bool)
+    ⊢ start_in ≤ 1000 ∧ count_in ≤ 1000
     ■ position {index: u32}
 │ ↻ search(start: u32 := start_in, count: u32 := count_in)
 │ ║ ⊢ start + count ≤ start_in + count_in
@@ -22,10 +23,11 @@ pub control step_search(start_in: u32, count_in: u32, upper: bool)
 
 ┄ Loop with `□ a {name, field: expr}` and inner variable renaming ([U9]), plus
 ┄ a bare-`□` loop and vertical arm blocks.
-pub control sum_and_trim(n: u32) ■ done {result: u32}
+pub control sum_and_trim(n: u32) ⊢ n ≤ 10 ■ done {result: u32}
 │ ↻ accumulate(i: u32 := 0, ~total: u32 := 0)
+│ ║ ⊢ i ≤ n ∧ total ≤ 100
 │ ║ ? i = n → □ finished {total}
-│ ║ total ← total + i
+│ ║ total ← total mod 50 + i
 │ ║ ↑ accumulate(i + 1, total)
 ╞═ finished: ⊢ total ≥ 0
 │ ~rem: u32 := total
@@ -34,14 +36,15 @@ pub control sum_and_trim(n: u32) ■ done {result: u32}
 │ ║ ├ before →
 │ ║ │ ┆ □
 │ ║ ├ equal →
-│ ║ │ ┆ rem ← rem + 1
+│ ║ │ ┆ rem ← rem mod 50 + 1
 │ ║ │ ┆ □
 │ ║ └ after →
-│ ║   ┆ rem ← rem - 1
+│ ║   ┆ ? rem > 0 → rem ← rem - 1
 │ ║   ┆ □
 │ ■ done {rem}
 ╵
 
+//! check
 //! run step_search(0, 4, false) with [classify -> equal; classify -> after; classify -> before] => done position {1}
 //! run sum_and_trim(4) with [classify -> after] => done done {5}
 //! run sum_and_trim(4) with [classify -> equal] => done done {7}
