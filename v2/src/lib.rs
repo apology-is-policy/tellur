@@ -12,6 +12,8 @@
 //! | `typed`, `resolve` | The typed core, and the way to it from the tree |
 //! | `bdd`, `facts`, `kernel` | The ROBDD engine, the fact logic `Th_Z`, and the certificate validator |
 //! | `check` | The Phase 3 checker: coverage, acknowledgement, availability, obligations and effects |
+//! | `expand` | Theorem 4 call expansion: in-place expansion of decisions on defined controls |
+//! | `codegen` | The Phase 4 typed LLVM IR and C ABI backend under the erased semantics ([R1] to [R3]) |
 //! | `oracle`, `host` | The instrumented semantics and the hosts of a run |
 //! | `erased` | The erased semantics, which release code implements |
 //! | `differential` | The comparison of the two semantics, run by run |
@@ -22,8 +24,10 @@
 
 pub mod bdd;
 pub mod check;
+pub mod codegen;
 pub mod differential;
 pub mod erased;
+pub mod expand;
 pub mod facts;
 pub mod generate;
 pub mod host;

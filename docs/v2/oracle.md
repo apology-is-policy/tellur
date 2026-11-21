@@ -1,15 +1,17 @@
-# Villanelle v2 oracle and checker
+# Villanelle v2 oracle, checker and typed backend
 
-Status: **slice 1, fifth checkpoint (phases 2 and 3 complete for slice 1, with
-the canonical Rails formatter and compiler warnings)**, 21 November 2026. Phases
-2 and 3 of the [redesign plan](../redesign-plan.md). The oracle and the erased
-semantics run the scalar core, compared run by run by the differential harness
-across the conformance suite, the Rails surface programs and the random program
-generator, with single-step mutation tests, property tests of the fact logic's
-arithmetic axioms, the reader, elaborator and canonical formatter of the Rails
-surface syntax, and the phase 3 checker with its ROBDD engine, `Th_Z` decision
-procedure, independent certificate kernel, counterexample model builder and
-warnings. The slice 1 native backend (phase 4) is next (section 11).
+Status: **slice 1, sixth checkpoint (phases 2, 3 and 4 complete for slice 1)**, 21
+November 2026. Phases 2, 3 and 4 of the [redesign plan](../redesign-plan.md). The
+oracle, the erased semantics and compiled native code from the phase 4 typed LLVM
+IR backend run the scalar core, compared run by run across the conformance suite,
+the Rails surface programs and the random program generator (both original and
+Theorem-4-expanded, at `-O0` and `-O2`), with single-step mutation tests, property
+tests of the fact logic's arithmetic axioms, the reader, elaborator and canonical
+formatter of the Rails surface syntax, the phase 3 checker with its ROBDD engine,
+`Th_Z` decision procedure, independent certificate kernel, counterexample model
+builder and warnings, and paired native performance measurements against optimized
+Rust (`0.991x` on Apple M2, 0 allocations). Slice 2 (data, moves, resources,
+captured outcomes, faults and boundaries) is next (section 12).
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -34,6 +36,8 @@ can be read on its own. Nothing in it is built for speed.
 | `typed`, `resolve` | The typed core, and what is checked on the way to it (section 4) |
 | `bdd`, `facts`, `kernel` | The ROBDD engine, the `Th_Z` fact logic, the certificate format and the independent certificate validator ([V1] to [V5], [M1] to [M6]) (section 10) |
 | `check` | The phase 3 checker: coverage ([K1] to [K8]), conditional facts and SSA renaming ([N1] to [N5]), acknowledgement ([C2]), availability ([O1], [O2], [O4], [O6]), obligations ([P1] to [P8]), effects ([F3]) and impossible-arm warnings ([U16]) (section 10) |
+| `expand` | Theorem 4 call expansion: in-place expansion of decisions on defined controls, lifting loop exits and preserving checking and observations (section 11) |
+| `codegen` | The phase 4 typed LLVM IR and C ABI backend under the erased semantics ([R1] to [R3]), with native `-O0`/`-O2`/`-O3` compilation and differential execution (section 11) |
 | `oracle` | Section 6 of the core, one function for each rule |
 | `erased` | Section 9 of the core ([R1] to [R3]): machine-word slots, wrapping arithmetic and one bit for each atom a selector mentions |
 | `differential` | Theorem 3 tested run by run: where the oracle is not stuck, the erased run with the host's answers replayed gives the same observation |
@@ -55,6 +59,9 @@ cargo test                                     # unit tests and the conformance 
 cargo run --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails
 cargo run --bin vn2 -- check tests/slice1_surface/*.rails --certificates
 cargo run --bin vn2 -- format tests/slice1_surface/show_file.rails --check
+cargo run --bin vn2 -- expand tests/slice1_surface/groups_and_auto.rails
+cargo run --bin vn2 -- emit-llvm tests/slice1_surface/spend.rails
+cargo run --bin vn2 -- emit-c tests/slice1_surface/spend.rails
 cargo run --bin vn2 -- run tests/slice1/e-loop.core gcd 48 18
 cargo run --bin vn2 -- run tests/slice1_surface/spend.rails spend 10 4 --arithmetic
 cargo run --bin vn2 -- print tests/slice1_surface/show_file.rails
@@ -387,15 +394,61 @@ all four `.rails` programs in `v2/tests/slice1_surface/` and all 80 seeds of
 every stuck mutant and every `DropInvariant` mutant of `generate::valid` is
 rejected by `resolve` or `check::check`.
 
-## 11. What this checkpoint leaves open
+## 11. Call expansion (Theorem 4) and the phase 4 typed LLVM IR backend
 
-- **The slice 1 native backend (phase 4).** Translating checked slice 1
-  programs under the erased semantics ([R1] to [R3]) and comparing compiled
-  runs against the oracle and the erased interpreter.
-- **Later slices in phases 2 and 3.** Slice 2 (data, moves, resources, captured
-  outcomes, faults, boundaries), slice 3 (borrows and views) and slice 4
-  (tasks), which will allow the oracle and the checker to run and verify the
-  full paper corpus.
+- **Call expansion (`expand`, `vn2 expand FILE`, Theorem 4 of [core.md](core.md)
+  section 8).** `expand::expand` replaces every decision on a defined control in
+  place by the callee's body with fresh names and sites, binding the callee's
+  parameters to the call arguments, preserving the callee's precondition (`⊢ φ`)
+  and exit conditions (`⇐ φₐ`) as `[P1]` obligations, lifting any `■` (`Exit`)
+  inside a loop of the callee out of the loop through a fresh `□` (`Leave`)
+  alternative, binding the caller's arm variables at each exit of the callee,
+  and substituting the disjunction of the callee's exit histories for each atom
+  `d.a` in the rest of the caller's body. Every expanded program re-parses,
+  resolves, passes `check::check` with kernel-validated certificates, and yields
+  the same observations in the oracle, the erased interpreter and native code.
+- **Typed LLVM IR and C ABI emission (`codegen`, `vn2 emit-llvm FILE`, `vn2
+  emit-c FILE`, [core.md](core.md) section 9, `[R1]` to `[R3]`).**
+  - **[R1]** Every variable slot is a native scalar `alloca` (`i1`, `i8`, `i16`,
+    `i32`, `i64`, with `usize` lowered to `i32` or `i64` according to
+    `--usize 32|64`), promoted to SSA registers by LLVM's `mem2reg`. There are
+    no dynamic value tags, no moved marks and no runtime frame tables.
+  - **[R2]** `⊢` obligations, loop invariants, preconditions, exit conditions
+    `⇐` and effect allowances emit zero instructions. Arithmetic compiles to
+    direct machine operations (`add`, `sub`, `mul`, `udiv`/`sdiv`,
+    `urem`/`srem`), short-circuit `∧`/`∨` to conditional branches, and functions
+    to `alwaysinline fastcc` helpers. `⊥` (`Impossible`) and decision switch arms
+    guarded by `site.alt ▷ ⊥` emit `unreachable`, so LLVM's optimizer deletes
+    impossible branches (in `spend.rails`, `checked_sub.underflow → ⊥` is folded
+    into `unreachable` with zero history bits allocated for `checked_sub`).
+  - **[R3]** Only `(site, alternative)` atoms mentioned in non-erased selectors
+    allocate an `i1` history bit. Entering a loop clears only the bits of sites
+    belonging to that loop body.
+  - **Typed C ABI.** Each `extern` control is declared as `i32 @vn2_ext_<name>`
+    and each defined control exports `i32 @vn2_call_<name>`, returning the
+    0-based alternative index in `i32` and writing payload fields through typed
+    output pointers. `codegen::emit_c_header` emits the matching C header with
+    `#define VN2_<CONTROL>_<ALT>` constants and prototypes.
+- **Differential native verification and paired Rust benchmark
+  (`v2/tests/backend.rs`).** `codegen::run_native_batch` compiles programs with
+  `clang -x ir` at both `-O0` and `-O2` (original and Theorem-4-expanded) and
+  verifies 100% agreement on outcomes and event traces against `oracle::run` and
+  `erased::run` across all `.rails` programs and generated valid programs
+  (32-bit and 64-bit `usize`). In paired hot-loop measurements on Apple M2
+  (`clang -x ir -O3` vs `rustc -C opt-level=3`, 5,000,000 iterations of composed
+  Euclidean `gcd`, `spend_step` with `over → ⊥` erased, and modular accumulation,
+  measured separately from launch and output with `clock_gettime`), compiled v2
+  runs in **12.99 ms** against optimized Rust in **13.11 ms** (**0.991×** of
+  optimized Rust, well within the 1.2× Phase 4 exit target), with identical
+  checksum (`432,500,000`) and zero heap allocations (`0` allocations, `0`
+  requested bytes).
+
+## 12. What this checkpoint leaves open
+
+- **Later slices in phases 2, 3 and 4.** Slice 2 (data, moves, resources,
+  captured outcomes, faults, boundaries), slice 3 (borrows and views) and
+  slice 4 (tasks), which will allow the oracle, the checker and the typed
+  backend to run, verify and compile the full paper corpus.
 - **Operators that the surface does not have yet.** The wrapping and
   saturating operators and the numeric conversions are named in the core and
   the fact logic and have no spelling. They belong to phase 5.

@@ -38,3 +38,8 @@ jobs:
         run: cargo run --locked --bin vn2 -- check tests/slice1_surface/*.rails
       - name: Check canonical Rails surface formatting
         run: cargo run --locked --bin vn2 -- format tests/slice1_surface/show_file.rails tests/slice1_surface/groups_and_auto.rails tests/slice1_surface/loops_and_paths.rails --check
+      - name: Expand calls (Theorem 4) and emit Phase 4 typed LLVM IR and C ABI
+        run: |
+          cargo run --locked --bin vn2 -- expand tests/slice1_surface/groups_and_auto.rails > /dev/null
+          cargo run --locked --bin vn2 -- emit-llvm tests/slice1_surface/spend.rails > /dev/null
+          cargo run --locked --bin vn2 -- emit-c tests/slice1_surface/spend.rails > /dev/null

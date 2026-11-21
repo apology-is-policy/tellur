@@ -51,6 +51,13 @@ impl IntType {
         IntType::ALL.into_iter().find(|ty| ty.name() == name)
     }
 
+    pub fn is_signed(self) -> bool {
+        matches!(
+            self,
+            IntType::I8 | IntType::I16 | IntType::I32 | IntType::I64
+        )
+    }
+
     /// The least and the greatest value of the type. The greatest `usize` is
     /// a parameter of the run: the fact logic bounds it and does not fix it
     /// ([A2]).
@@ -271,7 +278,7 @@ pub struct Statement {
     pub line: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Selector {
     Top,
     /// A site and the index of one of its alternatives.

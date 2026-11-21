@@ -4,12 +4,15 @@ use std::process::ExitCode;
 use villanelle_v2::host::{Arithmetic, Host, Script};
 use villanelle_v2::int::Int;
 use villanelle_v2::oracle::{Config, End, Value, run};
-use villanelle_v2::{check, erased, load, load_surface, script, surface, text};
+use villanelle_v2::{check, codegen, erased, expand, load, load_surface, script, surface, text};
 
 const USAGE: &str = "\
 vn2 test FILE...                          carry out the directives of core or Rails files
 vn2 check FILE... [--certificates]        check core or Rails files in the Phase 3 checker
 vn2 format FILE... [--write | --check]    format Rails files into canonical Rails glyph form
+vn2 expand FILE                           expand decisions on defined controls (Theorem 4)
+vn2 emit-llvm FILE [--usize 32|64]        emit Phase 4 typed LLVM IR for a core or Rails file
+vn2 emit-c FILE [--usize 32|64]           emit Phase 4 typed C ABI header for a core or Rails file
 vn2 run FILE ENTRY [VALUE...] [OPTIONS]   run one control in the oracle
 vn2 print FILE                            print a core or Rails program in the core glyph form
 
@@ -210,12 +213,60 @@ fn format_files(arguments: &[String]) -> Result<bool, String> {
     Ok(ok)
 }
 
+fn parse_emit_args(arguments: &[String]) -> Result<(&str, u32), String> {
+    match arguments {
+        [path] => Ok((path, 64)),
+        [path, flag, bits] if flag == "--usize" => {
+            let b: u32 = bits.parse().map_err(|_| "--usize 32 or 64".to_string())?;
+            if b != 32 && b != 64 {
+                return Err("--usize 32 or 64".to_string());
+            }
+            Ok((path, b))
+        }
+        _ => Err(USAGE.to_string()),
+    }
+}
+
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let result = match arguments.split_first() {
         Some((command, rest)) if command == "test" && !rest.is_empty() => test(rest),
         Some((command, rest)) if command == "check" && !rest.is_empty() => check_files(rest),
         Some((command, rest)) if command == "format" && !rest.is_empty() => format_files(rest),
+        Some((command, [path])) if command == "expand" => read(path).and_then(|source| {
+            let tree = if is_core_file(path) {
+                text::parse(&source).map_err(|error| error.to_string())?
+            } else {
+                surface::elaborate(&source).map_err(|error| error.to_string())?
+            };
+            let expanded = expand::expand(&tree).map_err(|error| error.to_string())?;
+            print!("{}", expanded.print());
+            Ok(true)
+        }),
+        Some((command, rest)) if command == "emit-llvm" => {
+            parse_emit_args(rest).and_then(|(path, usize_bits)| {
+                let source = read(path)?;
+                let program = if is_core_file(path) {
+                    load(&source)?
+                } else {
+                    load_surface(&source)?
+                };
+                print!("{}", codegen::emit_llvm(&program, usize_bits));
+                Ok(true)
+            })
+        }
+        Some((command, rest)) if command == "emit-c" => {
+            parse_emit_args(rest).and_then(|(path, usize_bits)| {
+                let source = read(path)?;
+                let program = if is_core_file(path) {
+                    load(&source)?
+                } else {
+                    load_surface(&source)?
+                };
+                print!("{}", codegen::emit_c_header(&program, usize_bits));
+                Ok(true)
+            })
+        }
         Some((command, rest)) if command == "run" => run_one(rest),
         Some((command, [path])) if command == "print" => read(path).and_then(|source| {
             let tree = if is_core_file(path) {
