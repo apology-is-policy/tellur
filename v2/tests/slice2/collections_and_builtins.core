@@ -1,0 +1,53 @@
+// Slice 2 core conformance: vectors, maps, built-in operations, [E-Operands], emit, index bounds.
+
+control vec_ops()
+    ■ { ok {sum : u32, n : usize} }
+    1  ⊤ ▷ ~v : [u32] := [10, 20]
+    2  ⊤ ▷ p1 : Δ push(&~v, 30) ▸ done {}
+    3  ⊤ ▷ v[0] ← 5
+    4  ⊤ ▷ first : u32 := v[0]
+    5  ⊤ ▷ pop1 : Δ pop(&~v) ▸ item {last} │ empty {}
+    6  pop1.empty ▷ ⊥
+    7  pop1.item  ▷ t : Δ take(v) ▸ item {head, tail} │ empty {}
+    8  t.empty ▷ ⊥
+    9  t.item  ▷ ■ ok {first + last + head + tail[0], len(tail)}
+
+control operands_order()
+    ■ { ok {n : usize, last : usize} }
+    1  ⊤ ▷ ~v : [usize] := [10, 20]
+    2  ⊤ ▷ p : Δ push(&~v, len(v)) ▸ done {}
+    3  ⊤ ▷ ■ ok {len(v), v[2]}
+
+control map_ops()
+    ■ { ok {found_a : u32, prev_a : u32, removed_b : u32, count : usize, first_key : string} }
+    1  ⊤ ▷ ~m : string ⇀ u32 := ∅
+    2  ⊤ ▷ i1 : Δ insert(&~m, "a", 1) ▸ inserted {} │ replaced {p1}
+    3  ⊤ ▷ i2 : Δ insert(&~m, "b", 2) ▸ inserted {} │ replaced {p2}
+    4  ⊤ ▷ i3 : Δ insert(&~m, "a", 10) ▸ inserted {} │ replaced {prev}
+    5  i3.inserted ▷ ⊥
+    6  ⊤ ▷ g1 : Δ get(&m, "a") ▸ found {va} │ missing {}
+    7  g1.missing ▷ ⊥
+    8  ⊤ ▷ r1 : Δ remove(&~m, "b") ▸ removed {vb} │ missing {}
+    9  r1.missing ▷ ⊥
+    10 ⊤ ▷ e1 : Δ entry_at(&m, 0) ▸ item {k0, v0, next0} │ finished {}
+    11 e1.finished ▷ ⊥
+    12 ⊤ ▷ e2 : Δ entry_at(&m, next0) ▸ item {k1, v1, next1} │ finished {}
+    13 e2.item ▷ ⊥
+    14 ⊤ ▷ ■ ok {va, prev, vb, len(m), k0}
+
+control say_hello(msg : string)
+    ■ { done {} }
+    uses console.write
+    1  ⊤ ▷ e : Δ emit(&msg) ▸ done {}
+    2  ⊤ ▷ ■ done {}
+
+control oob_index(i : usize)
+    ■ { ok {v : u32} }
+    1  ⊤ ▷ v : [u32] := [1, 2]
+    2  ⊤ ▷ ■ ok {v[i]}
+
+//! run vec_ops() => done ok {60, 1}
+//! run operands_order() => done ok {3, 2}
+//! run map_ops() => done ok {10, 1, 2, 1, "a"}
+//! run say_hello("hello") => done done trace [emit("hello") -> done]
+//! run oob_index(5) => stuck X7 E-Index

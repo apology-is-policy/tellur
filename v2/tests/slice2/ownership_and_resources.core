@@ -1,0 +1,80 @@
+// Slice 2 core conformance: moves, resources, partial moves, temporary obligations, scope obligations.
+
+extern resource file_handle
+
+struct holder {h : file_handle}
+
+struct pair {a : string, b : string}
+
+extern control open_file(path : &string)
+    ■ { opened {f : file_handle} │ missing {} }
+    uses file.read
+
+extern control read_file(f : &file_handle)
+    ■ { data {text : string} }
+    uses file.read
+
+extern control close_file(f : file_handle)
+    ■ { closed {} }
+    uses file.read
+
+control clean_resource(path : string)
+    ■ { ok {text : string} │ missing {} }
+    uses file.read
+    1  ⊤ ▷ o : Δ open_file(&path) ▸ opened {f} │ missing {}
+    2  o.missing ▷ ■ missing {}
+    3  ⊤ ▷ r : Δ read_file(&f) ▸ data {text}
+    4  ⊤ ▷ c : Δ close_file(▾f) ▸ closed {}
+    5  ⊤ ▷ ■ ok {text}
+
+control use_after_move()
+    ■ { ok {s : string} }
+    1  ⊤ ▷ a : string := "hi"
+    2  ⊤ ▷ b : string := a
+    3  ⊤ ▷ ■ ok {a}
+
+control leak_resource(path : string)
+    ■ { ok {} │ missing {} }
+    uses file.read
+    1  ⊤ ▷ o : Δ open_file(&path) ▸ opened {f} │ missing {}
+    2  o.missing ▷ ■ missing {}
+    3  ⊤ ▷ ■ ok {}
+
+control overwrite_resource(path : string)
+    ■ { ok {} │ missing {} }
+    uses file.read
+    1  ⊤ ▷ o1 : Δ open_file(&path) ▸ opened {~f} │ missing {}
+    2  o1.missing ▷ ■ missing {}
+    3  ⊤ ▷ o2 : Δ open_file(&path) ▸ opened {g} │ missing {}
+    4  o2.missing ▷ c0 : Δ close_file(▾f) ▸ closed {}
+    5  o2.missing ▷ ■ missing {}
+    6  o2.opened  ▷ f ← ▾g
+    7  o2.opened  ▷ c1 : Δ close_file(▾f) ▸ closed {}
+    8  o2.opened  ▷ ■ ok {}
+
+control partial_move_field()
+    ■ { ok {x : string} }
+    1  ⊤ ▷ p : pair := pair {"x", "y"}
+    2  ⊤ ▷ first : string := p.a
+    3  ⊤ ▷ ■ ok {first}
+
+control partial_move_index()
+    ■ { ok {x : string} }
+    1  ⊤ ▷ v : [string] := ["a", "b"]
+    2  ⊤ ▷ first : string := v[0]
+    3  ⊤ ▷ ■ ok {first}
+
+control temp_obligation(path : string)
+    ■ { ok {n : usize} │ missing {} }
+    uses file.read
+    1  ⊤ ▷ o : Δ open_file(&path) ▸ opened {f} │ missing {}
+    2  o.missing ▷ ■ missing {}
+    3  ⊤ ▷ ■ ok {len([holder {▾f}])}
+
+//! run clean_resource("a.txt") with [open_file -> opened {file_handle#1}; read_file -> data {"ok"}; close_file -> closed] => done ok {"ok"} trace [open_file("a.txt") -> opened {file_handle#1}; read_file(file_handle#1) -> data {"ok"}; close_file(file_handle#1) -> closed]
+//! run use_after_move() => stuck X2 E-Var
+//! run leak_resource("a.txt") with [open_file -> opened {file_handle#1}] => stuck X5 E-Scope
+//! run overwrite_resource("a.txt") with [open_file -> opened {file_handle#1}; open_file -> opened {file_handle#2}] => stuck X5 E-Assign
+//! run partial_move_field() => stuck X2 E-Field
+//! run partial_move_index() => stuck X2 E-Index
+//! run temp_obligation("a.txt") with [open_file -> opened {file_handle#1}] => stuck X5 E-Temp

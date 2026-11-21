@@ -1,0 +1,43 @@
+// Slice 2 core conformance: structs, variants, strings, unpacking, place assignment, clone, trim.
+
+copy struct point {x : u32, y : u32}
+
+struct label {name : string, count : u32}
+
+copy variant op {add {} │ sub {} │ mul {}}
+
+variant shape {circle {radius : u32} │ rect {w : u32, h : u32}}
+
+function sum_point(p : &point) : u32 := p.x + p.y
+
+control calc(kind : op, a : u32, b : u32)
+    ■ { result {value : u32} }
+    1  ⊤ ▷ k : Δ op(kind) ▸ add {} │ sub {} │ mul {}
+    2  k.add ▷ ■ result {a + b}
+    3  k.sub ▷ ■ result {a - b}
+    4  k.mul ▷ ■ result {a * b}
+
+control area_and_unpack(s : shape, raw : string)
+    ■ { ok {area : u32, cleaned : string} }
+    1  ⊤ ▷ ~p : point := point {1, 2}
+    2  ⊤ ▷ p.x ← 10
+    3  ⊤ ▷ p.y ← sum_point(&p)
+    4  ⊤ ▷ d : Δ shape(▾s) ▸ circle {r} │ rect {w, h}
+    5  d.circle ▷ a : u32 := r * r + p.y
+    6  d.rect   ▷ a : u32 := w * h + p.y
+    7  ⊤ ▷ cleaned : string := trim(raw)
+    8  ⊤ ▷ lbl : label := label {clone(cleaned), a}
+    9  ⊤ ▷ label {title, total} := lbl
+    10 ⊤ ▷ ■ ok {total, title}
+
+control copy_reuse(p : point)
+    ■ { sum {v : u32} }
+    1  ⊤ ▷ q : point := p
+    2  ⊤ ▷ ■ sum {p.x + q.y}
+
+//! run calc(op.add, 4, 5) => done result {9}
+//! run calc(op.sub, 9, 3) => done result {6}
+//! run calc(op.mul, 3, 7) => done result {21}
+//! run area_and_unpack(shape.circle {4}, "  hi  ") => done ok {28, "hi"}
+//! run area_and_unpack(shape.rect {3, 5}, "\tok\n") => done ok {27, "ok"}
+//! run copy_reuse(point {3, 4}) => done sum {7}

@@ -1,0 +1,8 @@
+// [T1]: Recursive struct cycle without indirection is refused.
+struct node {next : node}
+
+control ok()
+    ■ { done {} }
+    1  ⊤ ▷ ■ done {}
+
+//! reject T1

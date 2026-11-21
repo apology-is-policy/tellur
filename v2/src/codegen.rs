@@ -112,22 +112,24 @@ fn llvm_int_ty(ty: IntType, usize_bits: u32) -> &'static str {
     }
 }
 
-fn llvm_ty(ty: Type, usize_bits: u32) -> &'static str {
+fn llvm_ty(ty: &Type, usize_bits: u32) -> &'static str {
     match ty {
         Type::Bool => "i1",
-        Type::Int(int_ty) => llvm_int_ty(int_ty, usize_bits),
+        Type::Int(int_ty) => llvm_int_ty(*int_ty, usize_bits),
+        _ => "ptr",
     }
 }
 
 /// C ABI representation type (`bool` is passed as `i8` across C ABI boundaries).
-fn c_abi_llvm_ty(ty: Type, usize_bits: u32) -> &'static str {
+fn c_abi_llvm_ty(ty: &Type, usize_bits: u32) -> &'static str {
     match ty {
         Type::Bool => "i8",
-        Type::Int(int_ty) => llvm_int_ty(int_ty, usize_bits),
+        Type::Int(int_ty) => llvm_int_ty(*int_ty, usize_bits),
+        _ => "ptr",
     }
 }
 
-fn c_header_ty(ty: Type, usize_bits: u32) -> &'static str {
+fn c_header_ty(ty: &Type, usize_bits: u32) -> &'static str {
     match ty {
         Type::Bool => "uint8_t",
         Type::Int(IntType::U8) => "uint8_t",
@@ -145,6 +147,7 @@ fn c_header_ty(ty: Type, usize_bits: u32) -> &'static str {
                 "uint64_t"
             }
         }
+        _ => "void *",
     }
 }
 
@@ -170,7 +173,7 @@ pub fn emit_c_header(program: &Program, usize_bits: u32) -> String {
         for param in &control.parameters {
             params.push(format!(
                 "{} {}",
-                c_header_ty(param.ty, usize_bits),
+                c_header_ty(&param.ty, usize_bits),
                 param.name
             ));
         }
@@ -178,7 +181,7 @@ pub fn emit_c_header(program: &Program, usize_bits: u32) -> String {
             for (field_idx, field) in alt.fields.iter().enumerate() {
                 params.push(format!(
                     "{} *out_{}_{}_{}",
-                    c_header_ty(field.ty, usize_bits),
+                    c_header_ty(&field.ty, usize_bits),
                     alt_idx,
                     alt.name,
                     field_idx
@@ -249,7 +252,7 @@ pub fn emit_llvm(program: &Program, usize_bits: u32) -> String {
 fn c_abi_signature_types(control: &Control, usize_bits: u32) -> Vec<String> {
     let mut sig = Vec::new();
     for param in &control.parameters {
-        sig.push(c_abi_llvm_ty(param.ty, usize_bits).to_string());
+        sig.push(c_abi_llvm_ty(&param.ty, usize_bits).to_string());
     }
     for alt in &control.contract {
         for _ in &alt.fields {
@@ -332,7 +335,7 @@ impl<'a> IrEmitter<'a> {
                 format!("{masked}")
             }
             Expr::Var(var_ref, ty) => {
-                let ll_ty = llvm_ty(*ty, self.usize_bits);
+                let ll_ty = llvm_ty(ty, self.usize_bits);
                 match (var_ref, access) {
                     (VarRef::Parameter(idx), VarAccess::DirectParams) => format!("%p{idx}"),
                     (VarRef::Local(id), VarAccess::ControlSlots) => {
@@ -387,7 +390,7 @@ impl<'a> IrEmitter<'a> {
                 let l = self.emit_expr(left, access);
                 let r = self.emit_expr(right, access);
                 let op_ty = left.ty();
-                let ll_ty = llvm_ty(op_ty, self.usize_bits);
+                let ll_ty = llvm_ty(&op_ty, self.usize_bits);
                 let signed = matches!(op_ty, Type::Int(int_ty) if int_ty.is_signed());
                 let pred = match (cmp, signed) {
                     (Comparison::Equal, _) => "eq",
@@ -443,9 +446,9 @@ impl<'a> IrEmitter<'a> {
                 let mut arg_pieces = Vec::new();
                 for (arg, param) in args.iter().zip(&callee.parameters) {
                     let v = self.emit_expr(arg, access);
-                    arg_pieces.push(format!("{} {v}", llvm_ty(param.ty, self.usize_bits)));
+                    arg_pieces.push(format!("{} {v}", llvm_ty(&param.ty, self.usize_bits)));
                 }
-                let ret_ll = llvm_ty(*ret_ty, self.usize_bits);
+                let ret_ll = llvm_ty(ret_ty, self.usize_bits);
                 let reg = self.fresh_reg();
                 let _ = writeln!(
                     self.code,
@@ -454,6 +457,7 @@ impl<'a> IrEmitter<'a> {
                 );
                 reg
             }
+            _ => "0".to_string(),
         }
     }
 
@@ -499,9 +503,9 @@ fn emit_function(
 ) {
     let mut params = Vec::new();
     for (idx, param) in function.parameters.iter().enumerate() {
-        params.push(format!("{} %p{idx}", llvm_ty(param.ty, usize_bits)));
+        params.push(format!("{} %p{idx}", llvm_ty(&param.ty, usize_bits)));
     }
-    let ret_ll = llvm_ty(function.result, usize_bits);
+    let ret_ll = llvm_ty(&function.result, usize_bits);
     let _ = writeln!(
         out,
         "define internal fastcc {ret_ll} @vn2_fn_{id}({}) alwaysinline nounwind {{",
@@ -530,7 +534,7 @@ fn emit_control(
 
     let mut params = Vec::new();
     for (idx, param) in control.parameters.iter().enumerate() {
-        params.push(format!("{} %p{idx}", llvm_ty(param.ty, usize_bits)));
+        params.push(format!("{} %p{idx}", llvm_ty(&param.ty, usize_bits)));
     }
     for (alt_idx, alt) in control.contract.iter().enumerate() {
         for (field_idx, _) in alt.fields.iter().enumerate() {
@@ -548,7 +552,7 @@ fn emit_control(
 
     // [R1]: Allocate typed slots for all variables of `body.vars`.
     for (var_id, var) in body.vars.iter().enumerate() {
-        let ll_ty = llvm_ty(var.ty, usize_bits);
+        let ll_ty = llvm_ty(&var.ty, usize_bits);
         emitter
             .allocas
             .push(format!("  %slot_{var_id} = alloca {ll_ty}"));
@@ -560,11 +564,11 @@ fn emit_control(
 
     // Initialize parameters and history bits in `entry`.
     for (idx, param) in control.parameters.iter().enumerate() {
-        let ll_ty = llvm_ty(param.ty, usize_bits);
+        let ll_ty = llvm_ty(&param.ty, usize_bits);
         let _ = writeln!(emitter.code, "  store {ll_ty} %p{idx}, ptr %slot_{idx}");
     }
     for (var_id, var) in body.vars.iter().enumerate().skip(control.parameters.len()) {
-        let ll_ty = llvm_ty(var.ty, usize_bits);
+        let ll_ty = llvm_ty(&var.ty, usize_bits);
         let zero = if var.ty == Type::Bool { "false" } else { "0" };
         let _ = writeln!(emitter.code, "  store {ll_ty} {zero}, ptr %slot_{var_id}");
     }
@@ -639,7 +643,7 @@ fn emit_control(
             match &stmt.command {
                 Command::Bind { var, value } | Command::Assign { var, value } => {
                     let v = emitter.emit_expr(value, &VarAccess::ControlSlots);
-                    let ll_ty = llvm_ty(body.vars[*var].ty, usize_bits);
+                    let ll_ty = llvm_ty(&body.vars[*var].ty, usize_bits);
                     let _ = writeln!(emitter.code, "  store {ll_ty} {v}, ptr %slot_{var}");
                     let _ = writeln!(emitter.code, "  br label %{next_lbl}");
                 }
@@ -659,6 +663,7 @@ fn emit_control(
                 Command::Decide {
                     site,
                     operation,
+                    op_kind: _,
                     arguments,
                     arms,
                 } => {
@@ -673,7 +678,7 @@ fn emit_control(
                             let _ = writeln!(emitter.code, "  {ext} = zext i1 {v} to i8");
                             call_args.push(format!("i8 {ext}"));
                         } else {
-                            call_args.push(format!("{} {v}", llvm_ty(param.ty, usize_bits)));
+                            call_args.push(format!("{} {v}", llvm_ty(&param.ty, usize_bits)));
                         }
                     }
 
@@ -683,9 +688,9 @@ fn emit_control(
                         let mut alt_slots = Vec::new();
                         for field in &contract_alt.fields {
                             let slot_ty = if is_extern {
-                                c_abi_llvm_ty(field.ty, usize_bits)
+                                c_abi_llvm_ty(&field.ty, usize_bits)
                             } else {
-                                llvm_ty(field.ty, usize_bits)
+                                llvm_ty(&field.ty, usize_bits)
                             };
                             let ptr = emitter.alloc_temp(slot_ty);
                             call_args.push(format!("ptr {ptr}"));
@@ -752,9 +757,9 @@ fn emit_control(
                         }
                         let contract_alt = &callee.contract[arm.alternative];
                         for (field_idx, &var_id) in arm.vars.iter().enumerate() {
-                            let field_ty = contract_alt.fields[field_idx].ty;
+                            let field_ty = &contract_alt.fields[field_idx].ty;
                             let ptr = &out_slots[arm.alternative][field_idx];
-                            if is_extern && field_ty == Type::Bool {
+                            if is_extern && *field_ty == Type::Bool {
                                 let raw = emitter.fresh_reg();
                                 let _ = writeln!(emitter.code, "  {raw} = load i8, ptr {ptr}");
                                 let b_reg = emitter.fresh_reg();
@@ -788,7 +793,7 @@ fn emit_control(
                         init_vals.push(emitter.emit_expr(expr, &VarAccess::ControlSlots));
                     }
                     for (&param_var, val) in head.parameters.iter().zip(init_vals) {
-                        let ll_ty = llvm_ty(body.vars[param_var].ty, usize_bits);
+                        let ll_ty = llvm_ty(&body.vars[param_var].ty, usize_bits);
                         let _ =
                             writeln!(emitter.code, "  store {ll_ty} {val}, ptr %slot_{param_var}");
                     }
@@ -804,7 +809,7 @@ fn emit_control(
                         arg_vals.push(emitter.emit_expr(expr, &VarAccess::ControlSlots));
                     }
                     for (&param_var, val) in head.parameters.iter().zip(arg_vals) {
-                        let ll_ty = llvm_ty(body.vars[param_var].ty, usize_bits);
+                        let ll_ty = llvm_ty(&body.vars[param_var].ty, usize_bits);
                         let _ =
                             writeln!(emitter.code, "  store {ll_ty} {val}, ptr %slot_{param_var}");
                     }
@@ -823,7 +828,7 @@ fn emit_control(
                         let _ = writeln!(emitter.code, "  store i1 true, ptr %bit_{bit_id}");
                     }
                     for (&var_id, val) in loop_arms[*alternative].iter().zip(pay_vals) {
-                        let ll_ty = llvm_ty(body.vars[var_id].ty, usize_bits);
+                        let ll_ty = llvm_ty(&body.vars[var_id].ty, usize_bits);
                         let _ = writeln!(emitter.code, "  store {ll_ty} {val}, ptr %slot_{var_id}");
                     }
                     let parent_len = body.bodies[*parent_body].statements.len();
@@ -846,7 +851,7 @@ fn emit_control(
                     for (field_idx, (field, val)) in
                         contract_alt.fields.iter().zip(pay_vals).enumerate()
                     {
-                        let ll_ty = llvm_ty(field.ty, usize_bits);
+                        let ll_ty = llvm_ty(&field.ty, usize_bits);
                         let _ = writeln!(
                             emitter.code,
                             "  store {ll_ty} {val}, ptr %out_{alternative}_{field_idx}"
@@ -857,6 +862,9 @@ fn emit_control(
                 Command::Impossible => {
                     // [R2]: `⊥` has no behavior and emits `unreachable`.
                     let _ = writeln!(emitter.code, "  unreachable");
+                }
+                _ => {
+                    let _ = writeln!(emitter.code, "  br label %{next_lbl}");
                 }
             }
         }
@@ -877,7 +885,7 @@ fn emit_control(
 fn emit_control_c_wrapper(out: &mut String, id: ControlId, control: &Control, usize_bits: u32) {
     let mut c_params = Vec::new();
     for (idx, param) in control.parameters.iter().enumerate() {
-        c_params.push(format!("{} %p{idx}", c_abi_llvm_ty(param.ty, usize_bits)));
+        c_params.push(format!("{} %p{idx}", c_abi_llvm_ty(&param.ty, usize_bits)));
     }
     for (alt_idx, alt) in control.contract.iter().enumerate() {
         for (field_idx, _) in alt.fields.iter().enumerate() {
@@ -901,7 +909,7 @@ fn emit_control_c_wrapper(out: &mut String, id: ControlId, control: &Control, us
             let _ = writeln!(out, "  %b_in_{idx} = icmp ne i8 %p{idx}, 0");
             internal_args.push(format!("i1 %b_in_{idx}"));
         } else {
-            internal_args.push(format!("{} %p{idx}", llvm_ty(param.ty, usize_bits)));
+            internal_args.push(format!("{} %p{idx}", llvm_ty(&param.ty, usize_bits)));
         }
     }
 
@@ -944,7 +952,7 @@ fn emit_control_c_wrapper(out: &mut String, id: ControlId, control: &Control, us
 // Standalone Native Execution Harness (`clang -x ir -O0` / `-O2`)
 // ---------------------------------------------------------------------------
 
-fn value_as_i64(value: &Value, ty: Type, usize_bits: u32) -> i64 {
+fn value_as_i64(value: &Value, ty: &Type, usize_bits: u32) -> i64 {
     match (value, ty) {
         (Value::Bool(b), _) => i64::from(*b),
         (Value::Int(v), Type::Int(int_ty)) => {
@@ -969,6 +977,7 @@ fn value_as_i64(value: &Value, ty: Type, usize_bits: u32) -> i64 {
             }
         }
         (Value::Int(v), Type::Bool) => i64::from(!v.is_zero()),
+        _ => 0,
     }
 }
 
@@ -1040,12 +1049,12 @@ pub fn emit_native_harness_llvm(
             let p0 = ans
                 .payload
                 .first()
-                .map(|v| value_as_i64(v, fields[0].ty, usize_bits))
+                .map(|v| value_as_i64(v, &fields[0].ty, usize_bits))
                 .unwrap_or(0);
             let p1 = ans
                 .payload
                 .get(1)
-                .map(|v| value_as_i64(v, fields[1].ty, usize_bits))
+                .map(|v| value_as_i64(v, &fields[1].ty, usize_bits))
                 .unwrap_or(0);
             flat_answers.push([ctrl_id as i64, alt_idx as i64, p0, p1]);
         }
@@ -1080,7 +1089,7 @@ pub fn emit_native_harness_llvm(
         }
         let mut params = Vec::new();
         for (idx, param) in control.parameters.iter().enumerate() {
-            params.push(format!("{} %p{idx}", c_abi_llvm_ty(param.ty, usize_bits)));
+            params.push(format!("{} %p{idx}", c_abi_llvm_ty(&param.ty, usize_bits)));
         }
         for (alt_idx, alt) in control.contract.iter().enumerate() {
             for (field_idx, _) in alt.fields.iter().enumerate() {
@@ -1107,8 +1116,8 @@ pub fn emit_native_harness_llvm(
             let _ = writeln!(ir, "  %arith_on = load i1, ptr @use_arith");
             let _ = writeln!(ir, "  br i1 %arith_on, label %do_arith, label %from_script");
             let _ = writeln!(ir, "do_arith:");
-            let p0_ty = control.parameters[0].ty;
-            let p1_ty = control.parameters[1].ty;
+            let p0_ty = &control.parameters[0].ty;
+            let p1_ty = &control.parameters[1].ty;
             let p0_ll = c_abi_llvm_ty(p0_ty, usize_bits);
             let p1_ll = c_abi_llvm_ty(p1_ty, usize_bits);
             let ext0 = if matches!(p0_ty, Type::Int(t) if t.is_signed()) {
@@ -1146,7 +1155,7 @@ pub fn emit_native_harness_llvm(
             let _ = writeln!(ir, "  %fits = and i1 %ge_lo, %le_hi");
             let _ = writeln!(ir, "  br i1 %fits, label %arith_fits, label %arith_fails");
             let _ = writeln!(ir, "arith_fits:");
-            let res_ll = c_abi_llvm_ty(Type::Int(res_int_ty), usize_bits);
+            let res_ll = c_abi_llvm_ty(&Type::Int(res_int_ty), usize_bits);
             let _ = writeln!(ir, "  %trunc_res = trunc i128 %res128 to {res_ll}");
             let _ = writeln!(ir, "  store {res_ll} %trunc_res, ptr %out_0_0");
             let _ = writeln!(ir, "  ret i32 0");
@@ -1193,7 +1202,7 @@ pub fn emit_native_harness_llvm(
         // Store payload 0 into every alternative that has a field 0.
         for (alt_idx, alt) in control.contract.iter().enumerate() {
             if let Some(field0) = alt.fields.first() {
-                let f_ll = c_abi_llvm_ty(field0.ty, usize_bits);
+                let f_ll = c_abi_llvm_ty(&field0.ty, usize_bits);
                 if f_ll == "i64" {
                     let _ = writeln!(ir, "  store i64 %pay0, ptr %out_{alt_idx}_0");
                 } else {
@@ -1206,7 +1215,7 @@ pub fn emit_native_harness_llvm(
         // If effectful, record the event!
         if !control.is_pure() {
             let arg0_i64 = if let Some(param0) = control.parameters.first() {
-                let p_ll = c_abi_llvm_ty(param0.ty, usize_bits);
+                let p_ll = c_abi_llvm_ty(&param0.ty, usize_bits);
                 if p_ll == "i64" {
                     "%p0".to_string()
                 } else {
@@ -1249,21 +1258,24 @@ pub fn emit_native_harness_llvm(
 
         let mut call_args = Vec::new();
         for (val, param) in spec.arguments.iter().zip(&control.parameters) {
-            let ll_ty = llvm_ty(param.ty, usize_bits);
-            match (val, param.ty) {
+            let ll_ty = llvm_ty(&param.ty, usize_bits);
+            match (val, &param.ty) {
                 (Value::Bool(b), _) => {
                     call_args.push(format!("i1 {}", if *b { "true" } else { "false" }));
                 }
                 (Value::Int(_), _) => {
-                    let v64 = value_as_i64(val, param.ty, usize_bits);
+                    let v64 = value_as_i64(val, &param.ty, usize_bits);
                     call_args.push(format!("{ll_ty} {v64}"));
+                }
+                _ => {
+                    call_args.push(format!("{ll_ty} null"));
                 }
             }
         }
 
         for (alt_idx, alt) in control.contract.iter().enumerate() {
             for (field_idx, field) in alt.fields.iter().enumerate() {
-                let ll_ty = llvm_ty(field.ty, usize_bits);
+                let ll_ty = llvm_ty(&field.ty, usize_bits);
                 let slot = format!("%r{run_idx}_out_{alt_idx}_{field_idx}");
                 let _ = writeln!(ir, "  {slot} = alloca {ll_ty}");
                 let zero = if field.ty == Type::Bool { "false" } else { "0" };
@@ -1300,7 +1312,7 @@ pub fn emit_native_harness_llvm(
             );
             let _ = writeln!(ir, "{copy_lbl}:");
             for (field_idx, field) in alt.fields.iter().take(2).enumerate() {
-                let ll_ty = llvm_ty(field.ty, usize_bits);
+                let ll_ty = llvm_ty(&field.ty, usize_bits);
                 let slot = format!("%r{run_idx}_out_{alt_idx}_{field_idx}");
                 let loaded = format!("%ld_{run_idx}_{alt_idx}_{field_idx}");
                 let _ = writeln!(ir, "  {loaded} = load {ll_ty}, ptr {slot}");
@@ -1340,7 +1352,7 @@ pub fn emit_native_harness_llvm(
     ir
 }
 
-fn decode_word(word: i64, ty: Type, usize_bits: u32) -> Value {
+fn decode_word(word: i64, ty: &Type, usize_bits: u32) -> Value {
     match ty {
         Type::Bool => Value::Bool(word != 0),
         Type::Int(int_ty) => {
@@ -1364,6 +1376,7 @@ fn decode_word(word: i64, ty: Type, usize_bits: u32) -> Value {
                 Value::Int(Int::from_u64(masked))
             }
         }
+        _ => Value::Int(Int::zero()),
     }
 }
 
@@ -1442,13 +1455,13 @@ pub fn run_native_batch(
                 let arguments = ctrl
                     .parameters
                     .first()
-                    .map(|p| vec![decode_word(arg0, p.ty, usize_bits)])
+                    .map(|p| vec![decode_word(arg0, &p.ty, usize_bits)])
                     .unwrap_or_default();
                 let alt = &ctrl.contract[alt_idx];
                 let payload = alt
                     .fields
                     .first()
-                    .map(|f| vec![decode_word(pay0, f.ty, usize_bits)])
+                    .map(|f| vec![decode_word(pay0, &f.ty, usize_bits)])
                     .unwrap_or_default();
                 current_events.push(Event {
                     control: ctrl.name.clone(),
@@ -1469,10 +1482,10 @@ pub fn run_native_batch(
                 let alt = &ctrl.contract[tag];
                 let mut payload = Vec::new();
                 if let Some(f0) = alt.fields.first() {
-                    payload.push(decode_word(v0, f0.ty, usize_bits));
+                    payload.push(decode_word(v0, &f0.ty, usize_bits));
                 }
                 if let Some(f1) = alt.fields.get(1) {
-                    payload.push(decode_word(v1, f1.ty, usize_bits));
+                    payload.push(decode_word(v1, &f1.ty, usize_bits));
                 }
                 let events = std::mem::take(&mut current_events);
                 results.push((

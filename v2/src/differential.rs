@@ -66,6 +66,7 @@ fn differ(oracle: &oracle::Run, erased: &erased::Run, unused: usize) -> Option<S
                 payload: p,
             },
         ) => alternative == a && payload == p,
+        (oracle::End::Faulted(m1), erased::End::Faulted(m2)) => m1 == m2,
         (oracle::End::OutOfFuel, erased::End::OutOfFuel) => true,
         _ => false,
     };
@@ -123,7 +124,7 @@ pub fn compare(
     let answers = recording.answers;
     if !matches!(
         oracle.end,
-        oracle::End::Done { .. } | oracle::End::OutOfFuel
+        oracle::End::Done { .. } | oracle::End::Faulted(_) | oracle::End::OutOfFuel
     ) {
         return Outcome {
             oracle,

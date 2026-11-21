@@ -1,17 +1,17 @@
 # Villanelle v2 oracle, checker and typed backend
 
-Status: **slice 1, sixth checkpoint (phases 2, 3 and 4 complete for slice 1)**, 21
-November 2026. Phases 2, 3 and 4 of the [redesign plan](../redesign-plan.md). The
-oracle, the erased semantics and compiled native code from the phase 4 typed LLVM
-IR backend run the scalar core, compared run by run across the conformance suite,
-the Rails surface programs and the random program generator (both original and
-Theorem-4-expanded, at `-O0` and `-O2`), with single-step mutation tests, property
-tests of the fact logic's arithmetic axioms, the reader, elaborator and canonical
-formatter of the Rails surface syntax, the phase 3 checker with its ROBDD engine,
-`Th_Z` decision procedure, independent certificate kernel, counterexample model
-builder and warnings, and paired native performance measurements against optimized
-Rust (`0.991x` on Apple M2, 0 allocations). Slice 2 (data, moves, resources,
-captured outcomes, faults and boundaries) is next (section 12).
+Status: **slice 2, first checkpoint (slice 1 complete across phases 2–4; slice 2
+phase 2 complete)**, 21 November 2026. Phases 2, 3 and 4 of the
+[redesign plan](../redesign-plan.md). Slice 1 runs end-to-end across the oracle,
+erased interpreter, certificate-producing checker, Theorem 4 expander, and typed
+LLVM IR backend (`0.991x` optimized Rust on Apple M2, 0 allocations). Slice 2
+Phase 2 adds structs, variants, vectors, maps, strings, usage kinds (`copy <
+drop < must`), moves (`▾`), `extern resource` (`on fault release`), captured
+outcomes, `fault`/`assume ⊥`, lexical and named boundaries (`boundary` /
+`contingency` / `supervise`), erased history-bit fault release (`[R4]`, `[R5]`),
+and the Slice 2 Rails surface syntax and canonical formatter (section 12). Slice
+2 Phase 3 (checker ownership `[O0]`–`[O6]`, faults `[F1]`–`[F6]`, and data
+axioms `[A3]`–`[A6]`) is next.
 
 [Index of the v2 design](README.md) · [Core calculus](core.md) ·
 [Fact logic](facts.md) · [Surface](surface.md)
@@ -443,10 +443,59 @@ rejected by `resolve` or `check::check`.
   checksum (`432,500,000`) and zero heap allocations (`0` allocations, `0`
   requested bytes).
 
-## 12. What this checkpoint leaves open
+## 12. Slice 2 Phase 2: Data, Resources, Captured Outcomes, Faults, and Boundaries
 
-- **Later slices in phases 2, 3 and 4.** Slice 2 (data, moves, resources,
-  captured outcomes, faults, boundaries), slice 3 (borrows and views) and
+Slice 2 Phase 2 extends the core syntax (`syntax.rs`, `text.rs`), resolver
+(`typed.rs`, `resolve.rs`), instrumented oracle (`oracle.rs`), erased semantics
+(`erased.rs`), differential harness (`differential.rs`, `script.rs`, `host.rs`),
+and Rails surface reader, elaborator, and formatter (`surface.rs`):
+
+- **Types and usage kinds (`[T1]`–`[T6]`, `[W5a]`, `[W6]`–`[W8]`).** Adds
+  `string`, `[pub] [copy] struct`, `[pub] [copy] variant`, `[τ]` (`vector<τ>`),
+  `κ ⇀ υ` (`map<κ, υ>`), `extern resource R [on fault release]`, `outcome⟨O⟩`,
+  and `&τ` / `&~τ` parameter and operand modes. `resolve.rs` checks type-cycle
+  rejection (`[T1]`), `copy` kind propagation (`[T1]`/`[G4b]`), function
+  must-parameter prohibition (`[W5a]`), borrow nesting (`[W6]`/`[T6]`),
+  `old(y)` on `&~` parameters (`[W7]`), and non-borrow assignment (`[W8]`).
+- **Instrumented semantics (`oracle.rs`).** Implements `Slot::{Available,
+  Moved}`, move-on-consume (`[E-Var]`, `X2 E-Var`), partial-move rejection
+  (`X2 E-Field`, `X2 E-Index`), bounds checking (`X7 E-Index`),
+  non-lending-before-lending operand order (`[E-Operands]`) with `&~`
+  writebacks, temporary obligation check (`X5 E-Temp`), struct unpacking
+  (`[E-Unpack]`), place assignment (`[E-Assign]`, `X2`/`X5`), captured outcomes
+  (`[E-Capture]`, `[E-Outcome]`), resource open/close lifecycle
+  (`[E-Resource]`), scope obligation check (`X5 E-Scope`), faults and unwinding
+  (`[E-Fault]` / `X8 E-Fault`, `[E-Unwind]` / `X8 E-Unwind`, `[E-Root]`),
+  lexical boundaries (`[E-Boundary]`, `[E-Contingency]` with `recover ↑ ℓ`,
+  `escalate`, `terminate`), named boundaries (`[E-Supervise]`, `X2
+  E-Supervise`), and all eight built-in operations (`push`, `pop`, `take`,
+  `get`, `insert`, `remove`, `entry_at`, `emit`).
+- **Erased semantics (`erased.rs`, `[R4]`, `[R5]`).** Computes static
+  availability formulas `avail_at[body][pc][var] = D(var) ∧ ¬M(var)` as
+  history-bit selectors during planning (`plan()`) with zero runtime moved
+  flags, and releases `on fault release` resources during fault unwinding using
+  those selectors alone. Differential tests verify exact outcome and trace
+  agreement (including `conn.release(...)` events and `faulted "..."` ends)
+  between `oracle` and `erased`.
+- **Rails surface & formatter (`surface.rs`).** Adds layout (`[Y12]`),
+  grammar (`[G4a]`, `[G4b]`, `[G7a]`, `[G12]`, `[G8]`/`[G9]` plain and ASCII
+  forms), elaboration (`[U6]` variant & captured-outcome decisions, `[U10]`
+  `∀ x ∈ p`, `[U11]` move marks `▾` and `~` borrows, `[U12]` method form with
+  module-control rejection, `[U14]` `■ ▾x`), and canonical Rails formatting
+  (`[G10]`).
+- **Conformance suite (`v2/tests/slice2.rs`, `tests/slice2/*.core`,
+  `tests/slice2_surface/*.rails`).** 13 core files and 4 canonical Rails files
+  (including `show_file_resource.rails` from section 2 of `surface.md`) with
+  accepting, rejecting, stuck-state, core round-trip, formatter idempotence,
+  and oracle-vs-erased differential checks.
+
+## 13. What this checkpoint leaves open
+
+- **Slice 2 Phases 3 and 4.** Phase 3 checker ownership (`[O0]`–`[O6]`),
+  faults and boundaries (`[F1]`–`[F6]`), and data fact logic (`[A3]`–`[A6]`,
+  `[I9]`, `[I11]`, `[I12]`, `[M7]`), followed by Phase 4 expansion and typed
+  LLVM IR lowering for Slice 2.
+- **Later slices in phases 2, 3 and 4.** Slice 3 (borrows and views) and
   slice 4 (tasks), which will allow the oracle, the checker and the typed
   backend to run, verify and compile the full paper corpus.
 - **Operators that the surface does not have yet.** The wrapping and

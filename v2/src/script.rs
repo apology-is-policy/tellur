@@ -1,48 +1,24 @@
 //! Test directives: runs written beside a program, and what each must yield.
-//!
-//! A line of a core text file that begins with `//!` is a directive.
-//!
-//! ```text
-//! //! run add(250, 5) => done sum {255}
-//! //! run add(250, 6) => stuck X7 E-Arith
-//! //! run pump(2) with [read -> value {7}; read -> closed] => done total {7}
-//! //!     trace [read(2) -> value {7}; read(2) -> closed {}]
-//! //! reject W1
-//! ```
-//!
-//! `run` names an entry control and its arguments, then options, then `=>`
-//! and the expected end: `done` with an alternative and its payload, `stuck`
-//! with the row of the table of stuck states and the clause, `violation`,
-//! `host-failed`, `fuel`, or `not-an-execution`. The options are
-//! `with arithmetic` (the host computes the checked arithmetic of the
-//! prelude), `with [...]` (the host answers from the list), `usize 32` (the
-//! greatest `usize` is `2^32 - 1`; the default is `2^64 - 1`) and `fuel N`.
-//! `trace [...]` after the end states the events of the run. A directive
-//! continues on the following `//!` lines until the next `run` or `reject`.
-//!
-//! `reject` names the clause by which `resolve` must refuse the program.
-//!
-//! Every `run` that ends in `done` or in `fuel` is also carried out under the
-//! erased semantics, with the answers of the host replayed, and the two
-//! observations must be the same (Theorem 3). `erased` in the place of `run`
-//! states a run of the erased semantics alone; it may also end in
-//! `undefined`.
 
 use crate::differential::{Verdict, compare};
 use crate::host::{Answer, Arithmetic, Host, Script};
 use crate::int::Int;
 use crate::oracle::{Config, End, Event, Value};
+use crate::typed::Program;
 use crate::{check, erased, resolve, surface, text};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Piece {
     Word(String),
+    Str(String),
     Mark(&'static str),
 }
 
 fn pieces(text: &str) -> Result<Vec<Piece>, String> {
-    const MARKS: [&str; 10] = ["->", "=>", "(", ")", "{", "}", "[", "]", ",", ";"];
+    const MARKS: [&str; 14] = [
+        "->", "=>", "|->", "↦", "(", ")", "{", "}", "[", "]", ",", ";", ".", "#",
+    ];
     let characters: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     let mut index = 0;
@@ -51,11 +27,52 @@ fn pieces(text: &str) -> Result<Vec<Piece>, String> {
             index += 1;
             continue;
         }
-        let rest: String = characters[index..].iter().take(2).collect();
+        if characters[index] == '∅' {
+            out.push(Piece::Mark("∅"));
+            index += 1;
+            continue;
+        }
+        if characters[index] == '"' {
+            index += 1;
+            let mut s = String::new();
+            let mut closed = false;
+            while index < characters.len() {
+                let ch = characters[index];
+                if ch == '"' {
+                    index += 1;
+                    closed = true;
+                    break;
+                }
+                if ch == '\\' {
+                    index += 1;
+                    let Some(&esc) = characters.get(index) else {
+                        return Err("unterminated escape in directive string".to_string());
+                    };
+                    match esc {
+                        '"' => s.push('"'),
+                        '\\' => s.push('\\'),
+                        'n' => s.push('\n'),
+                        'r' => s.push('\r'),
+                        't' => s.push('\t'),
+                        other => s.push(other),
+                    }
+                    index += 1;
+                } else {
+                    s.push(ch);
+                    index += 1;
+                }
+            }
+            if !closed {
+                return Err("unterminated string in directive".to_string());
+            }
+            out.push(Piece::Str(s));
+            continue;
+        }
+        let rest: String = characters[index..].iter().take(3).collect();
         for mark in MARKS {
             if rest.starts_with(mark) {
                 out.push(Piece::Mark(mark));
-                index += mark.len();
+                index += mark.chars().count();
                 continue 'next;
             }
         }
@@ -83,6 +100,99 @@ fn pieces(text: &str) -> Result<Vec<Piece>, String> {
     Ok(out)
 }
 
+#[derive(Clone, Debug)]
+enum RawValue {
+    Bool(bool),
+    Int(Int),
+    String(String),
+    Vector(Vec<RawValue>),
+    Map(Vec<(RawValue, RawValue)>),
+    Struct {
+        name: String,
+        fields: Vec<RawValue>,
+    },
+    Variant {
+        name: String,
+        ctor: String,
+        fields: Vec<RawValue>,
+    },
+    Resource {
+        name: String,
+        id: u64,
+    },
+}
+
+fn resolve_raw_value(program: &Program, raw: &RawValue) -> Result<Value, String> {
+    match raw {
+        RawValue::Bool(b) => Ok(Value::Bool(*b)),
+        RawValue::Int(i) => Ok(Value::Int(i.clone())),
+        RawValue::String(s) => Ok(Value::String(s.clone())),
+        RawValue::Vector(items) => Ok(Value::Vector(
+            items
+                .iter()
+                .map(|i| resolve_raw_value(program, i))
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+        RawValue::Map(entries) => {
+            let mut map = BTreeMap::new();
+            for (k, v) in entries {
+                map.insert(
+                    resolve_raw_value(program, k)?,
+                    resolve_raw_value(program, v)?,
+                );
+            }
+            Ok(Value::Map(map))
+        }
+        RawValue::Struct { name, fields } => {
+            let Some(sid) = program.structs.iter().position(|s| s.name == *name) else {
+                return Err(format!("`{name}` is not a struct in this program"));
+            };
+            let vals = fields
+                .iter()
+                .map(|f| resolve_raw_value(program, f))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Value::Struct {
+                ty: sid,
+                name: name.clone(),
+                fields: vals,
+            })
+        }
+        RawValue::Variant { name, ctor, fields } => {
+            let Some(vid) = program.variants.iter().position(|v| v.name == *name) else {
+                return Err(format!("`{name}` is not a variant in this program"));
+            };
+            let Some(cidx) = program.variants[vid]
+                .constructors
+                .iter()
+                .position(|c| c.name == *ctor)
+            else {
+                return Err(format!("`{name}` has no constructor `{ctor}`"));
+            };
+            let vals = fields
+                .iter()
+                .map(|f| resolve_raw_value(program, f))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Value::Variant {
+                ty: vid,
+                name: name.clone(),
+                constructor: cidx,
+                constructor_name: ctor.clone(),
+                fields: vals,
+            })
+        }
+        RawValue::Resource { name, id } => {
+            let Some(rid) = program.resources.iter().position(|r| r.name == *name) else {
+                return Err(format!("`{name}` is not a resource in this program"));
+            };
+            Ok(Value::Resource {
+                ty: rid,
+                name: name.clone(),
+                id: *id,
+            })
+        }
+    }
+}
+
 struct Reader {
     pieces: Vec<Piece>,
     at: usize,
@@ -95,6 +205,10 @@ impl Reader {
             self.at += 1;
         }
         found
+    }
+
+    fn peek_mark(&self, mark: &str) -> bool {
+        matches!(self.pieces.get(self.at), Some(Piece::Mark(found)) if *found == mark)
     }
 
     fn need(&mut self, mark: &str) -> Result<(), String> {
@@ -122,18 +236,103 @@ impl Reader {
         }
     }
 
-    fn value(&mut self) -> Result<Value, String> {
+    fn dotted_word(&mut self, what: &str) -> Result<String, String> {
+        let mut out = self.word(what)?;
+        while self.mark(".") {
+            out.push('.');
+            out.push_str(&self.word(what)?);
+        }
+        Ok(out)
+    }
+
+    fn string_lit(&mut self, what: &str) -> Result<String, String> {
+        match self.pieces.get(self.at) {
+            Some(Piece::Str(s)) => {
+                self.at += 1;
+                Ok(s.clone())
+            }
+            _ => Err(format!("expected {what}")),
+        }
+    }
+
+    fn value(&mut self) -> Result<RawValue, String> {
+        if let Some(Piece::Str(s)) = self.pieces.get(self.at).cloned() {
+            self.at += 1;
+            return Ok(RawValue::String(s));
+        }
+        if self.mark("∅") {
+            return Ok(RawValue::Map(Vec::new()));
+        }
+        if self.mark("[") {
+            let items = self.values("]")?;
+            return Ok(RawValue::Vector(items));
+        }
+        if self.mark("{") {
+            let mut entries = Vec::new();
+            while !self.mark("}") {
+                if !entries.is_empty() {
+                    self.need(",")?;
+                }
+                let k = self.value()?;
+                if !self.mark("↦") && !self.mark("|->") && !self.mark("->") {
+                    return Err("expected `↦` or `->` in map literal".to_string());
+                }
+                let v = self.value()?;
+                entries.push((k, v));
+            }
+            return Ok(RawValue::Map(entries));
+        }
         let word = self.word("a value")?;
+        if word == "map" && self.peek_mark("{") {
+            self.need("{")?;
+            let mut entries = Vec::new();
+            while !self.mark("}") {
+                if !entries.is_empty() {
+                    self.need(",")?;
+                }
+                let k = self.value()?;
+                if !self.mark("↦") && !self.mark("|->") && !self.mark("->") {
+                    return Err("expected `↦` or `->` in map literal".to_string());
+                }
+                let v = self.value()?;
+                entries.push((k, v));
+            }
+            return Ok(RawValue::Map(entries));
+        }
+        if self.mark("#") {
+            let id_str = self.word("a resource handle id")?;
+            let id: u64 = id_str
+                .parse()
+                .map_err(|_| format!("`{id_str}` is not a resource id"))?;
+            return Ok(RawValue::Resource { name: word, id });
+        }
+        if self.mark(".") {
+            let ctor = self.word("a variant constructor")?;
+            let fields = if self.mark("{") {
+                self.values("}")?
+            } else {
+                Vec::new()
+            };
+            return Ok(RawValue::Variant {
+                name: word,
+                ctor,
+                fields,
+            });
+        }
+        if self.mark("{") {
+            let fields = self.values("}")?;
+            return Ok(RawValue::Struct { name: word, fields });
+        }
         match word.as_str() {
-            "true" => Ok(Value::Bool(true)),
-            "false" => Ok(Value::Bool(false)),
+            "true" => Ok(RawValue::Bool(true)),
+            "false" => Ok(RawValue::Bool(false)),
             digits => Int::parse(digits)
-                .map(Value::Int)
+                .map(RawValue::Int)
                 .ok_or(format!("`{digits}` is not a value")),
         }
     }
 
-    fn values(&mut self, close: &str) -> Result<Vec<Value>, String> {
+    fn values(&mut self, close: &str) -> Result<Vec<RawValue>, String> {
         let mut out = Vec::new();
         while !self.mark(close) {
             if !out.is_empty() {
@@ -145,7 +344,7 @@ impl Reader {
     }
 
     /// `alternative [{values}]`
-    fn outcome(&mut self) -> Result<(String, Vec<Value>), String> {
+    fn outcome(&mut self) -> Result<(String, Vec<RawValue>), String> {
         let alternative = self.word("an alternative")?;
         let payload = if self.mark("{") {
             self.values("}")?
@@ -157,11 +356,26 @@ impl Reader {
 }
 
 #[derive(Clone, Debug)]
+enum RawExpect {
+    Done {
+        alternative: String,
+        payload: Vec<RawValue>,
+    },
+    Faulted(String),
+    Stuck {
+        state: String,
+        clause: String,
+    },
+    Other(&'static str),
+}
+
+#[derive(Clone, Debug)]
 enum Expect {
     Done {
         alternative: String,
         payload: Vec<Value>,
     },
+    Faulted(String),
     Stuck {
         state: String,
         clause: String,
@@ -182,6 +396,7 @@ impl std::fmt::Display for Expect {
                     crate::oracle::list(payload)
                 )
             }
+            Expect::Faulted(msg) => write!(formatter, "faulted \"{msg}\""),
             Expect::Stuck { state, clause } => write!(formatter, "stuck {state} {clause}"),
             Expect::Other(kind) => formatter.write_str(kind),
         }
@@ -189,22 +404,29 @@ impl std::fmt::Display for Expect {
 }
 
 #[derive(Clone, Debug)]
-struct RunSpec {
+struct RawEvent {
+    control: String,
+    arguments: Vec<RawValue>,
+    alternative: String,
+    payload: Vec<RawValue>,
+}
+
+#[derive(Clone, Debug)]
+struct RawRunSpec {
     line: usize,
-    /// A run of the erased semantics alone.
     erased: bool,
     entry: String,
-    arguments: Vec<Value>,
+    arguments: Vec<RawValue>,
     arithmetic: bool,
-    answers: Vec<(String, Answer)>,
+    answers: Vec<(String, String, Vec<RawValue>)>,
     config: Config,
-    expect: Expect,
-    trace: Option<Vec<Event>>,
+    expect: RawExpect,
+    trace: Option<Vec<RawEvent>>,
 }
 
 #[derive(Clone, Debug)]
 enum Directive {
-    Run(Box<RunSpec>),
+    Run(Box<RawRunSpec>),
     Reject { line: usize, clause: String },
     Check { line: usize },
     Warn { line: usize, clause: String },
@@ -241,7 +463,7 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
     let entry = reader.word("an entry control")?;
     reader.need("(")?;
     let arguments = reader.values(")")?;
-    let mut spec = RunSpec {
+    let mut spec = RawRunSpec {
         line,
         erased: kind == "erased",
         entry,
@@ -249,7 +471,7 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
         arithmetic: false,
         answers: Vec::new(),
         config: Config::default(),
-        expect: Expect::Other("fuel"),
+        expect: RawExpect::Other("fuel"),
         trace: None,
     };
     while !reader.mark("=>") {
@@ -267,13 +489,7 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
                     let control = reader.word("a control")?;
                     reader.need("->")?;
                     let (alternative, payload) = reader.outcome()?;
-                    spec.answers.push((
-                        control,
-                        Answer {
-                            alternative,
-                            payload,
-                        },
-                    ));
+                    spec.answers.push((control, alternative, payload));
                 }
             }
             "usize" => {
@@ -291,20 +507,21 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
     spec.expect = match reader.word("the expected end")?.as_str() {
         "done" => {
             let (alternative, payload) = reader.outcome()?;
-            Expect::Done {
+            RawExpect::Done {
                 alternative,
                 payload,
             }
         }
-        "stuck" if !spec.erased => Expect::Stuck {
+        "faulted" => RawExpect::Faulted(reader.string_lit("a fault message string")?),
+        "stuck" if !spec.erased => RawExpect::Stuck {
             state: reader.word("a stuck state, X1 to X10")?,
             clause: reader.word("a clause")?,
         },
-        "undefined" if spec.erased => Expect::Other("undefined"),
-        "violation" => Expect::Other("violation"),
-        "host-failed" => Expect::Other("host-failed"),
-        "fuel" => Expect::Other("fuel"),
-        "not-an-execution" => Expect::Other("not-an-execution"),
+        "undefined" if spec.erased => RawExpect::Other("undefined"),
+        "violation" => RawExpect::Other("violation"),
+        "host-failed" => RawExpect::Other("host-failed"),
+        "fuel" => RawExpect::Other("fuel"),
+        "not-an-execution" => RawExpect::Other("not-an-execution"),
         other => return Err(format!("`{other}` is not an end of a run")),
     };
     if reader.peek_word() == Some("trace") {
@@ -315,12 +532,12 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
             if !events.is_empty() {
                 reader.need(";")?;
             }
-            let control = reader.word("a control")?;
+            let control = reader.dotted_word("a control")?;
             reader.need("(")?;
             let arguments = reader.values(")")?;
             reader.need("->")?;
             let (alternative, payload) = reader.outcome()?;
-            events.push(Event {
+            events.push(RawEvent {
                 control,
                 arguments,
                 alternative,
@@ -336,7 +553,6 @@ fn directive(line: usize, text: &str) -> Result<Directive, String> {
 }
 
 fn directives(source: &str) -> Result<Vec<Directive>, String> {
-    // Join each directive with its continuation lines.
     let mut joined: Vec<(usize, String)> = Vec::new();
     for (index, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
@@ -365,20 +581,17 @@ fn directives(source: &str) -> Result<Vec<Directive>, String> {
 #[derive(Clone, Debug, Default)]
 pub struct Report {
     pub runs: usize,
-    /// The runs that were also carried out under the erased semantics.
     pub compared: usize,
     pub failures: Vec<String>,
-    /// How often each rule of the semantics was applied, over all runs.
     pub rules: BTreeMap<&'static str, u64>,
-    /// The stuck states that runs ended in, as `X7 E-Arith`.
     pub stuck: BTreeSet<String>,
-    /// The clause by which the program was refused, when a directive asked.
     pub rejected: Option<String>,
 }
 
 fn kind(end: &End) -> &'static str {
     match end {
         End::Done { .. } => "done",
+        End::Faulted(_) => "faulted",
         End::Stuck(_) => "stuck",
         End::HostViolation(_) => "violation",
         End::HostFailed(_) => "host-failed",
@@ -538,27 +751,126 @@ fn check_with(source: &str, is_surface: bool) -> Report {
         }
     }
     for directive in directives {
-        let Directive::Run(spec) = directive else {
+        let Directive::Run(raw_spec) = directive else {
             continue;
         };
         report.runs += 1;
+        let arguments = match raw_spec
+            .arguments
+            .iter()
+            .map(|v| resolve_raw_value(&program, v))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(args) => args,
+            Err(err) => {
+                report
+                    .failures
+                    .push(format!("line {}: {err}", raw_spec.line));
+                continue;
+            }
+        };
+        let mut answers = Vec::with_capacity(raw_spec.answers.len());
+        let mut bad_answer = None;
+        for (ctrl, alt, raw_payload) in &raw_spec.answers {
+            match raw_payload
+                .iter()
+                .map(|v| resolve_raw_value(&program, v))
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(payload) => answers.push((
+                    ctrl.clone(),
+                    Answer {
+                        alternative: alt.clone(),
+                        payload,
+                    },
+                )),
+                Err(err) => {
+                    bad_answer = Some(err);
+                    break;
+                }
+            }
+        }
+        if let Some(err) = bad_answer {
+            report
+                .failures
+                .push(format!("line {}: {err}", raw_spec.line));
+            continue;
+        }
+        let expect = match &raw_spec.expect {
+            RawExpect::Done {
+                alternative,
+                payload,
+            } => match payload
+                .iter()
+                .map(|v| resolve_raw_value(&program, v))
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(p) => Expect::Done {
+                    alternative: alternative.clone(),
+                    payload: p,
+                },
+                Err(err) => {
+                    report
+                        .failures
+                        .push(format!("line {}: {err}", raw_spec.line));
+                    continue;
+                }
+            },
+            RawExpect::Faulted(m) => Expect::Faulted(m.clone()),
+            RawExpect::Stuck { state, clause } => Expect::Stuck {
+                state: state.clone(),
+                clause: clause.clone(),
+            },
+            RawExpect::Other(s) => Expect::Other(s),
+        };
+        let trace = match &raw_spec.trace {
+            None => None,
+            Some(raw_events) => {
+                let mut evs = Vec::with_capacity(raw_events.len());
+                let mut err_msg = None;
+                for re in raw_events {
+                    let args = re
+                        .arguments
+                        .iter()
+                        .map(|v| resolve_raw_value(&program, v))
+                        .collect::<Result<Vec<_>, _>>();
+                    let pay = re
+                        .payload
+                        .iter()
+                        .map(|v| resolve_raw_value(&program, v))
+                        .collect::<Result<Vec<_>, _>>();
+                    match (args, pay) {
+                        (Ok(a), Ok(p)) => evs.push(Event {
+                            control: re.control.clone(),
+                            arguments: a,
+                            alternative: re.alternative.clone(),
+                            payload: p,
+                        }),
+                        (Err(e), _) | (_, Err(e)) => {
+                            err_msg = Some(e);
+                            break;
+                        }
+                    }
+                }
+                if let Some(e) = err_msg {
+                    report.failures.push(format!("line {}: {e}", raw_spec.line));
+                    continue;
+                }
+                Some(evs)
+            }
+        };
+
         let mut host = Arithmetic(Script {
-            answers: spec.answers.iter().cloned().collect(),
+            answers: answers.into_iter().collect(),
         });
-        let host: &mut dyn Host = if spec.arithmetic {
+        let host: &mut dyn Host = if raw_spec.arithmetic {
             &mut host
         } else {
             &mut host.0
         };
-        if spec.erased {
-            let outcome = erased::run(
-                &program,
-                &spec.entry,
-                spec.arguments.clone(),
-                host,
-                &spec.config,
-            );
-            let as_expected = match (&spec.expect, &outcome.end) {
+        if raw_spec.erased {
+            let outcome = erased::run(&program, &raw_spec.entry, arguments, host, &raw_spec.config);
+            let as_expected = match (&expect, &outcome.end) {
                 (
                     Expect::Done {
                         alternative,
@@ -569,10 +881,12 @@ fn check_with(source: &str, is_surface: bool) -> Report {
                         payload: p,
                     },
                 ) => alternative == a && payload == p,
+                (Expect::Faulted(m1), erased::End::Faulted(m2)) => m1 == m2,
                 (Expect::Other(expected), end) => {
                     *expected
                         == match end {
                             erased::End::Done { .. } => "done",
+                            erased::End::Faulted(_) => "faulted",
                             erased::End::Undefined(_) => "undefined",
                             erased::End::HostFailed(_) => "host-failed",
                             erased::End::OutOfFuel => "fuel",
@@ -584,40 +898,34 @@ fn check_with(source: &str, is_surface: bool) -> Report {
             if !as_expected {
                 report.failures.push(format!(
                     "line {}: erased {}: expected {}, got: {}",
-                    spec.line, spec.entry, spec.expect, outcome.end
+                    raw_spec.line, raw_spec.entry, expect, outcome.end
                 ));
-            } else if let Some(expected) = &spec.trace
+            } else if let Some(expected) = &trace
                 && *expected != outcome.trace
             {
                 report.failures.push(format!(
                     "line {}: erased {}: the trace is [{}]",
-                    spec.line,
-                    spec.entry,
+                    raw_spec.line,
+                    raw_spec.entry,
                     events(&outcome.trace)
                 ));
             }
             continue;
         }
-        let compared = compare(
-            &program,
-            &spec.entry,
-            spec.arguments.clone(),
-            host,
-            &spec.config,
-        );
+        let compared = compare(&program, &raw_spec.entry, arguments, host, &raw_spec.config);
         match &compared.verdict {
             Verdict::Same => report.compared += 1,
             Verdict::NotCompared => {}
             Verdict::Differ(difference) => report.failures.push(format!(
                 "line {}: run {}: {difference}",
-                spec.line, spec.entry
+                raw_spec.line, raw_spec.entry
             )),
         }
         let outcome = compared.oracle;
         for (clause, count) in &outcome.rules {
             *report.rules.entry(clause).or_insert(0) += count;
         }
-        let as_expected = match (&spec.expect, &outcome.end) {
+        let as_expected = match (&expect, &outcome.end) {
             (
                 Expect::Done {
                     alternative,
@@ -628,6 +936,7 @@ fn check_with(source: &str, is_surface: bool) -> Report {
                     payload: p,
                 },
             ) => alternative == a && payload == p,
+            (Expect::Faulted(m1), End::Faulted(m2)) => m1 == m2,
             (Expect::Stuck { state, clause }, End::Stuck(stuck)) => {
                 report
                     .stuck
@@ -640,17 +949,17 @@ fn check_with(source: &str, is_surface: bool) -> Report {
         if !as_expected {
             report.failures.push(format!(
                 "line {}: run {}: expected {}, got: {}",
-                spec.line, spec.entry, spec.expect, outcome.end
+                raw_spec.line, raw_spec.entry, expect, outcome.end
             ));
             continue;
         }
-        if let Some(expected) = &spec.trace
+        if let Some(expected) = &trace
             && *expected != outcome.trace
         {
             report.failures.push(format!(
                 "line {}: run {}: the trace is [{}]",
-                spec.line,
-                spec.entry,
+                raw_spec.line,
+                raw_spec.entry,
                 events(&outcome.trace)
             ));
         }

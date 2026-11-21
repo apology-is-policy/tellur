@@ -1,0 +1,30 @@
+// Slice 2 core conformance: captured outcomes ([E-Capture], [E-Outcome]) and obligation tracking.
+
+outcome fetch_res {ok {value : u32} │ failed {code : u32}}
+
+extern control fetch(id : u32)
+    ■ { ok {value : u32} │ failed {code : u32} }
+
+control capture_and_decide(id : u32)
+    ■ { got {v : u32} │ err {c : u32} }
+    1  ⊤ ▷ res := capture fetch(id)
+    2  ⊤ ▷ d : Δ outcome(res) ▸ ok {v} │ failed {c}
+    3  d.ok     ▷ ■ got {v}
+    4  d.failed ▷ ■ err {c}
+
+control drop_captured(id : u32)
+    ■ { done {} }
+    1  ⊤ ▷ res := capture fetch(id)
+    2  ⊤ ▷ ■ done {}
+
+control reuse_captured(id : u32)
+    ■ { done {} }
+    1  ⊤ ▷ res := capture fetch(id)
+    2  ⊤ ▷ d1 : Δ outcome(res) ▸ ok {v1} │ failed {c1}
+    3  ⊤ ▷ d2 : Δ outcome(res) ▸ ok {v2} │ failed {c2}
+    4  ⊤ ▷ ■ done {}
+
+//! run capture_and_decide(1) with [fetch -> ok {42}] => done got {42}
+//! run capture_and_decide(2) with [fetch -> failed {404}] => done err {404}
+//! run drop_captured(1) with [fetch -> ok {42}] => stuck X5 E-Scope
+//! run reuse_captured(1) with [fetch -> ok {42}] => stuck X2 E-Var

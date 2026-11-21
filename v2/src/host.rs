@@ -9,7 +9,7 @@ use crate::int::Int;
 use crate::oracle::{Config, Value, signature_holds};
 use crate::rng::{Rng, mix};
 use crate::typed::{Control, IntType, Program, Type};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Answer {
@@ -57,11 +57,6 @@ impl Host for Script {
 
 /// A host that computes the checked arithmetic of the prelude and passes
 /// every other call on.
-///
-/// A control whose name begins with `checked_add`, `checked_sub`,
-/// `checked_mul`, `checked_div` or `checked_rem` takes two integers. Its
-/// first alternative carries the result and its second has no payload; the
-/// second is the answer when the result is not a value of the payload type.
 pub struct Arithmetic<H: Host>(pub H);
 
 fn checked(
@@ -114,7 +109,7 @@ fn checked(
     };
     let result = Value::Int(result);
     Some(Ok(
-        if matches!(field.ty, Type::Int(_)) && config.fits(&result, field.ty) {
+        if matches!(field.ty, Type::Int(_)) && config.fits(&result, &field.ty) {
             Answer {
                 alternative: fits.name.clone(),
                 payload: vec![result],
@@ -142,12 +137,113 @@ impl<H: Host> Host for Arithmetic<H> {
     }
 }
 
-/// Draws a value of `ty` that fits under `config`, leaning toward small
-/// numbers, numbers near `arguments`, and the bounds of the type.
-pub fn draw_value(rng: &mut Rng, ty: Type, arguments: &[Value], config: &Config) -> Value {
-    match ty {
+/// Draws a scalar value of `ty` that fits under `config`.
+pub fn draw_value(rng: &mut Rng, ty: &Type, arguments: &[Value], config: &Config) -> Value {
+    match ty.deref_type() {
         Type::Bool => Value::Bool(rng.chance(1, 2)),
-        Type::Int(int_ty) => Value::Int(draw_int(rng, int_ty, arguments, config)),
+        Type::Int(int_ty) => Value::Int(draw_int(rng, *int_ty, arguments, config)),
+        Type::String => {
+            let samples = ["", "a", "b", "ok", "hello", "key"];
+            Value::String((*rng.pick(&samples)).to_string())
+        }
+        Type::Vector(_) => Value::Vector(Vec::new()),
+        Type::Map(_, _) => Value::Map(BTreeMap::new()),
+        Type::Resource(rid, name) => Value::Resource {
+            ty: *rid,
+            name: name.clone(),
+            id: rng.below(1_000_000) + 1,
+        },
+        _ => Value::Int(Int::zero()),
+    }
+}
+
+/// Draws a value of any slice 1 or slice 2 type `ty` using `program` definitions.
+pub fn draw_value_in_program(
+    program: &Program,
+    rng: &mut Rng,
+    ty: &Type,
+    arguments: &[Value],
+    config: &Config,
+    next_res: &mut u64,
+) -> Value {
+    match ty.deref_type() {
+        Type::Bool => Value::Bool(rng.chance(1, 2)),
+        Type::Int(int_ty) => Value::Int(draw_int(rng, *int_ty, arguments, config)),
+        Type::String => {
+            let samples = ["", "a", "b", "ok", "hello", "key"];
+            Value::String((*rng.pick(&samples)).to_string())
+        }
+        Type::Struct(sid, name) => {
+            let fields = program.structs[*sid]
+                .fields
+                .iter()
+                .map(|f| draw_value_in_program(program, rng, &f.ty, arguments, config, next_res))
+                .collect();
+            Value::Struct {
+                ty: *sid,
+                name: name.clone(),
+                fields,
+            }
+        }
+        Type::Variant(vid, name) => {
+            let vdef = &program.variants[*vid];
+            let cidx = rng.index(vdef.constructors.len());
+            let ctor = &vdef.constructors[cidx];
+            let fields = ctor
+                .fields
+                .iter()
+                .map(|f| draw_value_in_program(program, rng, &f.ty, arguments, config, next_res))
+                .collect();
+            Value::Variant {
+                ty: *vid,
+                name: name.clone(),
+                constructor: cidx,
+                constructor_name: ctor.name.clone(),
+                fields,
+            }
+        }
+        Type::Vector(elem_ty) => {
+            let len = rng.below(4) as usize;
+            let items = (0..len)
+                .map(|_| draw_value_in_program(program, rng, elem_ty, arguments, config, next_res))
+                .collect();
+            Value::Vector(items)
+        }
+        Type::Map(k_ty, v_ty) => {
+            let len = rng.below(3) as usize;
+            let mut entries = BTreeMap::new();
+            for _ in 0..len {
+                let k = draw_value_in_program(program, rng, k_ty, arguments, config, next_res);
+                let v = draw_value_in_program(program, rng, v_ty, arguments, config, next_res);
+                entries.insert(k, v);
+            }
+            Value::Map(entries)
+        }
+        Type::Resource(rid, name) => {
+            *next_res += 1;
+            Value::Resource {
+                ty: *rid,
+                name: name.clone(),
+                id: *next_res,
+            }
+        }
+        Type::Outcome(oid, _) => {
+            let odef = &program.outcomes[*oid];
+            let aidx = rng.index(odef.alternatives.len());
+            let alt = &odef.alternatives[aidx];
+            let payload = alt
+                .fields
+                .iter()
+                .map(|f| draw_value_in_program(program, rng, &f.ty, arguments, config, next_res))
+                .collect();
+            Value::Outcome {
+                ty: *oid,
+                alternative: aidx,
+                alternative_name: alt.name.clone(),
+                payload,
+            }
+        }
+        _ => Value::Int(Int::zero()),
     }
 }
 
@@ -163,7 +259,7 @@ fn draw_int(rng: &mut Rng, ty: IntType, arguments: &[Value], config: &Config) ->
                 .iter()
                 .filter_map(|value| match value {
                     Value::Int(number) => number.to_i128(),
-                    Value::Bool(_) => None,
+                    _ => None,
                 })
                 .collect();
             if ints.is_empty() {
@@ -199,21 +295,78 @@ fn push_value(words: &mut Vec<u64>, value: &Value) {
             words.push(raw as u64);
             words.push((raw >> 64) as u64);
         }
+        Value::String(s) => {
+            words.push(3);
+            words.push(s.len() as u64);
+            for b in s.as_bytes() {
+                words.push(u64::from(*b));
+            }
+        }
+        Value::Struct { ty, fields, .. } => {
+            words.push(4);
+            words.push(*ty as u64);
+            words.push(fields.len() as u64);
+            for f in fields {
+                push_value(words, f);
+            }
+        }
+        Value::Variant {
+            ty,
+            constructor,
+            fields,
+            ..
+        } => {
+            words.push(5);
+            words.push(*ty as u64);
+            words.push(*constructor as u64);
+            words.push(fields.len() as u64);
+            for f in fields {
+                push_value(words, f);
+            }
+        }
+        Value::Vector(items) => {
+            words.push(6);
+            words.push(items.len() as u64);
+            for item in items {
+                push_value(words, item);
+            }
+        }
+        Value::Map(entries) => {
+            words.push(7);
+            words.push(entries.len() as u64);
+            for (k, v) in entries {
+                push_value(words, k);
+                push_value(words, v);
+            }
+        }
+        Value::Resource { ty, id, .. } => {
+            words.push(8);
+            words.push(*ty as u64);
+            words.push(*id);
+        }
+        Value::Outcome {
+            ty,
+            alternative,
+            payload,
+            ..
+        } => {
+            words.push(9);
+            words.push(*ty as u64);
+            words.push(*alternative as u64);
+            for p in payload {
+                push_value(words, p);
+            }
+        }
     }
 }
 
 /// A host that draws answers from a seeded generator and honors every
 /// contract ([E-Host]).
-///
-/// An extern control without an effect is a function of its arguments: its
-/// answer comes from a generator seeded by the host's seed, the control's
-/// name and the arguments (`rng::mix`), so two calls with the same arguments
-/// get the same answer. A control with an effect draws from the host's state
-/// and may answer two calls in two ways.
 pub struct Seeded<'a> {
     program: &'a Program,
     seed: u64,
     rng: Rng,
+    next_res: u64,
 }
 
 impl<'a> Seeded<'a> {
@@ -222,6 +375,7 @@ impl<'a> Seeded<'a> {
             program,
             seed,
             rng: Rng::new(seed),
+            next_res: 0,
         }
     }
 }
@@ -251,10 +405,20 @@ impl Host for Seeded<'_> {
         let start = rng.index(count);
         for attempt in 0..96 {
             let alternative = &control.contract[(start + attempt) % count];
+            let mut res_counter = self.next_res;
             let payload: Vec<Value> = alternative
                 .fields
                 .iter()
-                .map(|field| draw_value(&mut rng, field.ty, arguments, config))
+                .map(|field| {
+                    draw_value_in_program(
+                        self.program,
+                        &mut rng,
+                        &field.ty,
+                        arguments,
+                        config,
+                        &mut res_counter,
+                    )
+                })
                 .collect();
             let valid = match &alternative.condition {
                 None => true,
@@ -263,6 +427,7 @@ impl Host for Seeded<'_> {
                 }
             };
             if valid {
+                self.next_res = res_counter;
                 return Ok(Answer {
                     alternative: alternative.name.clone(),
                     payload,

@@ -1,0 +1,136 @@
+// Slice 2 core conformance: faults, on-fault-release unwinding ([E-Unwind], [R4], [R5]),
+// lexical boundaries (recover, escalate, terminate), and named boundaries (supervise).
+
+extern resource conn on fault release
+extern resource lock
+
+extern control open_conn()
+    ■ { opened {c : conn} }
+    uses net
+
+extern control close_conn(c : conn)
+    ■ { closed {} }
+    uses net
+
+extern control open_lock()
+    ■ { opened {l : lock} }
+    uses lock.io
+
+extern control close_lock(l : lock)
+    ■ { closed {} }
+    uses lock.io
+
+contingent control log_fault(msg : &string)
+    ■ { done {} }
+    uses console.write
+    1  ⊤ ▷ e : Δ emit(msg) ▸ done {}
+    2  ⊤ ▷ ■ done {}
+
+control root_fault_with_release(should_fail : bool)
+    ■ { ok {} }
+    faults
+    uses net
+    1  ⊤ ▷ o : Δ open_conn() ▸ opened {c}
+    2  ⊤ ▷ t : ? should_fail
+    3  t.true ▷ fault "boom"
+    4  ⊤ ▷ cl : Δ close_conn(▾c) ▸ closed {}
+    5  ⊤ ▷ ■ ok {}
+
+control assumed_fault()
+    ■ { ok {} }
+    faults
+    1  ⊤ ▷ assume ⊥ "unreachable branch"
+
+control undeclared_fault()
+    ■ { ok {} }
+    1  ⊤ ▷ fault "not declared"
+
+control unwind_non_releasable()
+    ■ { ok {} }
+    faults
+    uses lock.io
+    1  ⊤ ▷ o : Δ open_lock() ▸ opened {l}
+    2  ⊤ ▷ fault "cannot release lock"
+
+extern control check_ready()
+    ■ { ready {v : u32} │ not_ready {} }
+    uses net
+
+control lexical_recover(code : u32)
+    ■ { ok {v : u32} }
+    uses net, console.write
+    1  ⊤ ▷ retry : ↻ retry() {
+           1  ⊤ ▷ b : boundary {
+                  1  ⊤ ▷ o : Δ open_conn() ▸ opened {c}
+                  2  ⊤ ▷ r : Δ check_ready() ▸ ready {val} │ not_ready {}
+                  3  r.not_ready ▷ fault "not ready"
+                  4  ⊤ ▷ cl : Δ close_conn(▾c) ▸ closed {}
+                  5  ⊤ ▷ out : u32 := val
+              } contingency [code] (m : string) {
+                  1  ⊤ ▷ lg : Δ log_fault(&m) ▸ done {}
+                  2  ⊤ ▷ recover ↑ retry
+              }
+           2  ⊤ ▷ □ done {code}
+         } ▸ done {v}
+    2  ⊤ ▷ ■ ok {v}
+
+control lexical_escalate()
+    ■ { ok {} }
+    faults
+    uses console.write
+    1  ⊤ ▷ b : boundary {
+           1  ⊤ ▷ fault "inner"
+       } contingency (m : string) {
+           1  ⊤ ▷ lg : Δ log_fault(&m) ▸ done {}
+           2  ⊤ ▷ escalate
+       }
+    2  ⊤ ▷ ■ ok {}
+
+control lexical_terminate()
+    ■ { ok {} }
+    1  ⊤ ▷ b : boundary {
+           1  ⊤ ▷ fault "stop"
+       } contingency (m : string) {
+           1  ⊤ ▷ terminate "stopped"
+       }
+    2  ⊤ ▷ ■ ok {}
+
+boundary supervised_worker(tag : string, fail_now : bool) retains tag {
+    1  ⊤ ▷ t : ? fail_now
+    2  t.true ▷ fault "worker failed"
+    3  ⊤ ▷ terminate
+} contingency (m : string) {
+    1  ⊤ ▷ lg : Δ log_fault(&tag) ▸ done {}
+    2  ⊤ ▷ lg2 : Δ log_fault(&m) ▸ done {}
+    3  ⊤ ▷ terminate
+}
+
+control run_supervised(fail_now : bool)
+    ■ { done {} }
+    uses console.write
+    1  ⊤ ▷ supervise supervised_worker("w1", fail_now)
+    2  ⊤ ▷ ■ done {}
+
+boundary moved_retained(tag : string) retains tag {
+    1  ⊤ ▷ moved : string := tag
+    2  ⊤ ▷ fault "lost tag"
+} contingency (m : string) {
+    1  ⊤ ▷ terminate
+}
+
+control run_moved_retained()
+    ■ { done {} }
+    1  ⊤ ▷ supervise moved_retained("w1")
+    2  ⊤ ▷ ■ done {}
+
+//! run root_fault_with_release(false) with [open_conn -> opened {conn#1}; close_conn -> closed] => done ok trace [open_conn() -> opened {conn#1}; close_conn(conn#1) -> closed]
+//! run root_fault_with_release(true) with [open_conn -> opened {conn#1}] => faulted "boom" trace [open_conn() -> opened {conn#1}; conn.release(conn#1) -> released]
+//! run assumed_fault() => faulted "unreachable branch"
+//! run undeclared_fault() => stuck X8 E-Fault
+//! run unwind_non_releasable() with [open_lock -> opened {lock#1}] => stuck X8 E-Unwind
+//! run lexical_recover(7) with [open_conn -> opened {conn#1}; check_ready -> not_ready; open_conn -> opened {conn#2}; check_ready -> ready {1}; close_conn -> closed] => done ok {7} trace [open_conn() -> opened {conn#1}; check_ready() -> not_ready; conn.release(conn#1) -> released; emit("not ready") -> done; open_conn() -> opened {conn#2}; check_ready() -> ready {1}; close_conn(conn#2) -> closed]
+//! run lexical_escalate() => faulted "inner" trace [emit("inner") -> done]
+//! run lexical_terminate() => done terminated {"stopped"}
+//! run run_supervised(false) => done done
+//! run run_supervised(true) => done done trace [emit("w1") -> done; emit("worker failed") -> done]
+//! run run_moved_retained() => stuck X2 E-Supervise

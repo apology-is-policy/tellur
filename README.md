@@ -1,907 +1,155 @@
-# Villanelle compiler and playground
+# Villanelle
+
+Villanelle is a systems language organized around **explicit named outcomes**, **decisions**, and **path selection**:
 
-[Current language roadmap and next proposed checkpoint](docs/language-revision.md#active-checkpoint-queue)
+- Operations complete through named outcome alternatives (`■`) with typed payloads and optional logical conditions (`⇐ φ`) rather than single return values or implicit exceptions.
+- Callers invoke multi-outcome operations with `Δ`, acknowledge every alternative in the contract, and select execution histories with Boolean path conditions (`╞═` in v2 Rails, `[mask]:` in v1 and plain form).
+- Ownership (`copy < drop < must`), must-complete resource lifecycles, fault boundaries, second-class borrows, structured task sets, and arithmetic proof obligations (`⊢ φ`, `⊥`) are checked statically over reduced ordered binary decision diagrams (ROBDDs) without hidden control flow or runtime tags.
 
-Villanelle is a language for writing controls with explicit, named outcomes. A `delta` routes each outcome to a path. Several decisions can arrive at the same path and share its disposition.
+This repository holds two tracks:
 
-Write programs in **`.vn`** files. Run `vnc exec playground/hello.vn` to compile and run one, or open `villanelle.code-workspace` in VS Code. The same executable runs the language server with `vnc lsp`. Villanelle was previously called Tellur. [Migration guide](docs/language-reference.md#villanelle-name-and-migration)
+1. **Villanelle v2 (`v2/`, [`docs/v2/`](docs/v2/README.md)) — active redesign**: The clean-slate v2 specification and implementation following the [redesign plan](docs/redesign-plan.md). It introduces the **Rails** surface syntax, a small guarded-command core calculus, an exact linear integer and data fact logic ($\text{Th}_{\mathbb{Z}}$) with an independent proof-certificate kernel and counterexample generator, second-class borrows and views, task sets, and a direct typed LLVM IR and C ABI backend.
+2. **Villanelle v1 (root crate, `0.306.0`, tag `v1-final`, [`docs/language-reference.md`](docs/language-reference.md)) — frozen baseline**: The complete v1 compiler (`./bin/vnc`), reference and native LLVM 22.1.8 / Rust backends, collections library (`0.1.0`), persistent CLI and loopback HTTP settings service ([`applications/settings/`](applications/settings/README.md)), and VS Code extension ([`editors/vscode/`](editors/vscode/README.md)).
 
-Try the [collection discovery example](examples/collection_discovery/main.vn). Type `headers.` to discover membership or `values.` to see which controls borrow or consume the vector. [Walkthrough](docs/collections-and-algorithms.md#try-collection-discovery-in-the-editor)
+---
 
-Compiler **0.306.0** implements the v0.1 checked core and the current language
-revision: `control`, `implement`, snake_case types, type-first declarations,
-`ref` types, `borrow`/`deref` expressions and transparent reference field access,
-brace outcome patterns, private `exits auto` and selected payload inference (`ready...`), explicit public contracts, pure conversion expressions, move-by-default
-owned values, mutation, shared/exclusive references with checked borrowed results and explicit `from input` origins,
-source structs and nested variants/outcomes with local reference fields, checked opaque owner splits, exclusive contained reborrows, whole-record inputs and contained origins (`input['a]`), grouped record results (`text_pair[a, b]`) and field-sensitive last use, ordinary variants, generic data and controls with explicit copy/clone/drop bounds, concrete and generic trait dispatch with associated types, named struct fields, file modules with private representations, arrays, vectors and maps, implicit entry statements, nested tail and stored adapters,
-named outcome contracts, checked `forward` routing, and single-completion call statements. It includes
-a reference interpreter, graph expansion, native compiler, language server, and
-VS Code build/run commands. The [revision plan](docs/language-revision.md) separates
-delivered features from the remaining reference, slice, outcome-expression and async work. The language is still
-fluid; this is an experimental implementation, not a production compiler.
+## v2 Redesign Status and Progressive Roadmap
 
-The Apple Silicon distribution also builds static Linux executables. For example,
-`vnc build playground/hello.vn --target x86_64-unknown-linux-musl --out build/hello`
-produces a program you can copy to x86_64 Linux. Use `aarch64-unknown-linux-musl`
-for arm64 Linux.
+The v2 redesign ([`docs/redesign-plan.md`](docs/redesign-plan.md)) progresses through paper specification (Phase 1), four vertical slices implemented across the executable oracle (Phase 2), certificate-producing checker (Phase 3), and typed LLVM IR backend (Phase 4), followed by expressiveness, formal mechanization, runtime performance, and tooling (Phases 5–8).
 
-The Apple Silicon macOS, Linux x86_64, Linux arm64 and Windows x64 distributions use direct
-LLVM emission by default. Run `vnc exec playground/hello.vn` on any of
-these hosts to compile and run Hello with the embedded toolchain. Use `--backend rust` to select generated Rust.
-Compilers built without the LLVM feature continue to use Rust. Both backends
-passed the application suite, including concurrent settings requests, graceful
-shutdown, and typed polled Rust adapters. See the
-[settings service example](applications/settings/README.md#running-the-settings-server-with-llvm).
+### Phase Overview
 
-Release 0.222 added dynamic task sets. `tasks<producer>` holds any number of
-spawned children of one async control. `spawn producer(..) into set;` adds a member,
-`delta await next set { ..., empty => ... }` joins members in completion order, and
-`count(borrow set)` bounds how many run at once.
+| Phase | Scope | Status | Primary Artifacts |
+| --- | --- | --- | --- |
+| **Phase 0** | Freeze v1 at `0.306.0` (`v1-final`) | **Complete** | Tag `v1-final`, [`docs/language-reference.md`](docs/language-reference.md) |
+| **Phase 1** | Core calculus, $\text{Th}_{\mathbb{Z}}$ fact logic, second-class borrow model, Rails surface syntax, paper corpus, reading & repair test | **Complete** (accepted 20 Nov 2026) | [`docs/v2/README.md`](docs/v2/README.md), [`core.md`](docs/v2/core.md), [`facts.md`](docs/v2/facts.md), [`references.md`](docs/v2/references.md), [`surface.md`](docs/v2/surface.md), [`corpus.md`](docs/v2/corpus.md), [`reading-test.md`](docs/v2/reading-test.md) |
+| **Phase 2** | Executable core oracle, erased semantics, differential fuzzer, mutation harness, Rails reader & elaborator | **Slices 1 & 2 complete** · Slice 3 next | [`v2/`](v2/), [`docs/v2/oracle.md`](docs/v2/oracle.md) |
+| **Phase 3** | ROBDD + $\text{Th}_{\mathbb{Z}}$ checker, independent certificate kernel, counterexamples, canonical Rails formatter, warnings | **Slice 1 complete** · Slice 2 next | [`v2/src/bdd.rs`](v2/src/bdd.rs), [`facts.rs`](v2/src/facts.rs), [`kernel.rs`](v2/src/kernel.rs), [`check.rs`](v2/src/check.rs), [`surface.rs`](v2/src/surface.rs) |
+| **Phase 4** | Theorem 4 call expansion and direct typed LLVM IR & C ABI backend under erased semantics | **Slice 1 complete** (`0.991×` Rust on M2) · Slice 2 next | [`v2/src/expand.rs`](v2/src/expand.rs), [`v2/src/codegen.rs`](v2/src/codegen.rs), [`v2/tests/backend.rs`](v2/tests/backend.rs) |
+| **Phase 5** | Expressiveness (callable parameters, recursion, `box⟨τ⟩`, value-position decisions) & v1 → v2 migrator | Planned | [`docs/redesign-plan.md`](docs/redesign-plan.md) |
+| **Phase 6** | Lean 4 mechanization of safety, resource linearity, erasure, and expansion (Theorems 1–4) | Planned | [`docs/v2/core.md`](docs/v2/core.md) §8 |
+| **Phase 7** | Native coroutine / task-set runtime & collection performance vs. optimized Rust | Planned | [`docs/redesign-plan.md`](docs/redesign-plan.md) |
+| **Phase 8** | LSP server, VS Code Rails support, and v2 reference manual | Planned | [`docs/redesign-plan.md`](docs/redesign-plan.md) |
 
-Release 0.274 adds retained Rust resources to the opt-in LLVM backend. Synchronous
-adapters preserve stable shared borrows, consuming transfers, selected resource
-results and cleanup through the original host scopes. The
-[retained file example](examples/retained_file/README.md) runs on both backends.
-Polled Rust adapters joined the LLVM profile in 0.276.
+### Vertical Slices Across Phases 2, 3, and 4 (`v2/`)
 
-Release 0.273 admits synchronous Rust source adapters on the opt-in LLVM backend.
-Typed adapter archives communicate with the precompiled runtime through the private
-C value protocol. Explicit modules, dependency locks, borrowed data and nested
-collections retain their existing contracts. Try the
-[text summary example](examples/text_summary/README.md). Synchronous resources
-joined this profile in 0.274, followed by polled adapters in 0.276.
+Each vertical slice is taken end-to-end through the Phase 2 oracle and erased interpreter, the Phase 3 certificate-producing checker and formatter, and the Phase 4 call expander and typed LLVM IR backend:
 
-Release 0.272 adds private per-launch registration for synchronous foreign
-adapters. Complete immutable callback tables attach to the original host, with
-live and scripted dispatch verified through linked C callbacks. Generated typed
-adapter archives and LLVM source admission remain the next step. See the
-[launch bridge](docs/reference/llvm-backend.md#private-adapter-launch-registration-0272).
-Concurrent builds now serialize embedded LLD calls, protecting its shared driver state.
+| Slice | Language Constructs | Clauses | Phase 2: Oracle, Erased & Surface | Phase 3: Checker, Kernel & Formatter | Phase 4: Expansion & Typed Backend |
+| --- | --- | --- | --- | --- | --- |
+| **1. Scalars and decisions** | `bool`, `u8`..`u64`, `i8`..`i64`, `usize`, pure `function`, `?` tests, `Δ` decisions, `↻` loops, `■` exits, `□` leaves, `↑` again, `⊥` impossible, `⊢` / `⇐` formulas, `outcome` groups, `■ auto`, `forward`, `■ Δ` adapters | `W1`–`W5`, `W7`, `W9`, `H1`–`H4`, `K1`–`K8`, `N1`–`N5`, `P1`–`P8`, `C1`–`C3`, `F3`, `R1`–`R3`, `S1`–`S6`, `I1`–`I6`, `I8`, `I10`, `I13`, `A1`, `A2`, `A7`–`A9`, `J1`–`J6`, `V1`–`V5`, `M1`–`M6`, `Y1`–`Y10`, `G1`–`G10`, `U1`–`U9`, `U13`–`U18`; `X1`–`X3`, `X6`, `X7`, `X9`, `X10` | **Complete** — 41 `.core` & 4 `.rails` conformance suites, seeded host, 61-construct generator (`valid` & `free`), 15-state mutation classifier, 120k arithmetic axiom property tests | **Complete** — ROBDD + $\text{Th}_{\mathbb{Z}}$ CEGAR/Farkas/Chvátal–Gomory solver, independent certificate kernel (`kernel::validate`), counterexample models, `vn2 format` (`[G10]`), warnings (`[U5]`, `[U16]`–`[U18]`) | **Complete** — `vn2 expand` (Theorem 4), `vn2 emit-llvm` & `vn2 emit-c` (`[R1]`–`[R3]`), `-O0`/`-O2` native differential parity, **`0.991×` optimized Rust** on Apple M2 (0 heap allocations) |
+| **2. Data, resources, and faults** | `struct` (`copy` / `drop`), `variant`, `[τ]`, `τ ⇀ τ`, `string`, `len`, `clone`, indexing `p[e]`, unpacking `S {x̄} := e`, usage kinds `copy < drop < must`, moves `▾`, `extern resource` (`on fault release`), captured `outcome⟨K⟩`, `fault`, lexical and named `boundary` / `contingency` / `supervise` | `T1`–`T6`, `O0`–`O6`, `F1`–`F6`, `R4`, `R5`, `I9`, `I11`, `I12`, `A3`–`A6`, `M7`, `Y12`, `G4b`, `G7a`, `G12`, `U10`–`U12`; `X2`, `X3`, `X5`, `X8`, `X9` | **Complete** — 13 `.core` & 4 `.rails` conformance suites (`show_file_resource.rails`, records/variants, collections/`∀`, boundaries/faults), erased history-bit fault release (`[R4]`, `[R5]`), Rails formatter (`[G10]`) & surface clauses (`[Y12]`, `[G4a]`, `[G4b]`, `[G7a]`, `[G12]`, `[U6]`, `[U10]`–`[U12]`, `[U14]`) | Next | Next |
+| **3. Borrows and views** | `&τ`, `&~τ`, payload origins `∈`, `view struct`, borrow tags, place overlap, loop loan liveness | `W5a`, `W6`, `W8`, `B1`–`B5`, `L1`–`L5`, `I7`, `I9`, `G4a`; `X4` | Planned | Planned | Planned |
+| **4. Tasks** | `async control`, `tasks⟨f⟩`, `spawn … into`, `await`, `await next`, `cancel`, `run`, `count`, cancellation & member fault delivery | `W10`–`W12`, `TK1`–`TK7`, `E-Run`–`E-Stop`, `R6`, `G7b`, `U19` | Planned | Planned | Planned |
 
-Release 0.271 adds a private synchronous foreign-adapter invocation protocol for
-scalar and collection data. It preserves typed outcomes and the original host's
-script, event and failure behavior. Rust adapters remain gated in LLVM builds
-until generated static libraries and launch registration are implemented. See the
-[adapter bridge](docs/reference/llvm-backend.md#private-synchronous-adapter-invocation-0271).
+### Paper Corpus Highlights (Phase 1)
 
-Release 0.270 admits opt-in launch signals in the LLVM backend. Scripted and live
-signals preserve root cancellation, descendant cleanup and ordinary exit statuses.
-Both backends now use the existing source scheduler for opted-in programs that
-only await a host operation. Rust remains default. See [launch signals](docs/reference/llvm-backend.md#launch-signals-0270).
+Rewriting the 8 v1 collection modules and the 4-module settings service into v2 Rails ([`docs/v2/corpus.md`](docs/v2/corpus.md)) reduced code size by more than half and eliminated all 15 v1 filler arms:
 
-Release 0.269 admits constructors whose children suspend in the LLVM backend.
-Ordinary constructor calls preserve their caller destination through yields, host
-waits and task handoffs, including borrowed results. Rust remains the default.
-See [retained constructors](docs/reference/llvm-backend.md#retained-constructor-source-delivery-0269).
+| Corpus Group | v1 Lines | v2 Lines | v1 Labels | v2 Labels | v1 Routes | v2 Routes | v1 Filler Arms | v2 Filler Arms | v2 Proof Lines (`⊢`/`⇐`) | v2 Proven `⊥` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **Collections library (8 modules)** | 476 | **231** | 66 | **7** | 72 | **7** | 13 | **0** | 8 | 3 |
+| **Settings service (4 modules)** | 635 | **304** | 86 | **18** | 92 | **0** | 2 | **0** | 0 | 2 |
+| **New stress programs (3 programs)** | — | **208** | — | **22** | — | **9** | — | **0** | 16 | 0 |
 
-Release 0.268 adds the private retained constructor destination bridge. Its runtime
-proof covers suspended children, borrowed results, local recovery and cancellation;
-LLVM source admission still awaits constructor registration and emission. Rust
-remains the default. See [constructor runtime delivery](docs/reference/llvm-backend.md#retained-constructor-runtime-bridge-0268).
+---
 
-Release 0.267 admits [retained lexical recovery](docs/reference/llvm-backend.md#retained-lexical-scopes-and-recovery-0267)
-through generated LLVM frames, including nested scopes, supervised loops and
-original fault retirement. Rust remains the default backend until parity.
+## v2 at a Glance: Rails and `vn2`
 
-Release 0.266 adds [versioned retained scope registration](docs/reference/llvm-backend.md#compiled-lexical-and-loop-registration-0266).
-C-safe descriptors preserve original lexical and loop authority across repeated
-launches. LLVM emission of those descriptors and retained lexical source admission
-follow next; the Rust backend remains default.
+### Example 1: Arithmetic Proof Obligations and `⊥` Erasure
 
-Release 0.265 proves [private retained loop and recovery transfers](docs/reference/llvm-backend.md#private-retained-loop-and-recovery-transfers-0265).
-Original runtime scopes control retirement and recovery; simultaneous parameter
-transfer preserves owned buffers and resets physical path facts. Generated lexical
-registration is next; the Rust backend remains default.
+In [`v2/tests/slice1_surface/spend.rails`](v2/tests/slice1_surface/spend.rails), the test `? used > total → ■ over` establishes `¬(used > total)` on the continuing rail. When `checked_sub` is decided, its `underflow` alternative has contract condition `⇐ a < b`, which contradicts the continuing history. The programmer marks `underflow → ⊥`; the Phase 3 checker proves the arm unreachable and emits a kernel-validated certificate, and the Phase 4 LLVM backend lowers the arm to `unreachable` with zero history bits allocated:
 
-Release 0.264 proves the [private retained lexical scope bridge](docs/reference/llvm-backend.md#private-retained-lexical-scopes-0264).
-Same-frame work and handlers preserve original fault domains, cleanup and owned
-storage across suspension. Generated lexical recovery needs loop coordination
-before admission; the Rust backend remains default.
+```text
+extern control checked_sub(a: u32, b: u32)
+    ■ difference {value: u32} ⇐ a ≥ b ∧ value = a - b
+    ■ underflow ⇐ a < b
 
-Release 0.263 admits [retained named supervision](docs/reference/llvm-backend.md#generated-retained-named-supervision-0263)
-in the LLVM backend. Yielding request work preserves retained owners, source fault
-domains and outcome-free contingency settlement. The runnable example is
-[`llvm_async_supervision.vn`](playground/llvm_async_supervision.vn).
-Lexical recovery across handoffs remains a separate checkpoint. Rust stays default.
+control spend(total: u32, used: u32) ■ left {value: u32} │ over
+│ ? used > total → ■ over
+│ Δ checked_sub(total, used): difference {value} │ underflow → ⊥
+│ ■ left {value}
+╵
+```
 
-Release 0.261 adds LLVM task sets: exact-producer construction, spawn-into,
-completion-order `await next`, immediate empty selection and set cancellation.
-Loop-carried remainders support bounded feeding and draining. Try the
-[bounded task-set example](playground/llvm_task_sets.vn) with an item count;
-[profile details](docs/reference/llvm-backend.md#generated-task-sets-0261) retain the
-existing ownership and reference-free member restrictions. Rust stays default.
+### Example 2: Decisions, Path Selection, and Guaranteed Cleanup
 
-Release 0.260 adds retained LLVM loops, including repeated awaits, cold/spawned
-children, host readiness and expanded looping helpers. Iteration parameters transfer
-simultaneously and local path facts reset while outer locals remain live. See the
-[async loop example](playground/llvm_async_loops.vn) and
-[profile details](docs/reference/llvm-backend.md#retained-loops-0260).
-Task-set source lowering follows in 0.261; retained boundaries remain next.
+In [`v2/tests/slice1_surface/show_file.rails`](v2/tests/slice1_surface/show_file.rails), statements on the solid rail `│` run on every history still active, while junctions `╞═` select histories by Boolean combinations of outcomes:
 
-Release 0.259 adds the private task-set runtime bridge for LLVM frames. Queuing,
-completion-order joins, empty selection and set cancellation use the existing
-scheduler and ownership checks. Source task-set admission follows in 0.261; see [the current boundary](docs/reference/llvm-backend.md#private-task-set-runtime-bridge-0259).
+```text
+control show_file(filename: u32) ■ auto
+│ Δ open(filename)
+│ ├ opened {file}
+│ ├ not_found → ■ missing
+│ └ denied    → ■ failed
+│ Δ read(file): data {contents} │ failed
+│
+│ ┄ Always attempt close, even if reading failed.
+│ Δ close(file): closed │ failed
+│
+╞═ data
+│ ┆ Δ decode_utf8(contents): text {text} → decoded │ invalid
+│
+╞═ decoded ∧ closed
+│ ┆ emit(text)
+│ ┆ ■ done
+╞═ read.failed ∨ close.failed ∨ invalid
+│ ┆ ■ failed
+╵
+```
 
-Release 0.258 lowers scripted async host operations through the same LLVM task
-frames as async controls. `run`, `await`, `defer` and `spawn` retain source scheduling,
-owned captures, borrowed resources and explicit cancellation alternatives. See the
-[scripted host example](playground/llvm_host.vn) and [run instructions](docs/reference/llvm-backend.md#scripted-async-host-operations-0258).
-Task sets follow in 0.261; polled Rust adapters and parity remain upcoming.
+### Running the v2 Toolchain (`vn2`)
 
-Release 0.257 adds `cancel child;` to the bounded LLVM control profile. Requests
-remain sticky, preserve the original handle and do not yield or replace the join.
-Children without cancellable host operations finish normally. See the
-[cancellation request example](playground/llvm_cancel.vn). Async host observation follows in 0.258; task sets follow in 0.261.
-
-Release 0.256 adds LLVM spawned control tasks and consuming joins. Spawned frames
-use the runtime arena; direct children remain by value. Spawn queues without a
-handoff, and joining preserves original task ownership and completion origins.
-See [the spawned LLVM example](playground/llvm_spawn.vn). Rust remains default.
-
-Release 0.255 adds private arena storage for compiled task frames. Inline children
-pin their parent's allocation until retirement; repeated frames reuse aligned
-storage. Source LLVM admission remains the 0.254 profile while spawn/join is wired.
-
-Release 0.254 adds LLVM cold task capture, local moves and option wrappers, and
-consuming `await`. Captures keep their original runtime ownership; the producer
-starts at await with its frame inside the caller. See [the cold task example](playground/llvm_cold.vn).
-Rust stays the default; spawned tasks and async host I/O remain next.
-
-Release 0.253 emits typed LLVM resume frames for a bounded `run`/direct `await`/`yield`
-profile, including owned and borrowed payloads, guarded paths, faults and exact fuel
-reports. Direct children live inside parent frames; the established runtime schedules
-and settles them. See [the LLVM async example](playground/llvm_async.vn).
-Rust remains the default; cold handles, spawned tasks and async host I/O follow.
-
-Release 0.252 connects retained ABI callbacks to the existing task runtime and source
-scheduler. Direct children occupy fields of their parent's typed frame and retain
-original invocation, owning-domain and diagnostic authority. This private integration
-prepares generated LLVM async lowering; production admission remains synchronous.
-
-Release 0.251 adds the private runtime foundation for retained LLVM resume callbacks.
-Owned activation state survives callback returns while host and storage access is
-borrowed only during execution. Identity, completion, result adoption and stop
-cleanup are checked independently. This is internal preparation for generated async
-frames; production LLVM admission remains synchronous and Rust stays default.
-
-Release 0.250 measures explicit frontend async frames against the LLVM coroutine
-experiment: direct-await children live inside their parents and spawned tasks use
-a stable arena. Both lowerings match the same cancellation, task-set and fault
-schedules, including nested direct-await destruction. See the
-[measurements and limits](experiments/coroutines/README.md#frontend-frame-comparison-b14a).
-Production LLVM admission stays synchronous; Rust remains default.
-
-Release 0.249 adds lexical fault boundaries, supervised recovery and entry-only
-process termination to direct LLVM emission. Work and contingency share their
-checked frame; outward exits and loop jumps finalize every scope they cross.
-Retained captures, structured `@fault` reports and fuel retain existing behavior.
-Try the [recovery example](playground/llvm_recovery.vn). Rust remains default.
-
-Release 0.248 adds named synchronous fault supervision to direct LLVM emission.
-Retained owners move into contingency only after failed work retires; settlement
-returns no outcome to the supervisor. Nested escalation and resource cleanup retain
-existing fault reports and fuel behavior. Try the [supervision example](playground/llvm_supervision.vn).
-Lexical boundaries and supervised recovery follow; Rust remains the default.
-
-Release 0.247 adds synchronous declared constructors to direct LLVM emission.
-Completed records go straight into caller storage, preserving nested ownership,
-borrowed result origins, written evaluation order and partial-initialization faults.
-The [constructor example](playground/llvm_constructors.vn) combines an owning
-message and a borrowed view. Rust remains the default backend.
-
-Release 0.246 adds synchronous loops to direct LLVM emission. Simultaneous owner
-transfers, fresh iteration facts and expanded helper completions retain Rust behavior,
-including exact faults and fuel. The [loop example](playground/llvm_loops.vn)
-swaps string owners and updates an outer counter. Rust remains the default backend.
-
-Release 0.245 bounds LLVM temporary storage: consumed value/outcome cells are
-reclaimed between instructions without reusing handles, and fixed-size scratch
-allocations live at function entry. Source owners remain in stable frames. This
-prepares loop lowering; the admitted source profile and default backend are unchanged.
-
-Release 0.244 adds arrays, vectors and maps to direct LLVM emission, including
-collection literals, lengths, mutation, element borrows, local shared-reference
-elements and resource transfers. The [collection example](playground/llvm_collections.vn)
-uses helper-returned borrows and deterministic map removal. Loops and boundaries
-remain later slices; Rust remains the default backend.
-
-Release 0.243 adds opaque/resource values and returning synchronous borrowed host
-operations to direct LLVM emission. The [resource example](playground/llvm_resources.vn)
-passes a file owner through a record, borrows it for reading, and consumes it when
-closing. Scripted and live host behavior share the existing runtime. Async host
-operations and Rust adapters remain later slices; Rust remains the default backend.
-
-Release 0.242 adds reference-bearing records, options, variants and named outcomes
-to the direct LLVM backend, including whole borrowed carriers and guarded leaf
-reborrows. The [carrier example](playground/llvm_carriers.vn) returns a nested
-carrier, edits a returned exclusive leaf and restores parent access. Rust stays the default backend.
-
-Release 0.240 gives LLVM locals stable activation storage shared across nested
-synchronous calls. Temporary handles remain separate, and failed calls retire their
-storage while preserving fault reports. This prepares reference lowering without
-changing the admitted source profile.
-
-Release 0.239 adds owned synchronous primitive calls to direct LLVM emission,
-sharing the existing host runtime's live/scripted behavior, tracing and diagnostics.
-The [primitive example](playground/llvm_primitives.vn) parses, adds, multiplies
-and decodes UTF-8. Borrowed/async primitive signatures remain later slices.
-
-Release 0.238 adds options, variants and named outcome values to direct LLVM
-emission, including captured outcomes and selected payload decisions. The
-[tagged-value example](playground/llvm_tagged.vn) combines these through nested
-calls. Rust remains the default while references, resources, loops and boundaries
-are brought across.
-
-Release 0.237 adds owned records to the direct LLVM backend: nested and generic
-records, written-order initialization, partial field moves, reassignment and temporary
-projection. The [record example](playground/llvm_records.vn) exercises those operations
-through nested helper calls. References and tagged aggregates remain later slices.
-
-Release 0.236 adds synchronous scalar control calls to the direct LLVM backend,
-including nested/private helpers, outcome routing and transferred payloads.
-The [call example](playground/llvm_calls.vn) runs with `--backend llvm` at O0/O2.
-
-Release 0.235 begins direct LLVM emission for synchronous scalar controls.
-`build` and `exec` accept `--backend llvm`; the Rust backend remains the default.
-Boolean paths become native branches, while values, faults, fuel and process results
-use a private C ABI over the existing runtime. See the [supported profile and example](docs/reference/llvm-backend.md).
-
-Release 0.234 embeds LLVM and LLD 22.1.8 in `tellurc` behind the `llvm` cargo
-feature. IR is compiled and linked in-process, and the coroutine experiment's specimens
-built this way match the reference executor. The default backend is unchanged.
-
-Release 0.233 begins the single-binary LLVM backend arc. The runtime is now a
-library compiled once, not source pasted into every program. A `hello` build goes from
-2.7 s to about 0.2 s once the runtime is cached, and its generated source from 391 KB
-to 13 KB. Behaviour is unchanged.
-
-Release 0.232 adds a standalone [LLVM coroutine experiment](experiments/coroutines/README.md)
-(E2.1). Hand-lowered switched-resume coroutines for the cancellation specimen, a
-cancelled task set and a sibling fault match the reference executor on every tested
-schedule at O0 and O2. Native executables still use the existing backend.
-
-Release 0.231 runs the Milestone 5 acceptance specimen,
-[playground/cancellation.vn](playground/cancellation.vn): two concurrent
-receives through borrowed handles, cancellation of the slower one, joins before the
-handles close, and visible close failures, with the same results in every executor.
-
-Release 0.230 adds opt-in signal cancellation: with `launch.<entry>.signals` set to
-`"cancel"`, the first SIGINT or SIGTERM cancels the entry and all its tasks, and a
-second exits with 128 + signal. The settings service uses it to shut down
-gracefully, replying 503 to connections still waiting for a request.
-
-Release 0.229 runs cancellation in native executables too, including live polled
-adapters, with the same schedules as the reference executor.
-
-Release 0.228 adds cooperative cancellation in the reference executor. `cancel child;`
-and `cancel set;` request cancellation of started children, which reaches everything
-they start. A host operation entered by `await` or `run` stops and selects its
-`cancelled` arm only where the decision lists one; joins are never interrupted.
-
-Release 0.227 lets async host operations be entered like async controls: `run` from
-synchronous code, and `defer`, `spawn` and `spawn op(..) into set` inside async
-controls, with `tasks<op>` sets joined by `await next`.
-
-Release 0.226 serves the settings application's HTTP connections concurrently. Its
-accept loop keeps a task set of connections, at most 64 at once, under one global
-budget and idle timeout. Each connection isolates its own request faults, and a
-slow client no longer delays a fast one.
-
-Release 0.225 adds write readiness (`Wait::writable`) for polled adapters and lets
-async host operations consume resources that declare `"fault": "release"`. The
-loopback HTTP library's `send` is async, and the new async `finish` completes a
-connection without blocking the executor; contingencies keep the blocking `close`.
-
-Release 0.224 lets async host operations return owned resources whose types declare
-`"fault": "release"`. The loopback HTTP library's `accept` is now async: it parks
-on the listener's readiness instead of blocking the executor, and returns the
-connection.
-
-Release 0.223 runs task sets in native executables. The native scheduler joins
-members in the same completion order as the reference executor and settles member
-and owner faults the same way.
-
-Release 0.221 receives loopback HTTP requests asynchronously. The library's
-`receive` is an async control over a polled adapter that parks on socket
-readiness; the settings service and the HTTP example enter it with `run` and keep
-their request profile and two-second deadline.
-
-Release 0.220 wakes polled adapters on descriptor readiness. An adapter returns
-`Wait::readable(&socket)` after a nonblocking read would block, and the runtime
-parks the operation until the descriptor is readable, without retry loops.
-
-Release 0.219 lets Rust adapters implement async host operations. An adapter
-bound with `"execution": "poll"` returns per-operation state that the native
-runtime polls; pending operations let other tasks run and are re-polled after
-the delay they request.
-
-Release 0.218 runs async host operations in native executables. A native
-`--scenario` script uses the same `"waits"` readiness as the reference
-interpreter, with matching schedules, fuel limits and fault settlement.
-
-Release 0.217 admits async host operations. A manifest primitive marked
-`"async": true` is awaited directly inside async controls; the reference
-interpreter runs it with scripted readiness (`"waits"`) and the existing task,
-handoff and fault-settlement rules. `run`, `defer`, `spawn` and plain calls of
-host operations are rejected for now.
-
-Release 0.216 selects the written `@contingent` annotation when an implementation
-enlarges the contingency subset its trait grants. Comments inside the annotation
-stay within the range; permission subsets and checking order are unchanged. This
-completes the implementation async/fault/contingency permission locations.
-
-Release 0.215 selects the written `faults` keyword when an implementation adds
-fault permission its trait does not grant. Suffix and fault-only contracts retain
-precise imported locations without changing permission subsets or checking order.
-
-Release 0.214 selects the extra `async` modifier or the `control` keyword of an
-implementation missing required async permission. Imported and annotated methods
-retain precise locations; permission equality and checking order are unchanged.
-
-Release 0.213 selects the `region` keyword on rejected legacy trait methods,
-including after annotations and comments. Parser barriers, ordinary legacy
-controls and trait validation order remain unchanged.
-
-Release 0.212 selects the complete generic parameter clause on rejected trait
-methods. Written bounds and comments retain their original imported ranges;
-generic restrictions still precede inference and later signature checks.
-
-Release 0.211 selects rejected inference clauses in trait methods. `exits auto`
-and implementation `label...` clauses retain original imported ranges; generic,
-legacy and parser restrictions keep their existing priorities and locations.
-
-Release 0.210 selects repeated exit labels in trait methods, including qualified
-names split across comments and lines. Written ranges survive imports while
-existing method-profile priorities and separate nominal checks remain unchanged.
-
-Release 0.209 selects duplicate parameter and inline payload names in trait methods.
-Written name ranges survive imports independently of types and origin clauses.
-Existing method-profile priorities, bounded preparation recovery and synthetic
-fallbacks remain unchanged.
-
-Release 0.208 selects duplicate associated-type and control member names in trait
-declarations and implementations. Imported and unsaved repairs preserve exact name
-ranges, existing check order and bounded independent preparation diagnostics.
-
-Release 0.207 selects written implementation trait names for missing, private and
-wrong-kind lookup errors. Qualified names retain their original ranges through
-imports and unsaved repairs. Trait-before-target resolution and interleaved identity,
-coherence and member priorities remain unchanged.
-
-Release 0.206 selects written implementation targets for lookup, ownership-profile
-and type-shape errors. Imported and unsaved target ranges retain both endpoints.
-Unknown-trait, coherence and member priorities remain unchanged, including the
-existing first-error fallback for invalid identities.
-
-Release 0.205 carries associated assignment ranges into earlier generic layout
-instantiation. Missing arguments, wrong arity and invalid arguments select the
-written type, including aliases and imports. Shared preparation still stops at its
-first error and retains its existing phase order.
-
-Release 0.204 retains associated assignment ranges in concrete type validation and
-public-interface visibility checks. Normalized aliases still select their written
-use, including imported unsaved text. Existing phase order and error budgets remain
-unchanged.
-
-Release 0.203 selects written associated-type assignments for module lookup,
-normalization-root and capability-bound errors. Ranges survive imports, aliases and
-unsaved partial repairs. Dependency suppression, phase order and ownership rules
-remain unchanged.
-
-Release 0.202 selects the first mismatched implementation parameter's written type
-when parameter counts match. Ownership modifiers, generic arguments and associated
-aliases retain their authored locations through imports and unsaved repairs. Different
-parameter counts keep the method point; origin checks retain their earlier priority.
-
-Release 0.201 selects the implementation's written `exits` clause when completion
-shape or return origins differ from its trait contract. Named contracts select the
-use site, including explicit mappings. More precise child errors and parameter
-mismatch locations retain their existing priority.
-
-Release 0.200 collects independent implementation conformance errors, including
-associated capabilities, ownership, payloads and borrowed-result origins. Checked
-trait signatures remain private until the entire phase passes. Partial unsaved
-repairs update diagnostics and restore trait-side hover only after full validation.
-
-Release 0.199 collects independent implementation async, fault and contingency
-permission errors before substitutions or method generation. Exact permission rules,
-canonical error order and inherited permissions stay intact. Partial unsaved repairs
-refresh the remaining diagnostics; checked hover waits for full validation.
-
-Release 0.198 collects independent associated-type normalization errors while
-suppressing aliases that depend on failed selections. Canonical diagnostic order,
-cycle/depth/type-size bounds and owned-type rules stay intact. No substitutions or
-checked hover escape a failed phase; unsaved repairs refresh imported diagnostics.
-
-Release 0.197 collects independent implementation-member and method-profile
-errors after shared identities validate. Ambiguous or invalid identities retain
-the original first-error path; no partial witness reaches associated-type or body
-checking. Unsaved partial repairs update the remaining errors and restore hover.
-
-Release 0.196 gives declaration contributor notes the complete written `exits`
-clause. Imported generic headers and named completion uses retain original ranges;
-raw evidence, note order and omission limits remain unchanged.
-
-Release 0.195 selects result types for missing public borrowed/aggregate origins,
-and the completion type at a named-contract use. Imported schema definitions stay
-distinct from their use sites; partial unsaved repairs retain exact ranges.
-
-Release 0.194 selects the written inference clause when a public control uses
-`exits auto` or `label...`. Mixed contracts select their first inferred label in
-source order. Imported unused generics and unsaved partial repairs keep exact ranges;
-public/private inference rules and diagnostic phase ordering remain unchanged.
-
-Release 0.193 adds authored ranges to contributor notes for source statements and
-outcome expressions, including producing exits, received captures and forwarding
-calls. Imported generic definitions and unsaved editor changes retain their original
-locations; declaration and omission notes keep conservative point fallbacks.
-
-Release 0.192 collects independent origin-schema errors within the existing 32-error
-budget. Declarations depending on a failed schema are skipped; later preparation and
-body checking wait for all schemas to validate. Unsaved partial repairs update the
-remaining diagnostics without publishing partial hover information.
-
-Release 0.191 selects the offending declared origin group for duplicate and unused
-schema-group errors, including imported generic and named-outcome declarations.
-Validation order and accepted origin contracts remain unchanged.
-
-Release 0.190 selects written schema field origin mappings in diagnostics, including
-separate storage arrows and referent brackets through imports and unsaved editor changes.
-Origin semantics and shared preparation order are unchanged.
-
-Release 0.189 adds [boundary helpers with explicit handoffs](playground/boundary_handoff_tasks.vn).
-Named and lexical helpers may yield or await beside live children when retained
-owners permit fault settlement. Children keep their original invocation and fault
-boundary; local recovery, returned borrows and required joins retain their rules.
-Direct parent boundaries still require joining children first.
-
-Release 0.188 keeps local fault recovery in the owning execution chain: native
-execution no longer selects an unrelated sibling between fault settlement and its
-contingency. The [local recovery example](playground/local_recovery_tasks.vn)
-checks this through an awaited helper. Existing explicit handoff and contingency
-restrictions remain unchanged; inline boundary-bearing helper handoffs stay gated.
-
-Release 0.187 adds [uninterrupted boundary helpers](playground/boundary_helpers.vn):
-local named and lexical recovery can run beside live children without moving their
-handles or changing handoffs. Direct parent boundaries and boundary-bearing helpers
-that can hand off remain gated. Generic dependency checking now retains named
-contingencies, including their calls and diagnostics.
-
-Release 0.186 adds [named-outcome reference chains](playground/outcome_chain_spawn.vn).
-Borrowed results retain holder storage and selected origins while the owning caller
-still handles every active, empty or nested outcome. Owned carriers transfer their
-handling obligations through consuming joins.
-
-Release 0.185 adds [option and closed-variant reference chains](playground/tagged_chain_spawn.vn).
-Active and empty tags retain every intermediate holder; selected suppliers and exclusive
-guards survive consuming join. Deeper named-outcome nodes remain the next bounded audit.
-
-Release 0.184 adds [reference chains through records](playground/record_chain_spawn.vn)
-for spawned captures and results. Every intermediate holder, selected supplier origin
-and exclusive ancestor remains protected through joins and fault settlement. Tagged
-nodes in deeper reference chains remain the next bounded audit.
-
-Release 0.183 adds [whole borrowed named-outcome results](playground/borrowed_outcome_spawn_results.vn).
-Joining retains holder storage and contained permissions. The owning caller still handles
-every outcome, including empty alternatives, after borrowed inspection. Deeper reference
-pointees remain the next admission audit.
-
-Release 0.182 adds [whole borrowed option and variant results](playground/borrowed_tagged_spawn_results.vn).
-Empty results retain their holder storage without inventing supplier loans; active tags
-preserve contained origins, exclusive guards and nested outcome handling. Whole borrowed
-named-outcome results remain the next bounded audit.
-
-Release 0.181 adds [whole borrowed record results](playground/borrowed_record_spawn_results.vn).
-Joining a child preserves both holder storage authority and contained reference origins,
-including projected records, shared copies and exclusive guards. Caller outcome handling
-and resource settlement remain checked. Whole borrowed tagged results remain separate.
-
-Release 0.180 adds [borrowed named outcome captures](playground/borrowed_outcome_spawn.vn).
-A spawned reader retains the outcome holder while its caller keeps the obligation to
-handle that outcome, including empty and nested values. Selected supplier origins and
-exclusive holder guards remain checked. Whole borrowed-carrier results and deeper
-reference pointees remain separate admission work.
-
-Release 0.179 adds [borrowed option and variant captures](playground/borrowed_tagged_spawn.vn).
-Borrowed holders may contain nested records, options and closed variants with direct
-reference leaves. Selected and empty alternatives preserve ordinary origin permissions,
-exclusive guards and resource retirement. Reference-bearing outcome borrows and whole
-borrowed-carrier results remain separate admission work.
-
-Release 0.178 adds [borrowed record captures](playground/borrowed_record_spawn.vn).
-Spawned children retain holder storage and its contained reference leaves until join.
-Selected results retain ordinary supplier loans and detached exclusive holder guards.
-Borrowed tagged captures, deeper reference pointees and whole borrowed-carrier results
-remain separate admission work.
-
-Release 0.177 adds [named outcome spawn payloads](playground/outcome_spawn.vn).
-Capturing and returning a named outcome transfers its mandatory handling obligation,
-including empty/shared payloads and nested values. Declared origins, guards and resource
-retirement remain checked. Anonymous reference-bearing contracts and borrowed carriers
-retain their existing limits.
-
-Release 0.176 adds [owned tagged spawn payloads](playground/tagged_spawn.vn).
-Options and closed variants may nest with records in captures/results. Selected tag
-origins, empty alternatives, exclusive guards and retained resource obligations remain
-checked. Reference-bearing outcomes, borrowed carriers and collections stay gated.
-
-Release 0.175 adds [nested owned record spawn payloads](playground/nested_spawn.vn).
-Captured and returned records retain full borrowed-field paths through partial moves
-and consuming joins. Reference leaves still point to reference-free storage; borrowed
-carriers and reference-bearing tagged/collection payloads remain gated.
-
-Release 0.174 adds [flat record spawn results](playground/carrier_spawn_results.vn).
-Returned records retain declared origins for each borrowed field, alongside ordinary
-owned fields. Consuming joins preserve selected loans, guarded authority and completion
-retirement. Nested and borrowed carriers remain gated.
-
-Release 0.173 adds [flat record spawn captures](playground/carrier_spawn.vn).
-Records may carry direct shared/exclusive references and reference-free owned fields.
-Leaf loans remain until consuming join, and selected result origins remain borrowed
-through final use. Nested/borrowed capture carriers and result carriers stay gated.
-
-Release 0.170 admits synchronous helpers that reach explicit handoffs through `run`,
-provided their inline call chain stays outside fault boundaries and suspended owners
-permit fault settlement. `run` enters inline; only a reached `await` or `yield`
-switches siblings. See [cooperative helpers](playground/cooperative_helpers.vn).
-
-Release 0.169 admits cold/direct awaits while owned spawned children remain live.
-Awaited work may borrow parent storage; sibling faults restore the owning continuation
-and retire awaited borrowers before its contingency. See the runnable
-[parent await example](playground/parent_await.vn).
-
-Release 0.168 checks resource settlement inside spawned producers and their callees.
-Owners held across a handoff need a fault disposition, including owners retained
-for a nested contingency that an enclosing fault would suppress. Completing such
-an owner before the handoff keeps it admissible; sequential use remains available.
-
-Release 0.167 admits checked synchronous helpers while spawned children remain live.
-Helpers without transitive task handoffs or fault boundaries run uninterrupted,
-including borrowed parent inputs, constructors and concrete generic/trait calls.
-Try `./bin/vnc exec playground/structured_helpers.vn playground/manifest.json`.
-
-Release 0.166 adds [owned source scheduling](docs/reference/async-execution.md#owned-spawned-children):
-`spawn` queues invocation-owned children, and `await`/`yield` explicitly hand off
-execution. Try [structured_tasks.vn](playground/structured_tasks.vn) with
-`./bin/vnc exec playground/structured_tasks.vn playground/manifest.json`.
-The current reference describes the admitted profile; earlier versioned notes below
-record the limits at those historical checkpoints.
-
-Release 0.79 adds checked constructor contracts at call sites: concrete input types,
-ordered result origins, fault permission and selected histories. Try hovering over
-`text_pair(...)` or `editable_text(...)` in
-[borrowed_construction.vn](playground/borrowed_construction.vn).
-
-Release 0.80 adds concrete trait-call contracts, preserving the trait's names and
-origins while resolving associated types. Unsaved declarations refresh the contract;
-generic trait calls retain their abstract associated projections. Try `reader<text_source>.read`
-in [traits.vn](playground/traits.vn).
-
-The [settings CLI](applications/settings/README.md#remove-a-setting) now supports
-key removal through `--entry remove -- FILE KEY`, using the shared JSON-file library
-and distinct missing, failed and uncertain-replacement outcomes.
-
-Release 0.100 adds [loop type-annotation locations](docs/reference/diagnostics-and-limits.md#type-annotation-locations):
-invalid loop-parameter types select their complete written annotation, including
-multiline and imported forms. Initializer errors retain their expression ranges.
-
-Release 0.103 separates reference argument validation from frame installation. Invalid
-later arguments cannot leave partial invocation storage. Synchronous execution uses
-both steps immediately; source tasks and scheduling remain planned.
-
-Release 0.99 adds [persistent reference execution](docs/reference/execution-failures.md#stepping-a-reference-execution):
-the host Rust API can pause between checked instructions and resume with the same
-live state, effects and fault context. This enables the next async work without
-adding source task or scheduling syntax.
-
-Release 0.98 starts the [async execution foundation](docs/async-execution.md): related
-runtime contexts share unique activation IDs even when their lifetimes overlap.
-Source tasks, suspension and scheduling remain planned; the design records the
-accepted prompt child-fault propagation policy separately from implemented behavior.
-
-Release 0.97 adds [written type-annotation ranges](docs/reference/diagnostics-and-limits.md#type-annotation-locations):
-field, parameter, payload and typed-pattern errors can select the full source type,
-including multiline annotations and imported aliases. Release 0.101 extends this
-to local variable types; 0.102 adds late public-interface visibility checks, and 0.104
-adds named completion types after `exits`, including imported and generic spellings. Generated
-type names never supply guessed source widths.
-
-Release 0.96 adds [constructor-definition diagnostic batches](docs/reference/diagnostics-and-limits.md#constructor-definition-preparation-batches):
-independent invalid constructors within one file report together, including unused
-generic definitions. Generated controls are registered only after that file's whole
-preparation step succeeds; imported diagnostics retain their original locations.
-
-Release 0.95 adds [trait-declaration diagnostic batches](docs/reference/diagnostics-and-limits.md#trait-declaration-preparation-batches):
-independent invalid trait contracts report together before implementation resolution,
-including unused declarations, public visibility and borrowed-result origins.
-
-Release 0.94 adds [inferred exit-adapter diagnostics](docs/reference/diagnostics-and-limits.md#inferred-exit-adapter-recovery):
-independent payload errors under `exits auto` and `ready...` report together, including
-repeated labels, while partial contracts remain unavailable to callers and hover.
-
-Release 0.93 adds [inferred stored-adapter diagnostics](docs/reference/diagnostics-and-limits.md#inferred-stored-adapter-recovery):
-distinct result labels can report errors together. Later arms sharing an uncertain
-label are suppressed, and the partial result never supplies a type or continuation.
-
-Release 0.92 adds [generic-bound diagnostic batches](docs/reference/diagnostics-and-limits.md#generic-bound-preparation-batches):
-independent invalid requirements report together before trait resolution, including
-unused definitions and duplicate requirements reached through different import aliases.
-
-Release 0.91 batches inaccessible constructor calls across independent bodies,
-with imported source locations, separate repairs and no partial checked program.
-Try [constructor_access/main.vn](playground/constructor_access/main.vn).
-
-Release 0.90 adds symbolic constructor contracts inside generic bodies, preserving
-abstract input types, borrow modes, ordered origins and checked permissions. Try
-[generic_construction.vn](playground/generic_construction.vn).
-
-Release 0.89 adds symbolic trait-call [hover](docs/language-reference.md#call-site-contract-hover):
-associated types, declared names, origin groups and fault permissions stay tied to
-the enclosing generic definition and its trait bounds.
-
-Release 0.88 adds symbolic ordinary generic [call hover](docs/language-reference.md#call-site-contract-hover):
-abstract types, declared bounds, named origins and inferred return lifetimes follow
-the universally checked definition, independently of concrete callers.
-
-Release 0.87 adds [explicit stored-adapter diagnostics](docs/reference/diagnostics-and-limits.md#explicit-stored-adapter-recovery):
-independent arms report errors together when the stored outcome type is declared.
-An uncertain binding stalls its continuation without publishing a partial result.
-
-Release 0.86 adds [explicit exit-adapter diagnostics](docs/reference/diagnostics-and-limits.md#explicit-exit-adapter-recovery):
-independent `exit delta` arms report errors together when the result shape is fully
-explicit. Nested arms, borrowed results and owning payloads keep their checked semantics.
-
-Release 0.85 adds [lexical handler diagnostics](docs/reference/diagnostics-and-limits.md#lexical-contingency-handler-recovery):
-independent contingency errors appear together after the work checks cleanly, while
-fault-mode permissions, retained resources and terminal rules remain enforced.
-
-Release 0.84 adds [lexical work-body diagnostics](docs/reference/diagnostics-and-limits.md#lexical-boundary-work-recovery):
-independent errors inside `fault boundary` work appear together while uncertain
-boundary histories stop before their handlers and outer continuations.
-
-Release 0.83 extends [diagnostic recovery](docs/reference/diagnostics-and-limits.md#named-boundary-body-recovery)
-to independent errors in named boundary work and contingency bodies. Retained-owner
-checks stay conservative, and failed handlers suppress their dependent work and supervisors.
-
-Release 0.82 adds named boundary contracts at `supervise` calls: owned inputs,
-retained parameters and permission for faults to escape contingency. Hover makes
-outcome-free completion explicit. Try [contingency.vn](playground/contingency.vn).
-
-Release 0.81 resolves implementation-local `self` and associated aliases in call
-hover, and preserves named generic result contracts with their origin mappings.
-Try [trait_aliases.vn](playground/trait_aliases.vn) and the helper call in
-[aggregate_traits.vn](playground/aggregate_traits.vn).
-
-Release 0.78 extends [control-declaration diagnostics](docs/reference/diagnostics-and-limits.md#control-declaration-batches)
-to independent named completion bindings. Public shapes, origin bindings and concrete
-signatures have bounded batches; invalid shared preparation still stops its dependent
-phases. Try [contract_binding_diagnostics.vn](playground/contract_binding_diagnostics.vn)
-or [declaration_diagnostics.vn](playground/declaration_diagnostics.vn).
-
-Release 0.76 adds [call-site contract hover](docs/language-reference.md#call-site-contract-hover):
-hover over a control or manifest primitive call to see its checked inputs, outcomes,
-borrow contracts and fault permission alongside the selected histories. Imported
-contracts follow unsaved dependency edits; invalid source suppresses stale information.
-Try `json_file.load` in [the independent library example](examples/json_file/main.vn).
-
-The source library also provides [bounded loopback HTTP](library/README.md#bounded-loopback-http)
-on the existing 0.76 compiler: shared transport contracts, retained connections and
-explicit contingency operations. Try the [independent greeting server](examples/http_hello/README.md).
-The settings service now uses both shared libraries while keeping its own policy.
-
-Release 0.75 starts the [shared source library](library/README.md): JSON string-map
-file loading/replacement, explicit failure contracts and reusable Rust adapter modules.
-The settings service and an [independent program](examples/json_file/main.vn)
-share the implementation. Module paths resolve from the manifest; native builds keep
-the existing type checks and locked dependencies.
-
-Release 0.74 extends diagnostic recovery across disjoint paths, grouped and lexical
-scopes, statement arms and loop bodies. Errors on one path no longer hide independent
-errors on another; joins touching stalled histories remain conservative. Try
-[path_diagnostics.vn](playground/path_diagnostics.vn) and the
-[path recovery rules](docs/reference/diagnostics-and-limits.md#path-and-scope-recovery).
-
-Release 0.73 reports independent errors within straight-line control code, alongside
-errors from independent controls. Dependent statements are suppressed, with a shared
-32-error budget and no partial inferred hover. Try editing the two initializers in
-[diagnostics.vn](playground/diagnostics.vn); the
-[recovery rules](docs/reference/diagnostics-and-limits.md#statement-recovery) describe
-where checking stops conservatively.
-
-Release 0.72 checks initializer accesses in written order: a completed constructor
-releases its nonescaping call borrows before the next initializer. Returned references
-and pending resources stay protected. Try
-[sequential_initializers.vn](playground/sequential_initializers.vn) and the
-[initializer lifetime rules](docs/reference/construction.md#initializer-borrow-lifetimes).
-
-Release 0.71 supports direct fields of fresh borrowed results: `text_view(borrow owner).text`.
-External origins, shared/mutable permissions and unselected completion obligations
-remain checked. Try [projected_construction.vn](playground/projected_construction.vn)
-and [fresh result projections](docs/reference/construction.md#projecting-fresh-results).
-
-Release 0.70 lets constructor calls compose inside raw borrowed records, options,
-variants and named outcomes. Written evaluation order, loans and pending resources
-remain checked. Try [composed_construction.vn](playground/composed_construction.vn)
-and the [construction reference](docs/reference/construction.md#composing-borrowed-storage).
-
-Release 0.69 adds [reference-bearing constructors](docs/reference/construction.md#reference-bearing-results).
-Write `constructor(ref string input)[input]` to map the result's origin groups.
-Shared and mutable borrows, nested fields and path-sensitive initialization use the
-existing ownership rules. Try [borrowed_construction.vn](playground/borrowed_construction.vn).
-
-Release 0.68 improves constructor lowering: completed values enter caller storage
-without an intermediate outcome payload, and owned temporary projections transfer
-the selected field without cloning its buffer. Native activation frames now reserve
-only their local value/decision storage. Source syntax stays the same.
-
-Release 0.67 adds [declared struct constructors](docs/reference/construction.md):
-checked field initialization, nested owning calls, generic forwarding and partial-fault
-cleanup. Public fields still permit raw brace construction. VS Code shows constructors
-in the outline and inferred types on `auto`. Try [construction.vn](playground/construction.vn).
-
-Release 0.66 adds [lexical fault boundaries and supervised recovery](docs/reference/contingency.md):
-attached contingency blocks, retained owners, immutable `@fault`, preserved loop
-state and entry-only process termination. The settings server now uses this syntax.
-Normal outcomes and administrative recovery remain separate in both engines.
-
-Release 0.65 adds [owning expressions and borrowed temporary arguments](docs/reference/ownership-expressions.md):
-explicit `move`, generic owning forwarding, and anonymous call-duration storage
-when a borrowed temporary cannot escape. Try
-[owning_expressions.vn](playground/owning_expressions.vn).
-
-Release 0.64 adds [implicit delta routing and named decisions](docs/reference/delta-routing.md):
-`received = delta request();` imports outcome paths and payload names. Select
-`[received.ready]`, or use a short path while it is unambiguous. Grouped arm
-statements can introduce values for later use on that path. Try
-[identity_deltas.vn](playground/identity_deltas.vn). The
-[accepted control-flow revision](docs/control-flow-revision.md) tracks the remaining
-ownership, lexical supervision and constructor checkpoints.
-
-Release 0.62 adds [source faults](docs/reference/execution-failures.md):
-`fault "reason";` terminates an invocation, public and trait contracts declare
-`faults`, and private controls infer it. Fault-only controls omit `exits`.
-Live must-complete resources need explicit fault dispositions. Try
-`./bin/vnc exec playground/source_faults.vn -- --json -- false`.
-
-Release 0.61 adopts the author's server layout in the [formatter](docs/reference/formatting.md):
-short label dispositions remain inline, and long lists and conditions wrap at a
-configurable width. Use **Format Document**, set `villanelleLanguage.formatWidth`, or
-run `./bin/vnc format SOURCE --width 100 --write`.
-
-The [active checkpoint queue](docs/language-revision.md#active-checkpoint-queue) now
-prioritizes stable public interfaces, diagnostics, readable paths and a sustained
-application with Rust library adapters. Further reference expansion is deferred;
-first-class async and direct LLVM coroutine lowering remain architectural targets.
-Release 0.46 adds [outcome contributor diagnostics](docs/reference/diagnostics-and-limits.md)
-through stored values, adapters and merged path labels. Release 0.47 adds
-`vnc check SOURCE --json` and structured path witnesses for tools.
-Release 0.48 adds [explicit process exit contracts](docs/reference/process-entry.md):
-`@exit N` on named alternatives, checked entry overrides, and exact status propagation
-through `vnc exec`. Runnable playgrounds now declare their status policy.
-Release 0.49 adds [retained Rust resources](docs/rust-adapters.md#retained-resources-049):
-opaque owners survive between calls, with checked borrowing and explicit consumption.
-Try the [file adapter](examples/retained_file/README.md) in VS Code or the terminal.
-Release 0.50 adds the [loopback HTTP settings service](applications/settings/README.md#run-the-http-service),
-with Villanelle routing, validation and cleanup, bounded socket I/O and explicit shutdown
-through connection budgets or idle timeouts.
-Release 0.51 adds [precise expression diagnostics](docs/reference/diagnostics-and-limits.md#expression-locations)
-to the compiler and VS Code: bad arguments, initializers and field accesses select
-their source expressions, including multiline strings and imported generic code.
-Release 0.52 adds [independent-body error reporting](docs/reference/diagnostics-and-limits.md#independent-body-errors):
-`check` and VS Code show multiple independent errors while suppressing callers of
-failed controls. Inferred hover remains unavailable until the current program checks.
-Release 0.53 adds [optional path grouping](docs/language-reference.md#labels-and-optional-grouping):
-`[path]: { ... }` gives a selection an explicit end without creating a new value or
-lifetime scope. Ordinary labels stay unbraced. Try [path_groups.vn](playground/path_groups.vn).
-
-Release 0.54 adds [direct arm exits](docs/language-reference.md#direct-arm-exits):
-`missing => exit absent` immediately completes that history without a throwaway path
-label. The settings application now uses them for validation and storage failures.
-Try [arm_exits.vn](playground/arm_exits.vn).
-
-Release 0.55 adds [selected-history hover](docs/language-reference.md#selected-history-hover):
-hover over selected code to see resolved paths, enclosing intersections, and decision
-origins. Try [history_hover.vn](playground/history_hover.vn). Existing `auto`
-hover keeps showing inferred types.
-
-Release 0.56 adds [source formatting](docs/reference/formatting.md): use VS Code's
-**Format Document**, or `./bin/vnc format SOURCE [--check | --write]`.
-Labels, explicit groups, comments and literal spelling are preserved. Formatting
-works on unsaved buffers and needs no manifest.
-
-Release 0.57 adds [public contract snapshots and diffs](docs/reference/contract-snapshots.md):
-`vnc contract-snapshot` exports checked public interfaces, and `contract-diff`
-compares them for review or CI. VS Code's **Villanelle: Show Public Contract Snapshot**
-uses current unsaved sources. The settings library now carries a checked baseline.
-
-Release 0.58 adds [outcome absorption snapshots and diffs](docs/reference/outcome-absorption.md):
-review changes to bounded internal contributors even when the public contract stays
-equal. Use `absorption-snapshot`, `absorption-diff`, or VS Code's **Villanelle: Show
-Outcome Absorption Snapshot**. The settings application includes an evidence baseline;
-`playground/outcome_absorption.vn` is a small runnable example.
-
-Release 0.59 adds [path and outcome explanations](docs/reference/explanations.md).
-Use `vnc explain` at a source position or for one control outcome, including
-private controls. VS Code provides **Villanelle: Explain Path Selection at Cursor** and
-**Villanelle: Explain Outcome Contributors**, with readable reports and source links.
-Try `playground/path_explanations.vn`.
-
-Release 0.60 starts [faults and activation boundaries](docs/faults-and-activations.md):
-returned execution failures now identify the actual control invocations and source
-sites in reference/native reports. Try `playground/execution_faults.vn` with
-`--fuel 40`. The [reference](docs/reference/execution-failures.md) distinguishes
-boundary failure, resource teardown and normal outcomes. Source fault syntax is available in 0.62;
-isolated tasks remain subsequent work.
-
-The [semantic foundation](docs/semantic-foundation.md) distinguishes compatibility,
-ownership transfer, behavioral equivalence and provenance. Executable law tests and
-`vnc compare` provide finite scenario evidence; they do not establish general equivalence.
-Expansion now also carries [independently checked rewrite certificates](docs/expansion-certificates.md).
-Every expanded execution/build passes this validator; artifacts can be exported and checked separately.
-The [simulation argument](docs/expansion-simulation.md) records its semantic premises.
-Try [explicit public contracts and private forwarding](playground/public_contracts.vn),
-[local shared-reference collections](playground/borrowed_collections.vn),
-[aggregate trait origin contracts](playground/aggregate_traits.vn),
-[public nested-reference contracts](playground/public_carriers.vn),
-[stored carrier references](playground/stored_carriers.vn),
-[returned carrier references](playground/carrier_results.vn),
-[whole sum borrowing](playground/sum_carriers.vn),
-[named outcome and option origins](playground/outcome_origins.vn),
-[public variant contracts](playground/public_variants.vn),
-[borrowed outcomes](playground/borrowed_outcomes.vn),
-[opaque owner splits](playground/opaque_splits.vn),
-[exclusive carrier reborrows](playground/carrier_reborrows.vn),
-[record inputs and contained origins](playground/record_inputs.vn),
-[inferred exit payloads](playground/inferred_payloads.vn),
-[stored reference fields](playground/stored_references.vn),
-[borrowed trait contracts](playground/borrowed_traits.vn),
-[named struct construction](playground/named_fields.vn) for readable nested data
-and [file modules](docs/modules.md) for public interfaces and private representations.
-
-[Protocol analysis](docs/protocol-analysis.md) now provides finite structural models,
-residual queries and completed-trace inclusion with counterexamples. Its abstraction
-forgets data and cannot establish concrete program equivalence.
-[Source tail extraction](docs/extraction.md) now generates a typed helper and rechecks
-its ownership and public contracts; it is a conservative refactoring, not a proof.
-
-The maintained [settings service](applications/settings/README.md) now provides a
-working persistent CLI and sequential loopback HTTP server. Its Villanelle modules use
-[typed Rust adapters](docs/rust-adapters.md) for file, JSON and socket operations,
-with explicit Cargo dependencies and locked builds.
-This starts library reuse while keeping first-class Villanelle async and direct LLVM
-coroutine lowering open.
-
-## Native release builds
-
-The [Native release workflow](.github/workflows/release.yml) builds Villanelle and its
-VS Code extension on Apple Silicon macOS, Ubuntu 24.04 x86_64 and arm64, and Windows x64.
-Each job caches its pinned static LLVM/LLD 22.1.8 installation. The qualification
-step compares the compiler inside the VSIX with the standalone archive, starts
-the language server, then builds Hello and the settings HTTP server with an empty
-tool search path. Settings uses a locked, target-specific adapter pack. Both
-Linux runners also build and run the applications in an isolated Ubuntu container
-before running the compiler test suite. The Windows job runs the suite natively. Integration targets that select a backend run
-once with LLVM and once with generated Rust. Each target uses the same test
-executable for both passes.
-
-The last public cross-platform release, 0.283, shipped as Tellur. Its archives contain `tellur` or `tellur.exe`. The 0.285 source and packaging workflow use `vnc` or `vnc.exe` and recognize `.vn` files.
-[Release packages](https://github.com/apology-is-policy/villanelle/releases/tag/v0.283.0) ·
-[Windows parity results](https://github.com/apology-is-policy/villanelle/actions/runs/43791913439)
-
-## Build from a fresh clone
-
-For the same native backend as the release packages, install Rust/Cargo and the
-pinned static LLVM/LLD 22.1.8 toolchain. Set `LLVM_SYS_221_PREFIX` to its install
-directory. Apple Silicon builds use the macOS SDK. Linux builds need the matching
-musl Rust target. Windows x64 builds need the prepared GNU sysroot and import
-tools used by the [Windows build](.github/workflows/windows-host.yml).
-
-For a Rust-only bootstrap, add `--no-default-features` to the Cargo build below.
-To use a prebuilt compiler, download the release package for your host.
+`v2/` is a self-contained crate with zero external dependencies.
 
 ```sh
-git clone https://github.com/apology-is-policy/villanelle.git
-cd villanelle
+cd v2
+cargo test                                                               # run all unit, conformance, fuzz, checker & backend suites
+cargo run --bin vn2 -- test tests/slice1/*.core tests/slice1_surface/*.rails tests/slice2/*.core tests/slice2_surface/*.rails
+cargo run --bin vn2 -- check tests/slice1_surface/*.rails --certificates # typecheck, prove obligations & validate certificates
+cargo run --bin vn2 -- format tests/slice1_surface/show_file.rails tests/slice2_surface/show_file_resource.rails --check
+cargo run --bin vn2 -- expand tests/slice1_surface/groups_and_auto.rails # Theorem 4 in-place call expansion
+cargo run --bin vn2 -- emit-llvm tests/slice1_surface/spend.rails        # Phase 4 typed LLVM IR ([R1]-[R3])
+cargo run --bin vn2 -- emit-c tests/slice1_surface/spend.rails           # C ABI header for defined & extern controls
+cargo run --bin vn2 -- run tests/slice1_surface/spend.rails spend 10 4 --arithmetic
+cargo run --bin vn2 -- print tests/slice1_surface/show_file.rails        # elaborate Rails and print canonical core form
+```
+
+### v2 Code Map (`v2/src/`)
+
+| Module | Responsibility |
+| --- | --- |
+| [`v2/src/int.rs`](v2/src/int.rs) | Arbitrary-precision mathematical integers for `[E-Formula]`, `[E-Arith]`, and the certificate kernel |
+| [`v2/src/syntax.rs`](v2/src/syntax.rs), [`v2/src/text.rs`](v2/src/text.rs) | Core calculus AST, glyph printer, and core reader (`selector ▷ command`) |
+| [`v2/src/surface.rs`](v2/src/surface.rs) | Rails and plain-form surface parser (`[Y1]`–`[Y10]`, `[G1]`–`[G9]`), canonical formatter (`[G10]`), elaborator (`[U1]`–`[U15]`), and surface warnings (`[U5]`, `[U17]`, `[U18]`) |
+| [`v2/src/typed.rs`](v2/src/typed.rs), [`v2/src/resolve.rs`](v2/src/resolve.rs) | Well-formedness (`[W1]`–`[W5]`, `[W7]`, `[W9]`) and bidirectional type resolution (`[C1]`–`[C3]`) |
+| [`v2/src/bdd.rs`](v2/src/bdd.rs), [`v2/src/facts.rs`](v2/src/facts.rs), [`v2/src/kernel.rs`](v2/src/kernel.rs) | ROBDD manager, $\text{Th}_{\mathbb{Z}}$ CEGAR decision procedure (`[S1]`–`[S6]`, `[I1]`–`[I13]`, `[A1]`–`[A9]`, `[J1]`–`[J6]`), independent certificate kernel (`[V1]`–`[V5]`), and counterexample builder (`[M1]`–`[M6]`) |
+| [`v2/src/check.rs`](v2/src/check.rs) | Phase 3 checker (`[K1]`–`[K8]`, `[N1]`–`[N5]`, `[C2]`, `[O1]`, `[O2]`, `[O4]`, `[O6]`, `[P1]`–`[P8]`, `[F3]`) and impossible-arm warnings (`[U16]`) |
+| [`v2/src/expand.rs`](v2/src/expand.rs) | Theorem 4 in-place call expansion of defined controls |
+| [`v2/src/codegen.rs`](v2/src/codegen.rs) | Phase 4 typed LLVM IR and C ABI backend under `[R1]`–`[R3]` and native `clang -x ir` differential runner |
+| [`v2/src/oracle.rs`](v2/src/oracle.rs), [`v2/src/erased.rs`](v2/src/erased.rs), [`v2/src/differential.rs`](v2/src/differential.rs) | Instrumented operational semantics (§6), erased machine-word semantics (§9), and Theorem 3 differential harness |
+| [`v2/src/host.rs`](v2/src/host.rs), [`v2/src/script.rs`](v2/src/script.rs), [`v2/src/rng.rs`](v2/src/rng.rs) | Scripted, checked-arithmetic, and seeded extern hosts (`[E-Extern]`, `[E-Host]`) and `//!` test directive runner |
+| [`v2/src/generate.rs`](v2/src/generate.rs), [`v2/src/mutate.rs`](v2/src/mutate.rs) | Random valid/free core program generator and single-step stuck-state mutation classifier |
+
+---
+
+## Villanelle v1 Baseline (`0.306.0`, Frozen at `v1-final`)
+
+The root crate implements Villanelle v1 (`0.306.0`), frozen at tag `v1-final` before the v2 redesign. Its complete specification is in [`docs/language-reference.md`](docs/language-reference.md) and its companion chapters under [`docs/reference/`](docs/reference/grammar.md), with the full 0.46–0.306 checkpoint history recorded in [`docs/language-revision.md`](docs/language-revision.md).
+
+### v1 Highlights
+
+- **Language and verification**: Explicit outcome contracts (`exits`), `delta` routing, path selection labels `[mask]:`, second-class references and origin groups (`from`, `['a]`), traits and generic controls, must-complete resources with protocol state machines, lexical and named fault boundaries (`fault boundary`, `contingency`, `supervise`), and scoped async task execution (`async control`, `defer`, `spawn`, `await`, `cancel`).
+- **Backends**: Reference interpreter, generated Rust backend (`--backend rust`), and direct native LLVM 22.1.8 / LLD backend (`--backend llvm`, including direct LLVM Switch-Resume coroutine lowering for async controls).
+- **Collections library (`0.1.0`)**: Eight pure Villanelle modules in [`library/`](library/README.md) (`membership`, `search`, `reduction`, `partition`, `sequence_batches`, `traversal`, `ordering`, `ordered_search`).
+- **Settings service**: Persistent CLI and concurrent loopback HTTP settings service in [`applications/settings/`](applications/settings/README.md) with typed Rust host adapters.
+- **Editor tooling**: Language server (`vnc lsp`), formatter (`vnc format`), contract and outcome-absorption snapshots, path explanations (`vnc explain`), and the VS Code extension in [`editors/vscode/`](editors/vscode/README.md).
+
+### Build and Run v1
+
+For the direct LLVM native backend, set `LLVM_SYS_221_PREFIX` to a static LLVM/LLD 22.1.8 installation. For a Rust-only bootstrap without LLVM, add `--no-default-features`.
+
+```sh
 cargo build --locked --release --bin vnc
 ./target/release/vnc check playground/hello.vn
 ./target/release/vnc exec playground/hello.vn
@@ -909,659 +157,42 @@ cargo build --locked --release --bin vnc
 ./playground/build/hello
 ```
 
-Generated binaries and VSIX packages are not committed. Use `target/release/vnc`
-in place of `bin/vnc` in the examples below, or copy the release binaries into
-`bin/`. To build the editor extension, follow the
-[VS Code development guide](editors/vscode/README.md). The project is licensed under
-[Apache 2.0](LICENSE).
-
-## Try programming
-
-1. Open `villanelle.code-workspace` in VS Code.
-2. Open `playground/hello.vn`.
-3. Click **▶** or run **Villanelle: Build and Run** (`⌘⌥R`).
-4. Read the **Villanelle Build** output, then try `stored_references.vn`, `generic_controls.vn`, `generic_data.vn`, `named_fields.vn`, `modules/main.vn`, `data_types.vn`, `forwarding.vn`, `named_outcomes.vn`, `stored_adapters.vn`, `adapters.vn`, `outcomes.vn`, `collections.vn`, `references.vn`, `ownership.vn`, `count.vn`, `port.vn`, or `read_file.vn`.
-
-Hover over a control declaration name to see its checked exit contract, including
-inferred payload types. The [detailed language reference](docs/language-reference.md) explains the syntax,
-ownership rules, primitive library, editor settings and command-line workflow. Its
-companion chapters cover [grammar](docs/reference/grammar.md),
-[diagnostics](docs/reference/diagnostics-and-limits.md),
-[terminology](docs/reference/glossary.md) and [feature status](docs/reference/support-status.md).
-Complete manual examples are checked with `cargo test --offline --test reference_manual`.
-Choose the VSIX for your platform and install it with **Extensions: Install from
-VSIX…**. The bundled compiler also serves the editor over stdio. See the
-[editor instructions](editors/vscode/README.md) for package selection and native
-build commands.
-
-The playground uses **real** parsing, arithmetic, text and read-only file operations.
-The broader `examples/` directory also includes scripted network/retry cases and
-negative-edit suggestions. An entry `.vn` file and its explicit imports form a
-compilation; helpers can live in that file or in imported modules. Put new files beside `playground/manifest.json` to use
-its types and primitive contracts.
-
-## Command line
-
-From this directory, use the supplied binaries:
+Common `./bin/vnc` commands:
 
 ```sh
 ./bin/vnc check playground/hello.vn
 ./bin/vnc exec playground/forwarding.vn
-./bin/vnc exec playground/adapters.vn
-./bin/vnc exec playground/outcomes.vn
 ./bin/vnc exec playground/collections.vn
-./bin/vnc exec playground/count.vn
 ./bin/vnc exec playground/port.vn --entry parse_port -- 443
-./bin/vnc build playground/hello.vn --release
-./playground/build/hello
+./bin/vnc format applications/settings/server.vn --check
 ./bin/vnc expand examples/refresh.vn examples/manifest.json refresh
 ./bin/vnc certify-expansion playground/forwarding.vn playground/manifest.json main > expansion.json
 ./bin/vnc verify-expansion playground/forwarding.vn playground/manifest.json expansion.json
 ./bin/vnc protocol playground/read_file.vn playground/manifest.json show_file playground/protocol/read_failed.json
-./bin/vnc run examples/load.vn examples/manifest.json examples/double-failure.json
 ```
 
-`build` writes a standalone executable and its LLVM IR (`name.ll`). The direct
-backend emits `name.tellur-build/program.ll` and links the program with embedded
-LLVM/LLD 22.1.8. On Apple Silicon the compiler carries the precompiled runtime
-and a libSystem link stub. An ordinary build needs only the `vnc` executable.
-Manifests with Rust source adapters also use Cargo, rustc and the macOS SDK.
-Set `TELLUR_NATIVE_TARGET_DIR` to share the native cache between builds.
-Explicit `--backend rust` builds produce `name.tellur-build/src/main.rs` and use
-Rust/Cargo to compile the executable.
-
-`--expanded` expands the selected entry before lowering. `--release` selects
-optimization level 2. Native executables accept `--json`, `--entry`,
-`--scenario FILE` and `--fuel N`. Process status follows the selected entry's
-outcome mapping. See the [LLVM backend reference](docs/reference/llvm-backend.md).
-
-## Develop and verify
+Verify the v1 compiler and test suites:
 
 ```sh
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
-cargo build --locked --release --bins
-```
-
-Tests include native compilation, so Cargo/Rust must be available. Set
-`TELLUR_NATIVE_TARGET_DIR` to share a native dependency cache across builds; otherwise
-it lives in `.tellur-cache` beside output binaries. `--offline` can be used for Cargo
-commands once dependencies are cached. Compilation artifacts are ignored by Git.
-
-The default `llvm` feature embeds LLVM and LLD. It needs a static LLVM 22.1.8 install
-that includes LLD (built with `-DLLVM_ENABLE_PROJECTS=lld`, static libraries):
-
-```sh
-LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test coroutine_experiment
-LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo test --features llvm --test llvm_backend
-LLVM_SYS_221_PREFIX=/path/to/llvm-22.1.8 cargo build --release --features llvm --bins
-```
-
-To compare compiled-program integration tests on macOS arm64, select a backend
-with `TELLUR_TEST_BACKEND`. For example, run the settings application suite with
-each backend against the same expected outcomes and exit statuses.
-
-```sh
 TELLUR_TEST_BACKEND=rust cargo test --locked --features llvm --test settings_application
 TELLUR_TEST_BACKEND=llvm cargo test --locked --features llvm --test settings_application
 ```
 
-The selector applies to test executables. The compiler CLI uses its existing
-`--backend` option. Explicit Rust/LLVM differential tests still exercise both implementations.
-
-The [conformance inventory](docs/conformance.md) maps the draft's requirements and
-C01–C24 cases to implementation and evidence. Tests cover ownership, loops,
-provenance, typed declarations, inferred contracts, pure calls, malformed inputs,
-generated programs, native versus interpreted behavior
-before/after expansion and O0/O2 optimization, live host adapters, and actual editor
-build/run. This is finite evidence, not a soundness or termination proof.
-
-The [VS Code development guide](editors/vscode/README.md) describes the extension
-and its integration runner. The installed release bundles one `vnc` executable. The editor launches `vnc lsp` for language services
-and `vnc build` or `vnc exec` for native commands.
-
-## Design and boundaries
-
-The original [specification](docs/path-language-spec-v0.1.md) and
-[vision](docs/path-language-vision.md) are unchanged. The
-[design notes](docs/design-notes.md) record issues worth revisiting. The
-[addendum](docs/v0.1-addendum.md) explicitly fixes the implementation profile rather
-than hiding restrictions in the code.
-
-Ordinary owned values and must-complete resources are checked separately. Strings
-and bytes move in `control`; copying owned data requires `clone`. Shared/exclusive
-references cross control boundaries and can be returned from input references.
-Local lifetimes end at last use, with conservative path and loop rules. Hover shows
-which inputs a returned borrow depends on. Grouped records and source variants carry
-references through owned control inputs and results. Local borrowed variants/outcomes
-retain references through capture, adapters and delta unpacking. Named-outcome and
-option schemas support owned boundaries and whole borrowed inputs. Borrowed matching
-reborrows active payloads without discharging handling obligations. Trait contracts
-carry explicit storage and contained-origin mappings through generic dispatch.
-Local arrays, vectors and maps support shared-reference elements. Exclusive elements,
-nested/public collection contracts, reference rebinding and reference loop parameters
-remain upcoming.
-Historical `region` syntax retains reusable values for compatibility. Borrowed slices,
-scheduled async tasks remain upcoming. Other
-future work includes recursion, concurrency, richer proofs, general graph
-extraction and the graphical editor. Constant constructors do not refine path
-coverage or resource obligations. The editor reports bounded independent-control errors (one per body, up to 32).
-
-See [generic control checking](docs/generic-controls.md) for the definition/specialization
-boundary and the implemented capability rules.
-[Concrete traits](docs/traits.md) add coherent implementations and explicitly selected
-static calls; try `playground/traits.vn` and `playground/trait_bounds.vn`.
-Generic bodies are checked against declared trait operations and associated permissions.
-
-## Code map
+### v1 Code Map
 
 | Location | Responsibility |
 | --- | --- |
-| `src/syntax.rs`, `src/manifest.rs` | Syntax and trusted type/primitive contracts |
-| `src/bdd.rs`, `src/check.rs`, `src/inference.rs` | Symbolic path analysis, typing, coverage and ownership |
-| `src/generics.rs`, `src/generic_controls.rs`, `src/traits.rs` | Concrete layouts, generic definition checks, trait conformance and static dispatch |
-| `src/ir.rs`, `src/verify.rs` | Checked representation, provenance, inspection and structural verification |
-| `src/expand.rs`, `src/runtime.rs` | Region expansion and scripted reference execution |
-| `src/extract.rs` | Rechecked source tail extraction |
-| `src/modules.rs` | File imports, identities, visibility and source maps |
-| `src/native.rs`, `src/native/runtime.rs` | Native lowering, LLVM toolchain bridge and host adapters |
-| `src/main.rs` | Check, interpret, inspect, expand, build and execute commands |
-| `src/lsp.rs`, `editors/vscode/` | Editor diagnostics, highlighting, build/run and integration tests |
-| `tests/` | Conformance, regressions, generated/differential tests and live host tests |
-| `playground/` | Small live programs to edit and run |
-
-The latest borrowing example is [origin_groups.vn](playground/origin_groups.vn).
-It demonstrates separate returned-field dependencies and inferred forwarding.
-
-The 0.63 checkpoint adds [contingency and supervised boundaries](docs/reference/contingency.md):
-`@contingent`, explicit retained-owner handover and `supervise`, with per-request
-isolation in the settings server. General annotation policies remain deferred.
-
-### Direct async calls in 0.105
-
-`async control`, `run` and direct `await` are available in the sequential execution
-profile. Try `./bin/vnc exec playground/async_entry.vn` or read the
-[reference chapter](docs/reference/async-execution.md). Concurrent scheduling,
-async I/O and LLVM coroutine lowering remain later checkpoints.
-
-
-### Local cold tasks in 0.106
-
-`auto pending = defer operation(owned_arguments);` transfers arguments immediately
-without starting the async body. `await pending` consumes the handle; moving it
-transfers the obligation to await. Pending captures retain their fault dispositions.
-Try `./bin/vnc exec playground/cold_tasks.vn` and hover its `auto` bindings.
-Borrowed captures, public task types and concurrent scheduling remain ahead. The
-[reference](docs/reference/async-execution.md) gives the exact current rules.
-
-
-### Direct borrowed cold captures in 0.107
-
-Deferred tasks can retain shared or exclusive borrows of existing reference-free
-storage. Moving a task preserves the loans; consuming await releases them. Ordinary
-reference arguments reborrow, while `move alias` transfers an exclusive reference.
-Try `./bin/vnc exec playground/borrowed_tasks.vn`. Contained captures,
-borrowed completion payloads and nested storage of borrowed tasks remain ahead.
-
-### Borrowed task completions in 0.108
-
-Await now delivers borrowed completion payloads, preserving each result's checked
-origins through task moves, selected outcomes, records, sums and outcome adapters.
-Unrelated captures become available at await; returned references protect their
-sources until their last use. Try `./bin/vnc exec playground/task_results.vn`.
-Contained captures and public task contracts remain ahead; execution is sequential.
-
-### Owned reference-bearing captures in 0.109
-
-Cold tasks can now capture records, variants and options containing references,
-retaining each field's origins and nested carrier dependencies. Passing shared
-reference records preserves ordinary copying; exclusive references transfer with
-the owning value. Try `./bin/vnc exec playground/contained_tasks.vn`.
-Borrowing a whole reference-bearing carrier remains the next bounded step.
-
-
-## Whole borrowed carrier captures in 0.110
-
-Cold tasks can borrow an entire reference-bearing record or sum. The task retains
-both its storage and the references inside it. Awaited results preserve separate
-storage and contained-origin contracts, including nested carriers and tagged sums.
-A shared outer borrow cannot grant exclusive access to an inner reference.
-Try `./bin/vnc exec playground/carrier_tasks.vn`; hover `auto` to inspect
-the pending task and its detached borrowed completion. Public/escaping tasks,
-nested task storage and scheduling remain separate work.
-
-
-## Execution groundwork in 0.111
-
-The reference interpreter now separates execution-wide storage, fuel and history
-from resumable control state. Internal interleaving checks preserve borrowed storage,
-frame retirement and isolated contingency state. Source execution remains sequential;
-there is no new syntax or `spawn` support in this release.
-
-
-## Task identity checks in 0.112
-
-The reference executor now tracks each local cold task's original invocation and
-one-shot await lifecycle. Normal completion cannot forget pending work; faults and
-supervised recovery retire abandoned task records before contingency. Existing
-source syntax, borrowing and sequential native behavior are unchanged. Readiness
-and source `spawn` remain the next async implementation steps.
-
-
-## Cold-await dispatch in 0.113
-
-Cold-task awaits now use queued dispatch and parked caller state in the reference
-executor. One-use completion waits reject early or duplicate delivery; borrowed
-storage, fault traces and instruction quotas keep their existing behavior. Source
-execution is still sequential. External readiness and scoped `spawn` remain ahead.
-
-## Settings HTTP removal
-
-The maintained settings service now exposes its existing removal operation through
-`POST /remove` with `{"key":"theme"}`. It preserves other entries, returns 404 without
-writing for absent keys, and reports uncertain replacement explicitly. See the
-[HTTP workflow](applications/settings/README.md#run-the-http-service). This application
-update runs on compiler 0.113 without changing compiler or host contracts.
-
-
-## Named completion origin diagnostics in 0.114
-
-Errors in a named result mapping such as `exits reply[input['source]]` now select
-its written brackets. CLI and editor locations survive imports, generic checking
-and unsaved changes; type annotations, body errors and missing mappings keep their
-separate locations. Borrowing rules and diagnostic recovery order are unchanged.
-
-
-## Borrowed-result origin diagnostics in 0.115
-
-Invalid explicit borrowed-result origins now select their complete `from input`
-clause, including contained selectors and multiline spelling. Imported generic and
-trait signatures retain the original location. Missing clauses, unrelated body
-errors and lifetime checking rules keep their existing behavior.
-
-
-## Payload origin diagnostics in 0.116
-
-Result payload mappings such as `view[input] value` now underline their written
-brackets when an input, group count or borrowing permission is invalid. Imported,
-generic and trait signatures retain exact locations through unsaved edits. Named
-completion mappings, `from` clauses and type/body errors keep separate ranges;
-repair restores checked hover information. Borrowing rules are unchanged.
-
-
-## Suspended caller storage in 0.117
-
-Cold awaits now retain callers in a separate suspension table. One-use registrations
-validate the matching task and completion wait before restoring the original caller;
-fault unwind retires the registration without producing a normal result. Borrowed
-storage, diagnostic traces and host instruction quotas retain their existing behavior.
-Source execution remains sequential; scoped concurrency is the next feature group.
-
-
-## Ready context storage in 0.118
-
-Prepared cold-task children now remain in separate ready storage until dispatch.
-Selection validates the retained context and cannot replace an active control chain.
-Borrowed storage, host instruction quotas and source effect order are unchanged.
-This prepares the runtime for independent readiness; source execution remains sequential.
-
-## Waiting contexts and readiness in 0.119
-
-The reference runtime now has separate waiting storage and ready entries for either
-starting or resuming a task. Readiness tokens carry an execution identity and a fresh
-generation; signals only make the retained context eligible, and dispatch restores
-that same context without replaying a call. Completion remains a separate one-use
-operation. Host instruction quotas never select a sibling.
-
-This is internal groundwork validated with checked borrowed execution. Source
-`spawn`/`yield`, async host I/O and fault-domain settlement remain ahead; current
-source execution and editor behavior stay sequential.
-
-## Fault domain admission in 0.120
-
-Reference execution now tracks live fault domains separately from invocation and
-trace identities. Entry, named supervision and lexical boundaries receive distinct
-domains; handling closes only the affected domain and restores its parent. Deferred
-tasks acquire their executing domain when awaited, preserving existing cold-task
-movement across lexical boundaries.
-
-Stopped domains reject normal task admission, readiness and ready dispatch. Boundary
-finalization and contingency admission check for retained execution contexts first.
-These gates prepare for automatic sibling settlement; they do not enable source
-concurrency, async host adapters or cancellation.
-
-## Reference sibling settlement in 0.121
-
-The reference driver now preserves a failed boundary while retiring its retained
-children. Queued bodies do not start, waiting bodies do not resume normally, and
-borrowers unwind before their owners. Unrelated domains remain available, and late
-readiness signals cannot revive settled work. The original fault report survives.
-
-When a stopped sibling is inside a nested boundary, its resources follow emergency
-retirement without entering that sibling's contingency. Only the owning boundary
-handles the original fault after settlement. This implements the accepted policy
-in the private reference machinery; source `spawn`/`yield`, async host adapters and
-fallible or suspending cleanup remain ahead.
-
-## Native resource scopes in 0.122
-
-Native fault cleanup now follows explicit resource ownership instead of allocation
-snapshots. It preserves unrelated resource scopes, retires temporary owned inputs
-before contingency, and keeps normal outgoing results and cold-task captures alive.
-Retained response resources remain available to their handler. This backend groundwork
-does not yet enable source concurrency or asynchronous host adapters.
-
-## Native activation storage in 0.123
-
-Native calls now use separately identified frame ranges, preserving borrowed slot
-addresses while permitting independent retirement and storage reuse. Fault cleanup
-releases only the affected frame's resources. This prepares persistent native
-execution contexts; source task scheduling remains unimplemented.
-
-## Native host contexts in 0.125
-
-The native host now retains diagnostic, contingency and resource-selection state
-together, with checked admission and retirement of independent ownership roots.
-Compiled context tests share these runtime operations and verify that a failed root
-preserves unrelated owners and the host's original context. Public calls remain
-synchronous; source scheduling and native sibling settlement are still ahead.
-
-## Task queue and completion joins in 0.126
-
-The reference runtime now separates queue admission from one-use completion joins.
-A completed task remains an obligation until its result is delivered and consumed;
-cold await still admits both operations atomically. This internal foundation
-preserves existing source behavior. Independent completion-payload storage and
-source `spawn`/`yield` remain ahead.
-
-## Retained runtime completions in 0.127
-
-Completed task results now live in shared reference-runtime storage until delivery
-or emergency retirement. Fault settlement releases their borrows and unwinds parked
-callers before the owning contingency. Cold await still delivers immediately;
-source scheduling and native completion ownership remain ahead.
-
-## Administrative process settlement in 0.128
-
-Reference process termination now closes task admission and retires all registered
-ready/waiting chains, completed results and parked callers before delivering its
-original status. Cleanup does not resume ordinary code or nested contingencies,
-consume source fuel, or turn termination into an outcome/fault. Written termination
-remains restricted to the executable entry's outermost lexical contingency.
-Source `spawn`/`yield` and shared native scheduling remain unimplemented.
-
-## Native result resource adoption in 0.129
-
-The shared native host now validates and transfers a completed context's owned
-result resources into a receiving scope without selecting either context or following
-borrowed references. Foreign/stale/duplicate owners and incomplete result graphs
-reject before mutation. The compiled completion model uses this API; source execution
-remains synchronous and scheduler integration is still ahead.
-
-## Shared native retained execution in 0.130
-
-The native continuation, context/completion and fault-domain implementation now lives
-in normal generated support. Compiled regression probes use that same code for
-retained results, readiness and fault/process cleanup; their scheduling drivers remain
-test-only. Default native entries still use synchronous control flow. Source task
-queue/wait wiring, resumable lowering and `spawn`/`yield` remain ahead.
-
-## Shared task protocol and native invocation owners in 0.131
-
-Reference and native support now share task queue, completion-join and readiness
-transitions. Retained native activations have separate invocation owners even when
-frames are reused; normal return requires settled tasks, and emergency retirement
-invalidates only the affected owner's obligations. Native task payload/queue binding
-and source `spawn`/`yield` remain ahead. Current source behavior is unchanged.
-
-## Bound native task payloads in 0.132
-
-Internal native cold-task APIs now bind captures to the original invocation, host
-and compiled producer. Invalid queue admission preserves the handle and captures;
-FIFO dispatch transfers them once. Source generation remains synchronous while
-retained context dispatch and completion integration continue.
-
-## Task-bound native contexts in 0.133
-
-Internal queued tasks now retain their original parent and completion wait through
-native context admission, readiness, result delivery and fault/process cleanup.
-Failed admission preserves captures. Source callback and scheduler integration remain
-ahead; current source execution stays synchronous.
-
-## Scoped native task retirement in 0.134
-
-Retained native scopes now retire discarded cold-task obligations during fault and
-recovery cleanup, while preserving moved handles and borrowed suppliers. Normal
-scope exits and loop restarts still require task completion. Source callback and
-scheduler integration remain ahead.
-
-## Sequential native await contexts in 0.135
-
-Internal cold-await context chains now preserve the original diagnostic activations
-through readiness, result delivery and faults. Exact report and resource checks cover
-nested awaits and owning contingencies. Source callback integration remains ahead;
-current source execution stays synchronous.
-
-## Retained native await handoffs in 0.136
-
-Internal compiled callbacks now retain cold-await captures and their return callback
-across explicit admission and one-use result delivery. Failure and process cleanup
-retire pending values before suppliers. Generated source callback integration remains
-next; current source execution stays synchronous.
-
-## Generated retained await callbacks in 0.137
-
-Compiled probes now lower cold tasks into bound captures and explicit retained await
-handoffs. Their drivers preserve original diagnostic chains, result ownership and
-fault cleanup. Production lowering promotion is next; source execution remains
-sequential and no scheduler syntax is enabled.
-
-## Production retained native callbacks in 0.138
-
-Normal native builds now use retained compiled callbacks for calls, constructors,
-loops, boundaries and cold awaits. The shared sequential entry driver preserves loans,
-resource cleanup, fuel and fault reports. Probe scheduling controls stay internal;
-source execution remains sequential and no new syntax is enabled.
-
-## Native independent-child cold awaits in 0.139
-
-Internal native children can now perform nested cold awaits while preserving their
-original fault cause, one-use result delivery and resource cleanup order. The shared
-runtime has host and compiled O0/O2 evidence. Source execution remains sequential;
-`spawn`, `yield` and parent awaits alongside live children remain gated.
-
-## Prepared native owner awaits in 0.140
-
-The internal native host admits an already-prepared cold await alongside independent
-children. Sibling faults restore the original owning diagnostic chain before retiring
-awaited work, including nested boundaries and active handlers. Normal parent execution
-with live children and source scheduling remain gated.
-
-## Native retirement checks in 0.141
-
-Retained native frames, loops and lexical boundaries now check child/result
-membership before runtime storage retirement. Final-frame domain checks also precede
-frame release. Parent execution with live children remains gated pending checks
-before generated callbacks move operands; source scheduling is not enabled.
-
-## Native invocation ownership in 0.142
-
-Every child and retained result now keeps its original parent invocation, preventing
-another invocation in the same context from adopting it. Lower-level selection
-rejects live children before callbacks or pending delivery can change state.
-Fine-grained parent progress and source scheduling remain gated.
-
-## Native callback access plans in 0.143
-
-Generated native callbacks now describe symbolic reads, moves, borrows, writes and
-retirement before evaluation. Normal cold-await result writes have a separate plan.
-Queries preserve execution state; opaque accesses remain explicit. Parent progress
-with live children and source scheduling still require further dependency checks.
-
-## Native access storage resolution in 0.144
-
-Native access queries now identify live storage and indirect reference-holder reads,
-without consuming values or resource owners. Resolved allocation identities reject
-retirement and offset reuse. Captured-loan checks and source scheduling remain ahead;
-parent execution with live children is still guarded.
-
-## Retained native capture descriptions in 0.145
-
-Native contexts now retain bounded descriptions of captured reference storage through
-waiting, completion and pending delivery. Carrier contents preserve shared/exclusive
-attenuation; unknown metadata leaves execution unchanged. Checked origin guards and
-access-interference checks remain necessary before enabling parent progress.
-
-## Partial checked reference origins in 0.146
-
-Checked reference expressions now preserve partial origin paths, including carrier
-guards, before local aliases disappear. Expansion remaps this evidence, and certificate
-validation rejects its removal or alteration. Execution and editor contracts keep their
-existing behavior. Native values, complete loan evidence and parent-access permission
-remain separate integration work.
-
-## Bound native reference origins in 0.147
-
-Native reference values now retain allocation identities and partial checked origins,
-including carrier guards. Copies, moves, reborrows and result delivery preserve them;
-capture snapshots carry them through waiting and completion. Symbolic origin fields
-are never read as runtime projections. Missing or bounded-out evidence remains
-unavailable, with unchanged source behavior. Complete loan authority and access
-interference checks still gate parent progress and source scheduling.
-
-## Conservative direct reference completeness in 0.148
-
-Checked reference evidence now retains ancestor origins. A bounded set of direct,
-unguarded references can carry complete dependency coverage; guarded, contained and
-conditional cases remain partial. Native reborrows require complete incoming evidence,
-and partial dependencies stay partial through result merging. Expansion certificates
-protect the coverage status. Parent execution and source scheduling remain gated.
-
-## Immutable native interference queries in 0.149
-
-Native support can compare one retained child's complete dependencies with its owner's
-next local callback under exact invocation and fault-domain identity. Results distinguish
-disjoint storage, conservative overlap and inconclusive evidence. Queries preserve all
-state, and both parent-selection gates remain in place. Source concurrency is unchanged.
-
-## Native borrower coverage in 0.150
-
-An immutable aggregate query now reconciles retained child contexts with fault-domain
-membership, including descendants, readiness, completed results and pending await
-captures/delivery. Missing, incomplete or mismatched evidence stays inconclusive.
-Queries report coverage counts without granting execution; both parent gates remain.
-
-## One-transition native admission in 0.151
-
-The native host can explicitly admit one supported local callback or normal await
-result delivery beside retained children, after a fresh complete borrower census
-proves disjointness. Private permission is consumed immediately and never covers the
-next callback. Ordinary quota drivers and source execution retain their existing gates.
-
-## Bounded native admission in 0.152
-
-An explicit host batch now recomputes complete borrower coverage before every supported
-callback and pending delivery. It reports progress and the reason it stopped, preserving
-successful transitions before a later rejection. Callback quotas and administrative
-delivery counts remain distinct; source scheduling and ordinary drivers are unchanged.
-
-## Local guarded reference coverage in 0.153
-
-Fresh local reborrows can now carry complete conservative holder dependencies through
-native capture and result delivery. Whole borrowed holder ancestors remain protected;
-copied shared fields gain no invented holder guard. Indirect guards, returned permission
-families and conditional/contained proof gaps remain partial. Try
-`./bin/vnc exec playground/local_guarded_tasks.vn`.
-
-## Local borrowed carrier coverage in 0.154
-
-Fresh borrows of local records can carry complete holder and stored-reference
-coverage when every leaf has unconditional checked provenance. Nested records and
-local field projections are supported; aliases, indirect holders, returned permission
-families and reference-to-carrier leaves remain partial. Runtime capture still requires
-complete incoming formation evidence for every reachable reference. Try
-`./bin/vnc exec playground/local_carrier_tasks.vn`.
-
-## Local carrier aliases in 0.155
-
-Erased local carrier aliases can retain complete dependencies through moves and
-projected reborrows. Every broad borrowed ancestor and all its stored owners remain
-covered, even owners outside the projected runtime value. Conditional/received carriers,
-permission families, tagged contents and references to carriers remain partial. Try
-`./bin/vnc exec playground/aliased_carrier_tasks.vn`.
-
-## Incoming record-leaf evidence in 0.156
-
-Supported singleton record input fields retain already-bound reference evidence during
-private access-slot materialization. Exact allocation/path checks preserve complete
-caller evidence without promoting partial or invalid metadata. Public permissions,
-source execution and scheduling remain unchanged; indirect holder closure is still queued.
-
-## Shared incoming leaf dependencies in 0.157
-
-Singleton shared input leaves preserve complete incoming dependency coverage through
-reborrows, local aliases and projections. Broad pointee ancestry remains protected, while
-copying a shared field does not retain its record holder. Partial caller evidence and
-unsupported permission cases remain conservative. Try
-`./bin/vnc exec playground/incoming_leaf_tasks.vn`.
-
-## Native holder snapshots in 0.158
-
-Native runtime support now retains bounded dependency snapshots of incoming aggregate
-holders and their stored owners. Partial or invalid formation evidence cannot become
-complete. Host and generated tests establish this prerequisite; compiler admission of
-exclusive input and indirect holder guards remains gated.
-
-## Exclusive incoming leaf dependencies in 0.159
-
-Supported singleton exclusive input leaves retain their original pointee and the actual
-borrowed holder, including other stored owners. Direct and local aliased reborrows carry
-an explicit checked relationship; partial or invalid runtime evidence stays conservative.
-Shared field copies remain holder-free. Try
-`./bin/vnc exec playground/guarded_input_tasks.vn`.
-
-## Incoming carrier dependencies in 0.160
-
-Whole incoming ordinary carriers retain their full original aggregate and every stored owner
-through direct forwarding, projected reborrows and local aliases. Partial or changed caller
-metadata stays conservative, including evidence outside the selected projection. Run
-`./bin/vnc exec playground/incoming_carrier_tasks.vn`.
-
-## Checked cold-await preparation in 0.161
-
-Native host support can advance checked local work to a consuming cold await while retained
-children remain live. Handle and wait-capacity validation precedes source changes; an explicit
-handoff stops preparation before the child runs. Source execution remains sequential. Run
-`./bin/vnc exec playground/owner_await_progress.vn` for the maintained source example.
-
-## Direct-await handoffs in 0.162
-
-Direct await now retains its caller and hands off explicitly through the existing task
-completion machinery. Nested direct and cold awaits preserve borrowed storage and owning
-fault cleanup. Source execution remains sequential. Run
-`./bin/vnc exec playground/direct_await.vn` for the maintained source example.
-
-## Retained started-task joins in 0.163
-
-Native runtime groundwork now retains unjoined child work and separates consuming join
-handles from queued captures. Owned resources and borrowed results survive until delivery
-or owning fault cleanup. Source programs still use sequential direct and cold awaits;
-`spawn` and `yield` remain planned.
-
-## Awaited invocation children in 0.164
-
-Native runtime groundwork now composes independent children with awaited invocation owners.
-Borrowed results and fault cleanup preserve the original caller chain. Source execution
-remains sequential while started-task and scheduling integration continues.
-
-## Owned source scheduling in 0.166
-
-`spawn` queues invocation-owned children; `yield` and `await` explicitly hand off
-execution. Every normal path must await each child. The first profile uses owned,
-reference-free captures/results and joins before another source call or fault
-boundary. Child faults settle siblings before the owning contingency.
-See the structured tasks playground and the current async execution reference.
-
-Direct shared/exclusive spawned captures: `./bin/vnc exec playground/borrowed_spawn.vn playground/manifest.json`. Loans remain live until the consuming join.
-
-Direct borrowed spawned results: `./bin/vnc exec playground/borrowed_spawn_results.vn playground/manifest.json`. Selected result origins remain borrowed through final use.
+| `src/syntax.rs`, `src/manifest.rs` | v1 parser, formatter, and trusted type/primitive contracts |
+| `src/bdd.rs`, `src/check.rs`, `src/inference.rs` | Symbolic path analysis, typing, coverage, and ownership/borrow checking |
+| `src/generics.rs`, `src/generic_controls.rs`, `src/traits.rs` | Concrete layouts, generic definition checking, trait conformance, and static dispatch |
+| `src/ir.rs`, `src/verify.rs` | Checked representation, provenance, inspection, and structural verification |
+| `src/expand.rs`, `src/runtime.rs` | Region expansion, expansion certificates, and reference execution |
+| `src/native.rs`, `src/native/llvm.rs`, `src/native/runtime.rs` | Native Rust & LLVM 22.1.8 lowering, coroutine lowering, and host runtime |
+| `src/lsp.rs`, `editors/vscode/` | Language server, diagnostics, hover, and VS Code extension |
+| `library/` | Villanelle v1 collections library (`0.1.0`) |
+| `applications/settings/` | Persistent CLI and loopback HTTP settings application |
+| `playground/`, `examples/`, `tests/` | Interactive examples, conformance cases, and differential test suites |
+
+The project is licensed under [Apache 2.0](LICENSE).

@@ -1,0 +1,8 @@
+// [T1] / [G4b]: `copy struct` with a non-copy (`string`) field is refused.
+copy struct bad_copy {name : string}
+
+control ok()
+    ■ { done {} }
+    1  ⊤ ▷ ■ done {}
+
+//! reject T1

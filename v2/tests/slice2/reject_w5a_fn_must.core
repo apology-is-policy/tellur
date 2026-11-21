@@ -1,0 +1,10 @@
+// [W5a]: Functions cannot take a `must` (resource) value parameter.
+extern resource token
+
+function bad(t : token) : bool := true
+
+control ok()
+    ■ { done {} }
+    1  ⊤ ▷ ■ done {}
+
+//! reject W5a

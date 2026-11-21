@@ -1,0 +1,41 @@
+┄ Slice 2 Rails: `copy struct`, `struct`, `copy variant`, `variant`
+┄ (horizontal and vertical), unpacking, place assignment, `clone`, `trim`.
+
+copy struct point {x: u32, y: u32}
+
+struct labeled {title: string, value: u32}
+
+copy variant op: add │ sub │ mul
+
+variant shape
+├ circle {radius: u32}
+└ rect {w: u32, h: u32}
+
+function sum_point(p: &point): u32 := p.x + p.y
+
+control eval_op(kind: op, a: u32, b: u32) ■ result {value: u32}
+│ Δ kind
+│ ├ add → ■ result {a + b}
+│ ├ sub → ■ result {a - b}
+│ └ mul → ■ result {a * b}
+╵
+
+control describe_shape(s: shape, raw: string) ■ ok {area: u32, title: string}
+│ ~p: point := point {1, 2}
+│ p.x ← 10
+│ p.y ← sum_point(p)
+│ Δ ▾s
+│ ├ circle {r} →
+│ │ ┆ a: u32 := r * r + p.y
+│ └ rect {w, h} →
+│   ┆ a: u32 := w * h + p.y
+│ cleaned: string := trim(raw)
+│ item: labeled := labeled {clone(cleaned), a}
+│ labeled {name, total} := item
+│ ■ ok {total, name}
+╵
+
+//! run eval_op(op.add, 6, 7) => done result {13}
+//! run eval_op(op.mul, 4, 5) => done result {20}
+//! run describe_shape(shape.circle {4}, "  circle  ") => done ok {28, "circle"}
+//! run describe_shape(shape.rect {3, 5}, " box ") => done ok {27, "box"}

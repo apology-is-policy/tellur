@@ -1,0 +1,8 @@
+// [C1]: Exclusive loan (`push`) requires a mutable place.
+control bad()
+    ■ { done {} }
+    1  ⊤ ▷ v : [u32] := [1, 2]
+    2  ⊤ ▷ p : Δ push(&~v, 3) ▸ done {}
+    3  ⊤ ▷ ■ done {}
+
+//! reject C1

@@ -7,10 +7,11 @@
 
 use crate::int::Int;
 use crate::syntax::{
-    Alternative, Arm, Binary, Command, Control, Declaration, Expr, Function, LoopParameter,
-    Parameter, Program, Selector, Statement, Unary,
+    Alternative, Arm, Binary, BoundaryDecl, Command, Control, Declaration, Expr, Function,
+    LoopParameter, OutcomeDecl as CoreOutcomeDecl, Parameter, Place, PlaceStep, Program,
+    ResourceDecl, Selector, Statement, StructDecl, Unary, VariantConstructor, VariantDecl,
 };
-use crate::typed::{IntType, Type};
+use crate::typed::{BorrowMode, IntType, Type};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -107,7 +108,23 @@ struct RailLine {
 
 fn split_comment(text: &str) -> (&str, Option<String>) {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut in_string = false;
+    let mut escaped = false;
     for (i, &(byte_pos, ch)) in chars.iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            continue;
+        }
         if ch == '┄' {
             let after = text[byte_pos + '┄'.len_utf8()..].trim_end();
             return (&text[..byte_pos], Some(after.to_string()));
@@ -366,6 +383,8 @@ fn starts_loop(text: &str) -> bool {
         || text == "loop"
         || text.starts_with("loop ")
         || text.starts_with("loop(")
+        || text.starts_with('∀')
+        || text.starts_with("for ")
 }
 
 fn starts_test(text: &str) -> Option<&str> {
@@ -401,7 +420,7 @@ fn is_vertical_decision(text: &str) -> bool {
     if !has_delta {
         return false;
     }
-    // Check whether there is a `:` after the `Δ` / `delta` token (outside parens).
+    // Check whether there is a `:` after the `Δ` / `delta` token (outside parens/strings).
     let after_delta = if let Some(pos) = text.find('Δ') {
         &text[pos + 'Δ'.len_utf8()..]
     } else if let Some(pos) = text.find("delta ") {
@@ -410,10 +429,23 @@ fn is_vertical_decision(text: &str) -> bool {
         return false;
     };
     let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
     for ch in after_delta.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
         match ch {
-            '(' | '{' => depth += 1,
-            ')' | '}' => depth -= 1,
+            '"' => in_string = true,
+            '(' | '{' | '[' => depth += 1,
+            ')' | '}' | ']' => depth -= 1,
             ':' if depth == 0 => return false,
             _ => {}
         }
@@ -878,10 +910,23 @@ fn parse_inline_test_chain(line: u32, text: &str) -> Result<Vec<RawItem>, Error>
 /// Splits `mask : statements` at the first top-level `:`.
 fn split_short_label(text: &str) -> Option<(&str, &str)> {
     let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
     for (idx, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
         match ch {
-            '(' | '{' => depth += 1,
-            ')' | '}' => depth -= 1,
+            '"' => in_string = true,
+            '(' | '{' | '[' => depth += 1,
+            ')' | '}' | ']' => depth -= 1,
             ':' if depth == 0 => {
                 let after = &text[idx + 1..];
                 if !after.starts_with('=') {
@@ -898,10 +943,23 @@ fn split_short_label(text: &str) -> Option<(&str, &str)> {
 fn split_top_arrow(text: &str) -> Option<(&str, &str)> {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
     for (i, &(byte_pos, ch)) in chars.iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
         match ch {
-            '(' | '{' => depth += 1,
-            ')' | '}' => depth -= 1,
+            '"' => in_string = true,
+            '(' | '{' | '[' => depth += 1,
+            ')' | '}' | ']' => depth -= 1,
             '→' if depth == 0 => {
                 return Some((
                     text[..byte_pos].trim(),
@@ -925,12 +983,19 @@ fn split_top_arrow(text: &str) -> Option<(&str, &str)> {
 enum Tok {
     Name(String),
     Number(String),
+    StringLit(String),
     Delta,
     Arrow,
     Exit,
     Leave,
     Loop,
     Again,
+    ForAll,
+    In,
+    Move,
+    Ref,
+    MapArrow,
+    EmptyMap,
     Test,
     Oblige,
     When,
@@ -968,6 +1033,19 @@ enum Tok {
     Extern,
     Function,
     Outcome,
+    Struct,
+    Variant,
+    Resource,
+    Boundary,
+    Contingency,
+    Contingent,
+    Supervise,
+    Terminate,
+    Escalate,
+    Recover,
+    Capture,
+    Fault,
+    Assume,
     Forward,
     Auto,
     Pub,
@@ -993,6 +1071,10 @@ fn word_token(word: &str) -> Tok {
         "leave" => Tok::Leave,
         "loop" => Tok::Loop,
         "again" => Tok::Again,
+        "for" => Tok::ForAll,
+        "in" | "from" => Tok::In,
+        "move" => Tok::Move,
+        "ref" => Tok::Ref,
         "if" => Tok::Test,
         "where" => Tok::Oblige,
         "when" => Tok::When,
@@ -1002,6 +1084,19 @@ fn word_token(word: &str) -> Tok {
         "extern" => Tok::Extern,
         "function" => Tok::Function,
         "outcome" => Tok::Outcome,
+        "struct" => Tok::Struct,
+        "variant" => Tok::Variant,
+        "resource" => Tok::Resource,
+        "boundary" => Tok::Boundary,
+        "contingency" => Tok::Contingency,
+        "contingent" => Tok::Contingent,
+        "supervise" => Tok::Supervise,
+        "terminate" => Tok::Terminate,
+        "escalate" => Tok::Escalate,
+        "recover" => Tok::Recover,
+        "capture" => Tok::Capture,
+        "fault" => Tok::Fault,
+        "assume" => Tok::Assume,
         "forward" => Tok::Forward,
         "auto" => Tok::Auto,
         "pub" => Tok::Pub,
@@ -1038,6 +1133,46 @@ fn lex_fragment(source: &str, base_line: u32) -> Result<Vec<Token>, Error> {
             while index < characters.len() && characters[index] != '\n' {
                 index += 1;
             }
+            continue;
+        }
+        if ch == '"' {
+            index += 1;
+            let mut value = String::new();
+            let mut closed = false;
+            while index < characters.len() {
+                let c = characters[index];
+                index += 1;
+                if c == '"' {
+                    closed = true;
+                    break;
+                }
+                if c == '\\' && index < characters.len() {
+                    let esc = characters[index];
+                    index += 1;
+                    match esc {
+                        '"' => value.push('"'),
+                        '\\' => value.push('\\'),
+                        'n' => value.push('\n'),
+                        'r' => value.push('\r'),
+                        't' => value.push('\t'),
+                        other => value.push(other),
+                    }
+                } else {
+                    if c == '\n' {
+                        line += 1;
+                    }
+                    value.push(c);
+                }
+            }
+            if !closed {
+                return fail(line, "G8", "unterminated string literal");
+            }
+            tokens.push(Token {
+                tok: Tok::StringLit(value),
+                line,
+                first_on_line,
+            });
+            first_on_line = false;
             continue;
         }
         if matches!(ch, '│' | '║' | '┆' | '╞' | '╠' | '├' | '└' | '╵') {
@@ -1079,6 +1214,11 @@ fn lex_fragment(source: &str, base_line: u32) -> Result<Vec<Token>, Error> {
                 '□' => (Tok::Leave, 1),
                 '↻' => (Tok::Loop, 1),
                 '↑' => (Tok::Again, 1),
+                '∀' => (Tok::ForAll, 1),
+                '∈' => (Tok::In, 1),
+                '▾' => (Tok::Move, 1),
+                '⇀' => (Tok::MapArrow, 1),
+                '∅' => (Tok::EmptyMap, 1),
                 '?' => (Tok::Test, 1),
                 '⊢' => (Tok::Oblige, 1),
                 '⇐' => (Tok::When, 1),
@@ -1115,6 +1255,7 @@ fn lex_fragment(source: &str, base_line: u32) -> Result<Vec<Token>, Error> {
                 '|' if pair('|') => (Tok::Or, 2),
                 '|' => (Tok::Bar, 1),
                 '&' if pair('&') => (Tok::And, 2),
+                '&' => (Tok::Ref, 1),
                 '=' if pair('>') => (Tok::Arrow, 2),
                 '=' if pair('=') => (Tok::Equal, 2),
                 '=' => (Tok::Equal, 1),
@@ -1179,10 +1320,33 @@ enum SurfaceContract {
 }
 
 #[derive(Clone, Debug)]
+struct SurfaceVariantDecl {
+    public: bool,
+    is_copy: bool,
+    vertical: bool,
+    name: String,
+    constructors: Vec<VariantConstructor>,
+    line: u32,
+}
+
+#[derive(Clone, Debug)]
+struct SurfaceBoundaryDecl {
+    name: String,
+    parameters: Vec<Parameter>,
+    retains: Vec<String>,
+    body: Vec<SurfaceItem>,
+    message: Parameter,
+    contingency: Vec<SurfaceItem>,
+    line: u32,
+}
+
+#[derive(Clone, Debug)]
 struct SurfaceControl {
     name: String,
     public: bool,
     external: bool,
+    contingent: bool,
+    faults: bool,
     multiline_contract: bool,
     parameters: Vec<Parameter>,
     precondition: Option<Expr>,
@@ -1190,6 +1354,25 @@ struct SurfaceControl {
     uses: Vec<String>,
     body: Vec<SurfaceItem>,
     line: u32,
+}
+
+#[derive(Clone, Debug)]
+enum SurfaceCall {
+    Direct {
+        operation: String,
+        arguments: Vec<Expr>,
+    },
+    Method {
+        receiver: Expr,
+        method: String,
+        arguments: Vec<Expr>,
+    },
+}
+
+#[derive(Clone, Debug)]
+enum SurfaceOperand {
+    Call(SurfaceCall),
+    Expr(Expr),
 }
 
 #[derive(Clone, Debug)]
@@ -1268,9 +1451,27 @@ enum SurfaceStmt {
         ty: Option<Type>,
         value: Expr,
     },
+    Unpack {
+        line: u32,
+        struct_name: String,
+        names: Vec<String>,
+        value: Expr,
+    },
+    Capture {
+        line: u32,
+        mutable: bool,
+        name: String,
+        ty: Option<Type>,
+        call: SurfaceCall,
+    },
     Assign {
         line: u32,
         name: String,
+        value: Expr,
+    },
+    AssignPlace {
+        line: u32,
+        target: Place,
         value: Expr,
     },
     Oblige {
@@ -1288,7 +1489,7 @@ enum SurfaceStmt {
         vertical: bool,
         site: Option<String>,
         adapter: bool,
-        operand: Expr,
+        operand: SurfaceOperand,
         arms: Vec<SurfaceArm>,
     },
     Forward {
@@ -1301,12 +1502,29 @@ enum SurfaceStmt {
         operation: String,
         arguments: Vec<Expr>,
     },
+    MethodCall {
+        line: u32,
+        receiver: Expr,
+        method: String,
+        arguments: Vec<Expr>,
+    },
     Loop {
         line: u32,
         name: String,
         parameters: Vec<LoopParameter>,
         invariant: Option<Expr>,
         body: Vec<SurfaceItem>,
+    },
+    ForAll {
+        line: u32,
+        var: String,
+        collection: Expr,
+        body: Vec<SurfaceItem>,
+    },
+    Supervise {
+        line: u32,
+        boundary: String,
+        arguments: Vec<Expr>,
     },
     Again {
         line: u32,
@@ -1323,6 +1541,26 @@ enum SurfaceStmt {
         alternative: String,
         payload: Vec<Expr>,
     },
+    ExitOutcome {
+        line: u32,
+        name: String,
+    },
+    Fault {
+        line: u32,
+        message: Expr,
+        assumed: bool,
+    },
+    Terminate {
+        line: u32,
+        value: Option<Expr>,
+    },
+    Escalate {
+        line: u32,
+    },
+    Recover {
+        line: u32,
+        loop_name: String,
+    },
     Impossible {
         line: u32,
     },
@@ -1331,11 +1569,16 @@ enum SurfaceStmt {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    allow_brace_literal: bool,
 }
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Parser {
-        Parser { tokens, pos: 0 }
+        Parser {
+            tokens,
+            pos: 0,
+            allow_brace_literal: true,
+        }
     }
 
     fn peek(&self) -> &Tok {
@@ -1402,13 +1645,69 @@ impl Parser {
     }
 
     fn ty(&mut self, clause: &'static str) -> Result<Type, Error> {
-        let line = self.line();
+        if self.eat(&Tok::Ref) {
+            let mode = if self.eat(&Tok::Tilde) {
+                BorrowMode::Exclusive
+            } else {
+                BorrowMode::Shared
+            };
+            let inner = self.map_ty(clause)?;
+            return Ok(Type::Ref(mode, Box::new(inner)));
+        }
+        self.map_ty(clause)
+    }
+
+    fn map_ty(&mut self, clause: &'static str) -> Result<Type, Error> {
+        let base = self.atom_ty(clause)?;
+        if self.eat(&Tok::MapArrow) {
+            let value = self.atom_ty(clause)?;
+            return Ok(Type::Map(Box::new(base), Box::new(value)));
+        }
+        Ok(base)
+    }
+
+    fn atom_ty(&mut self, clause: &'static str) -> Result<Type, Error> {
+        if self.eat(&Tok::LeftBracket) {
+            let elem = self.map_ty(clause)?;
+            self.expect(Tok::RightBracket, clause, "`]`")?;
+            return Ok(Type::Vector(Box::new(elem)));
+        }
+        if self.eat(&Tok::Outcome) {
+            self.expect(Tok::Less, clause, "`<` after `outcome`")?;
+            let name = self.name(clause, "an outcome name")?;
+            self.expect(Tok::Greater, clause, "`>`")?;
+            return Ok(Type::OutcomeNamed(name));
+        }
+        if let Tok::Name(name) = self.peek().clone() {
+            if name == "vector" && self.peek_next() == &Tok::Less {
+                self.advance();
+                self.advance();
+                let elem = self.map_ty(clause)?;
+                self.expect(Tok::Greater, clause, "`>`")?;
+                return Ok(Type::Vector(Box::new(elem)));
+            }
+            if name == "map" && self.peek_next() == &Tok::Less {
+                self.advance();
+                self.advance();
+                let key = self.map_ty(clause)?;
+                self.expect(Tok::Comma, clause, "`,`")?;
+                let value = self.map_ty(clause)?;
+                self.expect(Tok::Greater, clause, "`>`")?;
+                return Ok(Type::Map(Box::new(key), Box::new(value)));
+            }
+        }
         let name = self.name(clause, "a type")?;
-        Type::from_name(&name).ok_or(Error {
-            line,
-            clause,
-            message: format!("`{name}` is not a type of slice 1"),
-        })
+        Ok(Type::from_name(&name).unwrap_or(Type::Named(name)))
+    }
+
+    fn qname(&mut self, clause: &'static str, what: &str) -> Result<String, Error> {
+        let mut out = self.name(clause, what)?;
+        while self.eat(&Tok::Dot) {
+            let part = self.name(clause, what)?;
+            out.push('.');
+            out.push_str(&part);
+        }
+        Ok(out)
     }
 
     fn parameters(&mut self, clause: &'static str) -> Result<Vec<Parameter>, Error> {
@@ -1434,10 +1733,7 @@ impl Parser {
         if get(1) == &Tok::RightBrace {
             return true;
         }
-        matches!(get(1), Tok::Name(_))
-            && get(2) == &Tok::Colon
-            && matches!(get(3), Tok::Name(_))
-            && matches!(get(4), Tok::Comma | Tok::RightBrace)
+        matches!(get(1), Tok::Name(_)) && get(2) == &Tok::Colon
     }
 
     fn fields(&mut self, clause: &'static str) -> Result<Vec<Parameter>, Error> {
@@ -1617,6 +1913,28 @@ impl Parser {
         Ok(left)
     }
 
+    fn brace_looks_like_arms(&self) -> bool {
+        if self.peek() != &Tok::LeftBrace {
+            return false;
+        }
+        let mut depth = 0i32;
+        for tok in &self.tokens[self.pos..] {
+            match tok.tok {
+                Tok::LeftBrace => depth += 1,
+                Tok::RightBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return false;
+                    }
+                }
+                Tok::Arrow | Tok::Bar | Tok::Ellipsis if depth == 1 => return true,
+                Tok::End => return false,
+                _ => {}
+            }
+        }
+        false
+    }
+
     fn unary(&mut self) -> Result<Expr, Error> {
         if self.eat(&Tok::Not) {
             return Ok(Expr::Unary(Unary::Not, Box::new(self.unary()?)));
@@ -1624,39 +1942,244 @@ impl Parser {
         if self.eat(&Tok::Minus) {
             return Ok(Expr::Unary(Unary::Negate, Box::new(self.unary()?)));
         }
-        match self.peek().clone() {
+        if self.eat(&Tok::Move) {
+            return Ok(Expr::Move(Box::new(self.unary()?)));
+        }
+        if self.eat(&Tok::Ref) {
+            let mode = if self.eat(&Tok::Tilde) {
+                BorrowMode::Exclusive
+            } else {
+                BorrowMode::Shared
+            };
+            return Ok(Expr::Borrow(mode, Box::new(self.unary()?)));
+        }
+        if self.eat(&Tok::Tilde) {
+            return Ok(Expr::Borrow(BorrowMode::Exclusive, Box::new(self.unary()?)));
+        }
+        let base = match self.peek().clone() {
             Tok::Number(digits) => {
                 self.advance();
-                Ok(Expr::Integer(Int::parse(&digits).expect("digits")))
+                Expr::Integer(Int::parse(&digits).expect("digits"))
             }
             Tok::True => {
                 self.advance();
-                Ok(Expr::Boolean(true))
+                Expr::Boolean(true)
             }
             Tok::False => {
                 self.advance();
-                Ok(Expr::Boolean(false))
+                Expr::Boolean(false)
+            }
+            Tok::StringLit(s) => {
+                self.advance();
+                Expr::String(s)
+            }
+            Tok::EmptyMap => {
+                self.advance();
+                Expr::EmptyMap
+            }
+            Tok::LeftBracket => {
+                self.advance();
+                let mut items = Vec::new();
+                while !self.eat(&Tok::RightBracket) {
+                    if !items.is_empty() {
+                        self.expect(Tok::Comma, "G8", "`,`")?;
+                    }
+                    items.push(self.expr()?);
+                }
+                Expr::Vector(items)
             }
             Tok::LeftParen => {
                 self.advance();
                 let inner = self.expr()?;
                 self.expect(Tok::RightParen, "G8", "`)`")?;
-                Ok(inner)
+                inner
             }
             Tok::Name(name) => {
                 self.advance();
                 let next = &self.tokens[self.pos];
-                if next.tok == Tok::LeftParen && !next.first_on_line {
-                    return Ok(Expr::Call(name, self.arguments()?));
+                if name == "map"
+                    && next.tok == Tok::LeftBrace
+                    && !next.first_on_line
+                    && self
+                        .tokens
+                        .get(self.pos + 1)
+                        .is_some_and(|t| t.tok == Tok::RightBrace)
+                {
+                    self.advance();
+                    self.advance();
+                    Expr::EmptyMap
+                } else if name == "len" && next.tok == Tok::LeftParen && !next.first_on_line {
+                    self.advance();
+                    let arg = self.expr()?;
+                    self.expect(Tok::RightParen, "G8", "`)`")?;
+                    Expr::Len(Box::new(arg))
+                } else if name == "clone" && next.tok == Tok::LeftParen && !next.first_on_line {
+                    self.advance();
+                    let arg = self.expr()?;
+                    self.expect(Tok::RightParen, "G8", "`)`")?;
+                    Expr::Clone(Box::new(arg))
+                } else if name == "old" && next.tok == Tok::LeftParen && !next.first_on_line {
+                    self.advance();
+                    let var = self.name("W7", "a parameter name")?;
+                    self.expect(Tok::RightParen, "G8", "`)`")?;
+                    Expr::Old(var)
+                } else if next.tok == Tok::LeftParen && !next.first_on_line {
+                    Expr::Call(name, self.arguments()?)
+                } else if self.allow_brace_literal
+                    && next.tok == Tok::LeftBrace
+                    && !next.first_on_line
+                    && !self.brace_looks_like_arms()
+                {
+                    Expr::Struct(name, self.payload()?)
+                } else {
+                    Expr::Name(name)
                 }
-                Ok(Expr::Name(name))
             }
-            other => fail(
-                self.line(),
-                "G8",
-                format!("expected an expression, found {}", describe_tok(&other)),
-            ),
+            other => {
+                return fail(
+                    self.line(),
+                    "G8",
+                    format!("expected an expression, found {}", describe_tok(&other)),
+                );
+            }
+        };
+        self.postfix(base)
+    }
+
+    fn postfix(&mut self, mut base: Expr) -> Result<Expr, Error> {
+        loop {
+            let tok = &self.tokens[self.pos];
+            if tok.first_on_line {
+                break;
+            }
+            if tok.tok == Tok::Dot {
+                self.advance();
+                let line = self.line();
+                let field = self.name("G8", "a field or method name")?;
+                let next = &self.tokens[self.pos];
+                if next.tok == Tok::LeftParen && !next.first_on_line {
+                    let args = self.arguments()?;
+                    if field == "len" && args.is_empty() {
+                        base = Expr::Len(Box::new(base));
+                    } else if field == "clone" && args.is_empty() {
+                        base = Expr::Clone(Box::new(base));
+                    } else if field == "trim" && args.is_empty() {
+                        base = Expr::Call("trim".to_string(), vec![base]);
+                    } else {
+                        return fail(
+                            line,
+                            "U12",
+                            format!("`{field}` is not a built-in method callable in an expression"),
+                        );
+                    }
+                } else if self.allow_brace_literal
+                    && next.tok == Tok::LeftBrace
+                    && !next.first_on_line
+                    && !self.brace_looks_like_arms()
+                    && let Expr::Name(vname) = base
+                {
+                    let args = self.payload()?;
+                    base = Expr::Variant(vname, field, args);
+                } else {
+                    base = Expr::Field(Box::new(base), field);
+                }
+            } else if tok.tok == Tok::LeftBracket {
+                self.advance();
+                let idx = self.expr()?;
+                self.expect(Tok::RightBracket, "G8", "`]`")?;
+                base = Expr::Index(Box::new(base), Box::new(idx));
+            } else {
+                break;
+            }
         }
+        Ok(base)
+    }
+
+    fn try_parse_method_call(&mut self) -> Result<Option<SurfaceCall>, Error> {
+        let saved = self.pos;
+        if !matches!(self.peek(), Tok::Name(_)) {
+            return Ok(None);
+        }
+        let Tok::Name(first) = self.advance() else {
+            unreachable!();
+        };
+        let mut base = Expr::Name(first);
+        while !self.tokens[self.pos].first_on_line {
+            if self.eat(&Tok::Dot) {
+                let Ok(member) = self.name("G8", "a field or method name") else {
+                    self.pos = saved;
+                    return Ok(None);
+                };
+                if self.peek() == &Tok::LeftParen && !self.tokens[self.pos].first_on_line {
+                    let args = self.arguments()?;
+                    if matches!(
+                        self.peek(),
+                        Tok::Colon
+                            | Tok::LeftBrace
+                            | Tok::Semi
+                            | Tok::RightBrace
+                            | Tok::End
+                            | Tok::Bar
+                            | Tok::Comma
+                    ) {
+                        return Ok(Some(SurfaceCall::Method {
+                            receiver: base,
+                            method: member,
+                            arguments: args,
+                        }));
+                    }
+                    self.pos = saved;
+                    return Ok(None);
+                }
+                base = Expr::Field(Box::new(base), member);
+            } else if self.eat(&Tok::LeftBracket) {
+                let Ok(idx) = self.expr() else {
+                    self.pos = saved;
+                    return Ok(None);
+                };
+                if !self.eat(&Tok::RightBracket) {
+                    self.pos = saved;
+                    return Ok(None);
+                }
+                base = Expr::Index(Box::new(base), Box::new(idx));
+            } else {
+                break;
+            }
+        }
+        self.pos = saved;
+        Ok(None)
+    }
+
+    fn parse_call(&mut self, clause: &'static str) -> Result<SurfaceCall, Error> {
+        if let Some(method_call) = self.try_parse_method_call()? {
+            return Ok(method_call);
+        }
+        let operation = self.name(clause, "an operation name")?;
+        let arguments = self.arguments()?;
+        Ok(SurfaceCall::Direct {
+            operation,
+            arguments,
+        })
+    }
+
+    fn parse_operand(&mut self, allow_braced_arms: bool) -> Result<SurfaceOperand, Error> {
+        if let Some(method_call) = self.try_parse_method_call()? {
+            return Ok(SurfaceOperand::Call(method_call));
+        }
+        let prev = self.allow_brace_literal;
+        if allow_braced_arms {
+            self.allow_brace_literal = false;
+        }
+        let expr = self.expr();
+        self.allow_brace_literal = prev;
+        let expr = expr?;
+        if let Expr::Call(operation, arguments) = expr {
+            return Ok(SurfaceOperand::Call(SurfaceCall::Direct {
+                operation,
+                arguments,
+            }));
+        }
+        Ok(SurfaceOperand::Expr(expr))
     }
 
     fn arguments(&mut self) -> Result<Vec<Expr>, Error> {
@@ -1756,6 +2279,13 @@ impl Parser {
             return Ok(ArmTarget::Block(self.plain_stmts_braced()?));
         }
         if self.eat(&Tok::Exit) {
+            if self.eat(&Tok::Move) {
+                let name = self.name("U14", "a captured outcome name")?;
+                return Ok(ArmTarget::Stmt(Box::new(SurfaceStmt::ExitOutcome {
+                    line,
+                    name,
+                })));
+            }
             if matches!(
                 self.peek(),
                 Tok::Bar | Tok::Comma | Tok::RightBrace | Tok::Semi | Tok::End
@@ -1782,10 +2312,27 @@ impl Parser {
             return Ok(ArmTarget::Name(alt));
         }
         match self.peek() {
-            Tok::Leave | Tok::Again | Tok::Forward => {
-                Ok(ArmTarget::Stmt(Box::new(self.simple_stmt()?)))
-            }
+            Tok::Leave
+            | Tok::Again
+            | Tok::Forward
+            | Tok::Fault
+            | Tok::Assume
+            | Tok::Supervise
+            | Tok::Terminate
+            | Tok::Escalate
+            | Tok::Recover => Ok(ArmTarget::Stmt(Box::new(self.simple_stmt()?))),
             Tok::Name(_) => {
+                if matches!(
+                    self.peek_next(),
+                    Tok::Assign
+                        | Tok::Bind
+                        | Tok::Colon
+                        | Tok::LeftParen
+                        | Tok::Dot
+                        | Tok::LeftBracket
+                ) {
+                    return Ok(ArmTarget::Stmt(Box::new(self.simple_stmt()?)));
+                }
                 let route = self.name("U2", "a route name")?;
                 if self.peek() == &Tok::LeftBrace {
                     return fail(
@@ -1837,7 +2384,7 @@ impl Parser {
         adapter: bool,
         allow_braced_arms: bool,
     ) -> Result<SurfaceStmt, Error> {
-        let operand = self.expr()?;
+        let operand = self.parse_operand(allow_braced_arms)?;
         let (vertical, arms) = if self.eat(&Tok::Colon) {
             (false, self.horizontal_arms(adapter, false)?)
         } else if allow_braced_arms && self.eat(&Tok::LeftBrace) {
@@ -1877,10 +2424,63 @@ impl Parser {
                 self.advance();
                 Ok(SurfaceStmt::Impossible { line })
             }
+            Tok::Fault => {
+                self.advance();
+                Ok(SurfaceStmt::Fault {
+                    line,
+                    message: self.expr()?,
+                    assumed: false,
+                })
+            }
+            Tok::Assume => {
+                self.advance();
+                self.expect(Tok::Impossible, "F4", "`⊥` after `assume`")?;
+                Ok(SurfaceStmt::Fault {
+                    line,
+                    message: self.expr()?,
+                    assumed: true,
+                })
+            }
+            Tok::Supervise => {
+                self.advance();
+                let boundary = self.name("G12", "a boundary name")?;
+                let arguments = self.arguments()?;
+                Ok(SurfaceStmt::Supervise {
+                    line,
+                    boundary,
+                    arguments,
+                })
+            }
+            Tok::Terminate => {
+                self.advance();
+                let value = if matches!(
+                    self.peek(),
+                    Tok::End | Tok::Semi | Tok::RightBrace | Tok::Bar
+                ) {
+                    None
+                } else {
+                    Some(self.expr()?)
+                };
+                Ok(SurfaceStmt::Terminate { line, value })
+            }
+            Tok::Escalate => {
+                self.advance();
+                Ok(SurfaceStmt::Escalate { line })
+            }
+            Tok::Recover => {
+                self.advance();
+                self.expect(Tok::Again, "G8", "`↑` after `recover`")?;
+                let loop_name = self.name("G8", "a loop name")?;
+                Ok(SurfaceStmt::Recover { line, loop_name })
+            }
             Tok::Exit => {
                 self.advance();
                 if self.eat(&Tok::Delta) {
                     return self.decision_after_prefix(line, None, true, true);
+                }
+                if self.eat(&Tok::Move) {
+                    let name = self.name("U14", "a captured outcome name")?;
+                    return Ok(SurfaceStmt::ExitOutcome { line, name });
                 }
                 let alternative = self.name("U15", "an alternative")?;
                 let payload = self.payload()?;
@@ -1960,6 +2560,16 @@ impl Parser {
                     None
                 };
                 self.expect(Tok::Bind, "G8", "`:=`")?;
+                if self.eat(&Tok::Capture) {
+                    let call = self.parse_call("G8")?;
+                    return Ok(SurfaceStmt::Capture {
+                        line,
+                        mutable: true,
+                        name,
+                        ty,
+                        call,
+                    });
+                }
                 let value = self.expr()?;
                 Ok(SurfaceStmt::Bind {
                     line,
@@ -1969,8 +2579,76 @@ impl Parser {
                     value,
                 })
             }
-            Tok::Name(first) => {
-                self.advance();
+            Tok::Name(_) => {
+                // First check method-call statement `p.m(ā)` ([U12]).
+                if let Some(SurfaceCall::Method {
+                    receiver,
+                    method,
+                    arguments,
+                }) = self.try_parse_method_call()?
+                {
+                    return Ok(SurfaceStmt::MethodCall {
+                        line,
+                        receiver,
+                        method,
+                        arguments,
+                    });
+                }
+                let Tok::Name(first) = self.advance() else {
+                    unreachable!();
+                };
+                // Struct unpacking `S {x̄} := e` ([E-Unpack]).
+                if self.peek() == &Tok::LeftBrace {
+                    let saved = self.pos;
+                    self.advance();
+                    let mut names = Vec::new();
+                    let mut ok = true;
+                    while !self.eat(&Tok::RightBrace) {
+                        if !names.is_empty() && !self.eat(&Tok::Comma) {
+                            ok = false;
+                            break;
+                        }
+                        if let Ok(field_var) = self.name("G8", "a variable name") {
+                            names.push(field_var);
+                        } else {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if ok && self.eat(&Tok::Bind) {
+                        let value = self.expr()?;
+                        return Ok(SurfaceStmt::Unpack {
+                            line,
+                            struct_name: first,
+                            names,
+                            value,
+                        });
+                    }
+                    self.pos = saved;
+                }
+                // Place assignment `p.f ← e` or `p[i] ← e` ([E-Assign]).
+                if matches!(self.peek(), Tok::Dot | Tok::LeftBracket) {
+                    let mut steps = Vec::new();
+                    while !self.tokens[self.pos].first_on_line {
+                        if self.eat(&Tok::Dot) {
+                            let field = self.name("G8", "a field name")?;
+                            steps.push(PlaceStep::Field(field));
+                        } else if self.eat(&Tok::LeftBracket) {
+                            let idx = self.expr()?;
+                            self.expect(Tok::RightBracket, "G8", "`]`")?;
+                            steps.push(PlaceStep::Index(idx));
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(Tok::Assign, "G8", "`←` after place")?;
+                    let value = self.expr()?;
+                    return Ok(SurfaceStmt::AssignPlace {
+                        line,
+                        target: Place { root: first, steps },
+                        value,
+                    });
+                }
                 if self.eat(&Tok::Assign) {
                     return Ok(SurfaceStmt::Assign {
                         line,
@@ -1979,6 +2657,16 @@ impl Parser {
                     });
                 }
                 if self.eat(&Tok::Bind) {
+                    if self.eat(&Tok::Capture) {
+                        let call = self.parse_call("G8")?;
+                        return Ok(SurfaceStmt::Capture {
+                            line,
+                            mutable: false,
+                            name: first,
+                            ty: None,
+                            call,
+                        });
+                    }
                     return Ok(SurfaceStmt::Bind {
                         line,
                         mutable: false,
@@ -1993,6 +2681,16 @@ impl Parser {
                     }
                     let ty = self.ty("G8")?;
                     self.expect(Tok::Bind, "G8", "`:=`")?;
+                    if self.eat(&Tok::Capture) {
+                        let call = self.parse_call("G8")?;
+                        return Ok(SurfaceStmt::Capture {
+                            line,
+                            mutable: false,
+                            name: first,
+                            ty: Some(ty),
+                            call,
+                        });
+                    }
                     let value = self.expr()?;
                     return Ok(SurfaceStmt::Bind {
                         line,
@@ -2025,6 +2723,15 @@ impl Parser {
                 format!("expected a statement, found {}", describe_tok(&other)),
             ),
         }
+    }
+
+    fn forall_header(&mut self) -> Result<(u32, String, Expr), Error> {
+        let line = self.line();
+        self.expect(Tok::ForAll, "Y4", "`∀`")?;
+        let var = self.name("U10", "an element name")?;
+        self.expect(Tok::In, "U10", "`∈`")?;
+        let collection = self.expr()?;
+        Ok((line, var, collection))
     }
 
     fn loop_header(&mut self) -> Result<(u32, String, Vec<LoopParameter>), Error> {
@@ -2134,6 +2841,20 @@ impl Parser {
                 body: raw_items,
             });
         }
+        if self.peek() == &Tok::ForAll {
+            let prev = self.allow_brace_literal;
+            self.allow_brace_literal = false;
+            let header = self.forall_header();
+            self.allow_brace_literal = prev;
+            let (line, var, collection) = header?;
+            let body = self.plain_body_items()?;
+            return Ok(SurfaceStmt::ForAll {
+                line,
+                var,
+                collection,
+                body,
+            });
+        }
         self.simple_stmt()
     }
 }
@@ -2221,7 +2942,7 @@ fn parse_raw_stmt(item: RawItem) -> Result<SurfaceStmt, Error> {
                 None
             };
             parser.expect(Tok::Delta, "Y7", "`Δ`")?;
-            let operand = parser.expr()?;
+            let operand = parser.parse_operand(false)?;
             if parser.peek() != &Tok::End {
                 return fail(line, "Y7", "unexpected tokens in decision header");
             }
@@ -2276,6 +2997,19 @@ fn parse_raw_stmt(item: RawItem) -> Result<SurfaceStmt, Error> {
         }
         RawItem::Loop { line, header, body } => {
             let mut parser = Parser::new(lex_fragment(&header, line)?);
+            if parser.peek() == &Tok::ForAll {
+                let (_, var, collection) = parser.forall_header()?;
+                if parser.peek() != &Tok::End {
+                    return fail(line, "Y4", "unexpected tokens after `∀` header");
+                }
+                let items = parse_raw_items(body)?;
+                return Ok(SurfaceStmt::ForAll {
+                    line,
+                    var,
+                    collection,
+                    body: items,
+                });
+            }
             let (_, name, parameters) = parser.loop_header()?;
             if parser.peek() != &Tok::End {
                 return fail(line, "Y4", "unexpected tokens after loop header");
@@ -2331,15 +3065,72 @@ fn parse_raw_items(raw: Vec<RawItem>) -> Result<Vec<SurfaceItem>, Error> {
 enum TopDecl {
     Blank,
     Comment(String),
+    Struct(StructDecl),
+    Variant(SurfaceVariantDecl),
+    Resource(ResourceDecl),
+    Boundary(SurfaceBoundaryDecl),
     Outcome(OutcomeDecl),
     Function(Function),
     Control(SurfaceControl),
 }
 
 fn starts_top_decl(trimmed: &str) -> bool {
-    ["pub ", "outcome ", "function ", "extern ", "control "]
-        .iter()
-        .any(|prefix| trimmed.starts_with(prefix))
+    [
+        "pub ",
+        "copy ",
+        "struct ",
+        "variant ",
+        "outcome ",
+        "function ",
+        "extern ",
+        "contingent ",
+        "control ",
+        "boundary ",
+    ]
+    .iter()
+    .any(|prefix| trimmed.starts_with(prefix))
+}
+
+fn read_rails_body_lines(
+    lines: &[(u32, &str)],
+    index: &mut usize,
+    owner_name: &str,
+    owner_line: u32,
+    clause_close: &'static str,
+) -> Result<Vec<SurfaceItem>, Error> {
+    let mut rail_lines = Vec::new();
+    let mut closed = false;
+    while *index < lines.len() {
+        let (body_line, body_raw) = lines[*index];
+        let body_stripped = strip_comment(body_raw);
+        if let Some(after) = body_stripped.strip_prefix('╵') {
+            if !after.trim().is_empty() {
+                return fail(body_line, "Y3", "`╵` must stand alone on its line");
+            }
+            *index += 1;
+            closed = true;
+            break;
+        }
+        let trimmed = body_stripped.trim();
+        if starts_top_decl(trimmed) || trimmed.starts_with("contingency") {
+            return fail(
+                body_line,
+                clause_close,
+                format!("the body of `{owner_name}` is not closed with `╵`"),
+            );
+        }
+        rail_lines.push(parse_rail_line(body_line, body_raw)?);
+        *index += 1;
+    }
+    if !closed {
+        return fail(
+            owner_line,
+            clause_close,
+            format!("the body of `{owner_name}` is not closed with `╵`"),
+        );
+    }
+    let raw_items = build_rails_body(&rail_lines)?;
+    parse_raw_items(raw_items)
 }
 
 fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
@@ -2456,6 +3247,339 @@ fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
         let mut parser = Parser::new(lex_fragment(&header, line_no)?);
         let public = parser.eat(&Tok::Pub);
 
+        // `[pub] [copy] struct name { Field,* }` ([G4b])
+        let is_copy = if let Tok::Name(word) = parser.peek()
+            && word == "copy"
+            && matches!(parser.peek_next(), Tok::Struct | Tok::Variant)
+        {
+            parser.advance();
+            true
+        } else {
+            false
+        };
+
+        if parser.eat(&Tok::Struct) {
+            let name = parser.name("G4b", "a struct name")?;
+            parser.expect(Tok::LeftBrace, "G4b", "`{`")?;
+            let mut fields = Vec::new();
+            while !parser.eat(&Tok::RightBrace) {
+                if !fields.is_empty() {
+                    parser.expect(Tok::Comma, "G4b", "`,`")?;
+                    if parser.eat(&Tok::RightBrace) {
+                        break;
+                    }
+                }
+                let fname = parser.name("G4b", "a field name")?;
+                parser.expect(Tok::Colon, "G4b", "`:`")?;
+                let fty = parser.ty("G4b")?;
+                fields.push(Parameter {
+                    name: fname,
+                    ty: fty,
+                });
+            }
+            if parser.peek() != &Tok::End {
+                return fail(line_no, "G4b", "unexpected tokens in `struct` declaration");
+            }
+            decls.push(TopDecl::Struct(StructDecl {
+                name,
+                public,
+                is_copy,
+                fields,
+                line: line_no,
+            }));
+            continue;
+        }
+
+        if parser.eat(&Tok::Variant) {
+            let name = parser.name("G4b", "a variant name")?;
+            let mut constructors = Vec::new();
+            let mut vertical = false;
+            if parser.eat(&Tok::Colon) {
+                loop {
+                    let cname = parser.name("G4b", "a constructor name")?;
+                    let fields = parser.fields("G4b")?;
+                    constructors.push(VariantConstructor {
+                        name: cname,
+                        fields,
+                    });
+                    if !parser.eat(&Tok::Bar) {
+                        break;
+                    }
+                }
+            } else if parser.eat(&Tok::LeftBrace) {
+                while !parser.eat(&Tok::RightBrace) {
+                    let cname = parser.name("G4b", "a constructor name")?;
+                    let fields = parser.fields("G4b")?;
+                    constructors.push(VariantConstructor {
+                        name: cname,
+                        fields,
+                    });
+                    if !parser.eat(&Tok::Bar) && !parser.eat(&Tok::Comma) {
+                        parser.expect(Tok::RightBrace, "G9", "`}`")?;
+                        break;
+                    }
+                }
+            } else {
+                vertical = true;
+                let mut saw_last = false;
+                while index < lines.len() {
+                    let (alt_line, alt_raw) = lines[index];
+                    let alt_stripped = strip_comment(alt_raw);
+                    if alt_stripped.trim().is_empty() {
+                        index += 1;
+                        continue;
+                    }
+                    let (is_last, rest) = if let Some(after) = alt_stripped.strip_prefix('├') {
+                        if !after.starts_with(' ') {
+                            return fail(alt_line, "Y2", "`├` must be followed by a space");
+                        }
+                        (false, after[1..].trim())
+                    } else if let Some(after) = alt_stripped.strip_prefix('└') {
+                        if !after.starts_with(' ') {
+                            return fail(alt_line, "Y2", "`└` must be followed by a space");
+                        }
+                        (true, after[1..].trim())
+                    } else {
+                        break;
+                    };
+                    if saw_last {
+                        return fail(alt_line, "Y7", "no constructor may follow `└`");
+                    }
+                    let mut alt_parser = Parser::new(lex_fragment(rest, alt_line)?);
+                    let cname = alt_parser.name("G4b", "a constructor name")?;
+                    let fields = alt_parser.fields("G4b")?;
+                    if alt_parser.peek() != &Tok::End {
+                        return fail(alt_line, "G4b", "unexpected tokens in variant constructor");
+                    }
+                    constructors.push(VariantConstructor {
+                        name: cname,
+                        fields,
+                    });
+                    index += 1;
+                    if is_last {
+                        saw_last = true;
+                        break;
+                    }
+                }
+                if constructors.is_empty() || !saw_last {
+                    return fail(
+                        line_no,
+                        "Y7",
+                        "vertical variant constructors must use `├` and end with `└`",
+                    );
+                }
+            }
+            if parser.peek() != &Tok::End {
+                return fail(line_no, "G4b", "unexpected tokens in `variant` declaration");
+            }
+            if constructors.is_empty() {
+                return fail(line_no, "G4b", "a `variant` declaration needs constructors");
+            }
+            decls.push(TopDecl::Variant(SurfaceVariantDecl {
+                public,
+                is_copy,
+                vertical,
+                name,
+                constructors,
+                line: line_no,
+            }));
+            continue;
+        }
+
+        if parser.eat(&Tok::Boundary) {
+            if public {
+                return fail(line_no, "G12", "a named `boundary` is not `pub`");
+            }
+            let name = parser.name("G12", "a boundary name")?;
+            let parameters = parser.parameters("G12")?;
+            let mut retains = Vec::new();
+            if let Tok::Name(word) = parser.peek()
+                && word == "retains"
+            {
+                parser.advance();
+                loop {
+                    retains.push(parser.name("G12", "a retained parameter name")?);
+                    if !parser.eat(&Tok::Comma) {
+                        break;
+                    }
+                }
+            }
+            if parser.peek() == &Tok::LeftBrace {
+                // Plain form ([G9]): `boundary name(...) { ... } contingency (m: string) { ... }`.
+                let body = parser.plain_body_items()?;
+                if parser.peek() == &Tok::End {
+                    // `contingency` may begin on the next line in plain form.
+                    while index < lines.len() && strip_comment(lines[index].1).trim().is_empty() {
+                        index += 1;
+                    }
+                    if index >= lines.len() {
+                        return fail(
+                            line_no,
+                            "Y12",
+                            format!("boundary `{name}` must be followed at once by `contingency`"),
+                        );
+                    }
+                    let (cont_line, cont_raw) = lines[index];
+                    let cont_stripped = strip_comment(cont_raw);
+                    if cont_stripped.starts_with(' ') || cont_stripped.starts_with('\t') {
+                        return fail(
+                            cont_line,
+                            "Y12",
+                            "`contingency` must start in the first column",
+                        );
+                    }
+                    let mut cont_src = cont_stripped.to_string();
+                    let mut balance: i32 = cont_src
+                        .chars()
+                        .map(|c| match c {
+                            '{' => 1,
+                            '}' => -1,
+                            _ => 0,
+                        })
+                        .sum();
+                    index += 1;
+                    while index < lines.len() && balance > 0 {
+                        let (_, nr) = lines[index];
+                        let ns = strip_comment(nr);
+                        for c in ns.chars() {
+                            if c == '{' {
+                                balance += 1;
+                            } else if c == '}' {
+                                balance -= 1;
+                            }
+                        }
+                        cont_src.push('\n');
+                        cont_src.push_str(ns);
+                        index += 1;
+                    }
+                    let mut cparser = Parser::new(lex_fragment(&cont_src, cont_line)?);
+                    cparser.expect(Tok::Contingency, "Y12", "`contingency`")?;
+                    let cparams = cparser.parameters("G12")?;
+                    if cparams.len() != 1 {
+                        return fail(
+                            cont_line,
+                            "G12",
+                            "`contingency` takes exactly one message parameter `(m: string)`",
+                        );
+                    }
+                    let contingency = cparser.plain_body_items()?;
+                    if cparser.peek() != &Tok::End {
+                        return fail(
+                            cparser.line(),
+                            "G12",
+                            "unexpected tokens after `contingency` body",
+                        );
+                    }
+                    decls.push(TopDecl::Boundary(SurfaceBoundaryDecl {
+                        name,
+                        parameters,
+                        retains,
+                        body,
+                        message: cparams.into_iter().next().unwrap(),
+                        contingency,
+                        line: line_no,
+                    }));
+                    continue;
+                }
+                parser.expect(Tok::Contingency, "Y12", "`contingency`")?;
+                let cparams = parser.parameters("G12")?;
+                if cparams.len() != 1 {
+                    return fail(
+                        line_no,
+                        "G12",
+                        "`contingency` takes exactly one message parameter `(m: string)`",
+                    );
+                }
+                let contingency = parser.plain_body_items()?;
+                if parser.peek() != &Tok::End {
+                    return fail(
+                        parser.line(),
+                        "G12",
+                        "unexpected tokens after `contingency` body",
+                    );
+                }
+                decls.push(TopDecl::Boundary(SurfaceBoundaryDecl {
+                    name,
+                    parameters,
+                    retains,
+                    body,
+                    message: cparams.into_iter().next().unwrap(),
+                    contingency,
+                    line: line_no,
+                }));
+                continue;
+            }
+            if parser.peek() != &Tok::End {
+                return fail(
+                    parser.line(),
+                    "G12",
+                    "unexpected tokens in `boundary` header",
+                );
+            }
+            let body = read_rails_body_lines(&lines, &mut index, &name, line_no, "Y12")?;
+            // [Y12]: `contingency` follows at once, starting in column 1.
+            if index >= lines.len() {
+                return fail(
+                    line_no,
+                    "Y12",
+                    format!("boundary `{name}` must be followed at once by `contingency`"),
+                );
+            }
+            let (cont_line, cont_raw) = lines[index];
+            let cont_stripped = strip_comment(cont_raw);
+            if cont_stripped.trim().is_empty() {
+                return fail(
+                    cont_line,
+                    "Y12",
+                    format!(
+                        "`contingency` of boundary `{name}` must follow at once without blank lines"
+                    ),
+                );
+            }
+            if cont_stripped.starts_with(' ') || cont_stripped.starts_with('\t') {
+                return fail(
+                    cont_line,
+                    "Y12",
+                    "`contingency` must start in the first column",
+                );
+            }
+            let mut cparser = Parser::new(lex_fragment(cont_stripped, cont_line)?);
+            cparser.expect(Tok::Contingency, "Y12", "`contingency`")?;
+            let cparams = cparser.parameters("G12")?;
+            if cparams.len() != 1 {
+                return fail(
+                    cont_line,
+                    "G12",
+                    "`contingency` takes exactly one message parameter `(m: string)`",
+                );
+            }
+            if cparser.peek() != &Tok::End {
+                return fail(
+                    cparser.line(),
+                    "G12",
+                    "unexpected tokens in `contingency` header",
+                );
+            }
+            index += 1;
+            let contingency = read_rails_body_lines(
+                &lines,
+                &mut index,
+                &format!("{name} contingency"),
+                cont_line,
+                "Y12",
+            )?;
+            decls.push(TopDecl::Boundary(SurfaceBoundaryDecl {
+                name,
+                parameters,
+                retains,
+                body,
+                message: cparams.into_iter().next().unwrap(),
+                contingency,
+                line: line_no,
+            }));
+            continue;
+        }
+
         if parser.eat(&Tok::Outcome) {
             let name = parser.name("G2", "an outcome name")?;
             let mut alternatives = Vec::new();
@@ -2564,6 +3688,36 @@ fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
         }
 
         let external = parser.eat(&Tok::Extern);
+        if external && parser.eat(&Tok::Resource) {
+            let name = parser.name("G8", "a resource name")?;
+            let on_fault_release = if let Tok::Name(word) = parser.peek()
+                && word == "on"
+            {
+                parser.advance();
+                parser.expect(Tok::Fault, "G8", "`fault` after `on`")?;
+                let rel = parser.name("G8", "`release` after `on fault`")?;
+                if rel != "release" {
+                    return fail(line_no, "G8", "expected `release` after `on fault`");
+                }
+                true
+            } else {
+                false
+            };
+            if parser.peek() != &Tok::End {
+                return fail(
+                    parser.line(),
+                    "G8",
+                    "unexpected tokens in `extern resource` declaration",
+                );
+            }
+            decls.push(TopDecl::Resource(ResourceDecl {
+                name,
+                on_fault_release,
+                line: line_no,
+            }));
+            continue;
+        }
+        let contingent = parser.eat(&Tok::Contingent);
         parser.expect(Tok::Control, "G8", "`control`")?;
         let name = parser.name("G8", "a control name")?;
         let parameters = parser.parameters("G8")?;
@@ -2588,17 +3742,11 @@ fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
             }
             SurfaceContract::Entries(entries)
         };
-        if parser.peek() == &Tok::Faults {
-            return fail(
-                parser.line(),
-                "G8",
-                "`faults` belongs to slice 2 and is not read yet",
-            );
-        }
+        let faults = parser.eat(&Tok::Faults);
         let mut uses = Vec::new();
         if parser.eat(&Tok::Uses) {
             loop {
-                uses.push(parser.name("G8", "an effect")?);
+                uses.push(parser.qname("G8", "an effect")?);
                 if !parser.eat(&Tok::Comma) {
                     break;
                 }
@@ -2613,6 +3761,8 @@ fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
                 name,
                 public,
                 external: true,
+                contingent,
+                faults,
                 multiline_contract,
                 parameters,
                 precondition,
@@ -2634,6 +3784,8 @@ fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
                 name,
                 public,
                 external: false,
+                contingent,
+                faults,
                 multiline_contract,
                 parameters,
                 precondition,
@@ -2657,42 +3809,13 @@ fn parse_surface_file(source: &str) -> Result<Vec<TopDecl>, Error> {
         }
 
         // Rails form ([Y3]): read lines until `╵` in column 1.
-        let mut rail_lines = Vec::new();
-        let mut closed = false;
-        while index < lines.len() {
-            let (body_line, body_raw) = lines[index];
-            let body_stripped = strip_comment(body_raw);
-            if let Some(after) = body_stripped.strip_prefix('╵') {
-                if !after.trim().is_empty() {
-                    return fail(body_line, "Y3", "`╵` must stand alone on its line");
-                }
-                index += 1;
-                closed = true;
-                break;
-            }
-            if starts_top_decl(body_stripped.trim()) {
-                return fail(
-                    body_line,
-                    "Y3",
-                    format!("the body of `{name}` is not closed with `╵`"),
-                );
-            }
-            rail_lines.push(parse_rail_line(body_line, body_raw)?);
-            index += 1;
-        }
-        if !closed {
-            return fail(
-                line_no,
-                "Y3",
-                format!("the body of `{name}` is not closed with `╵`"),
-            );
-        }
-        let raw_items = build_rails_body(&rail_lines)?;
-        let body = parse_raw_items(raw_items)?;
+        let body = read_rails_body_lines(&lines, &mut index, &name, line_no, "Y3")?;
         decls.push(TopDecl::Control(SurfaceControl {
             name,
             public,
             external: false,
+            contingent,
+            faults,
             multiline_contract,
             parameters,
             precondition,
@@ -2741,8 +3864,11 @@ struct BodyScope {
     /// Alternative names that had a route, terminator or block and therefore
     /// have no default unqualified path name ([U2]).
     suppressed_defaults: HashSet<String>,
-    /// Variable types known in this body, for `■ auto` ([G3]) and `Δ bool` ([U6]).
+    /// Variable types known in this body, for `■ auto` ([G3]), `Δ bool` ([U6]),
+    /// variant decisions, method dispatch (`[U12]`) and move marks (`[U11]`).
     vars: HashMap<String, Type>,
+    /// Captured outcome contracts keyed by variable name (`[U6]`, `[U14]`).
+    captured_contracts: HashMap<String, ResolvedContract>,
 }
 
 #[derive(Clone, Debug)]
@@ -2754,6 +3880,10 @@ struct AutoExit {
 }
 
 struct Elaborator {
+    structs: HashMap<String, StructDecl>,
+    variants: HashMap<String, Vec<VariantConstructor>>,
+    resources: HashSet<String>,
+    boundaries: HashMap<String, SurfaceBoundaryDecl>,
     outcomes: HashMap<String, Vec<Alternative>>,
     functions: HashMap<String, Type>,
     controls: HashMap<String, SurfaceControl>,
@@ -2855,14 +3985,298 @@ impl Elaborator {
         Ok(self.contracts.get(name).expect("inferred contract").clone())
     }
 
+    fn holds_obligation(&self, ty: &Type) -> bool {
+        fn inner(elab: &Elaborator, ty: &Type, seen: &mut HashSet<String>) -> bool {
+            match ty {
+                Type::Resource(_, _) | Type::Outcome(_, _) | Type::OutcomeNamed(_) => true,
+                Type::Ref(_, _) | Type::Bool | Type::Int(_) | Type::String => false,
+                Type::Vector(elem) => inner(elab, elem, seen),
+                Type::Map(k, v) => inner(elab, k, seen) || inner(elab, v, seen),
+                Type::Named(name) => {
+                    if elab.resources.contains(name) || elab.outcomes.contains_key(name) {
+                        return true;
+                    }
+                    if !seen.insert(name.clone()) {
+                        return false;
+                    }
+                    if let Some(st) = elab.structs.get(name) {
+                        return st.fields.iter().any(|f| inner(elab, &f.ty, seen));
+                    }
+                    if let Some(ctors) = elab.variants.get(name) {
+                        return ctors
+                            .iter()
+                            .any(|c| c.fields.iter().any(|f| inner(elab, &f.ty, seen)));
+                    }
+                    false
+                }
+                Type::Struct(_, _) | Type::Variant(_, _) => false,
+            }
+        }
+        inner(self, ty, &mut HashSet::new())
+    }
+
+    fn is_place_expr(expr: &Expr) -> bool {
+        matches!(expr, Expr::Name(_) | Expr::Field(_, _) | Expr::Index(_, _))
+    }
+
+    fn place_last_name(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Move(inner) | Expr::Borrow(_, inner) => Self::place_last_name(inner),
+            Expr::Name(n) => Some(n.clone()),
+            Expr::Field(_, f) => Some(f.clone()),
+            Expr::Index(base, _) => Self::place_last_name(base),
+            _ => None,
+        }
+    }
+
+    #[allow(clippy::only_used_in_recursion)]
+    fn check_arg(
+        &self,
+        expr: &Expr,
+        expected: &Type,
+        scopes: &[BodyScope],
+        line: u32,
+    ) -> Result<Expr, Error> {
+        match expected {
+            Type::Ref(BorrowMode::Exclusive, _) => match expr {
+                Expr::Borrow(BorrowMode::Exclusive, inner) => {
+                    Ok(Expr::Borrow(BorrowMode::Exclusive, inner.clone()))
+                }
+                _ => fail(
+                    line,
+                    "U11",
+                    "an `&~` borrow argument must be marked with `~`",
+                ),
+            },
+            Type::Ref(BorrowMode::Shared, _) => match expr {
+                Expr::Move(_) => fail(line, "U11", "`▾` cannot be used for a `&` borrow argument"),
+                Expr::Borrow(BorrowMode::Exclusive, _) => {
+                    fail(line, "U11", "`~` cannot be used for a `&` borrow argument")
+                }
+                other => Ok(other.clone()),
+            },
+            _ => {
+                let ob = self.holds_obligation(expected);
+                match expr {
+                    Expr::Borrow(BorrowMode::Exclusive, _) => {
+                        fail(line, "U11", "`~` is only written for an `&~` borrow slot")
+                    }
+                    Expr::Move(inner) => {
+                        if !ob {
+                            return fail(
+                                line,
+                                "U11",
+                                "`▾` is only written when moving a value whose type holds an obligation",
+                            );
+                        }
+                        Ok(Expr::Move(inner.clone()))
+                    }
+                    Expr::Struct(sname, args) => {
+                        if let Some(st) = self.structs.get(sname) {
+                            let mut checked = Vec::with_capacity(args.len());
+                            for (arg, field) in args.iter().zip(&st.fields) {
+                                checked.push(self.check_arg(arg, &field.ty, scopes, line)?);
+                            }
+                            for arg in args.iter().skip(st.fields.len()) {
+                                checked.push(arg.clone());
+                            }
+                            return Ok(Expr::Struct(sname.clone(), checked));
+                        }
+                        Ok(expr.clone())
+                    }
+                    Expr::Variant(vname, cname, args) => {
+                        if let Some(ctors) = self.variants.get(vname)
+                            && let Some(ctor) = ctors.iter().find(|c| c.name == *cname)
+                        {
+                            let mut checked = Vec::with_capacity(args.len());
+                            for (arg, field) in args.iter().zip(&ctor.fields) {
+                                checked.push(self.check_arg(arg, &field.ty, scopes, line)?);
+                            }
+                            for arg in args.iter().skip(ctor.fields.len()) {
+                                checked.push(arg.clone());
+                            }
+                            return Ok(Expr::Variant(vname.clone(), cname.clone(), checked));
+                        }
+                        Ok(expr.clone())
+                    }
+                    Expr::Vector(items) => {
+                        if let Type::Vector(elem_ty) = expected {
+                            let mut checked = Vec::with_capacity(items.len());
+                            for item in items {
+                                checked.push(self.check_arg(item, elem_ty, scopes, line)?);
+                            }
+                            return Ok(Expr::Vector(checked));
+                        }
+                        Ok(expr.clone())
+                    }
+                    other => {
+                        if ob && Self::is_place_expr(other) {
+                            return fail(
+                                line,
+                                "U11",
+                                "moving a value whose type holds an obligation requires the move mark `▾`",
+                            );
+                        }
+                        Ok(other.clone())
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_untyped_value(
+        &self,
+        expr: &Expr,
+        scopes: &[BodyScope],
+        line: u32,
+    ) -> Result<Expr, Error> {
+        match expr {
+            Expr::Move(inner) => {
+                if let Some(ty) = self.expr_type(inner, scopes)
+                    && !self.holds_obligation(&ty)
+                {
+                    return fail(
+                        line,
+                        "U11",
+                        "`▾` is only written when moving a value whose type holds an obligation",
+                    );
+                }
+                Ok(expr.clone())
+            }
+            Expr::Borrow(BorrowMode::Exclusive, _) => fail(
+                line,
+                "U11",
+                "`~` requires an `&~` borrow type annotation on a bind",
+            ),
+            other => {
+                if let Some(ty) = self.expr_type(other, scopes) {
+                    return self.check_arg(other, &ty, scopes, line);
+                }
+                Ok(other.clone())
+            }
+        }
+    }
+
+    fn check_args_against(
+        &self,
+        arguments: &[Expr],
+        param_types: &[Type],
+        scopes: &[BodyScope],
+        line: u32,
+    ) -> Result<Vec<Expr>, Error> {
+        let mut out = Vec::with_capacity(arguments.len());
+        for (idx, arg) in arguments.iter().enumerate() {
+            if let Some(expected) = param_types.get(idx) {
+                out.push(self.check_arg(arg, expected, scopes, line)?);
+            } else {
+                out.push(arg.clone());
+            }
+        }
+        Ok(out)
+    }
+
+    fn lookup_captured_contract(
+        &self,
+        name: &str,
+        scopes: &[BodyScope],
+    ) -> Option<ResolvedContract> {
+        if let Some(contract) = scopes
+            .iter()
+            .rev()
+            .find_map(|s| s.captured_contracts.get(name).cloned())
+        {
+            return Some(contract);
+        }
+        let ty = scopes.iter().rev().find_map(|s| s.vars.get(name))?;
+        match ty {
+            Type::OutcomeNamed(o) => self.outcomes.get(o).map(|alts| ResolvedContract {
+                alternatives: alts.clone(),
+                groups: vec![o.clone()],
+                own_alternatives: Vec::new(),
+            }),
+            Type::Named(o) => self.outcomes.get(o).map(|alts| ResolvedContract {
+                alternatives: alts.clone(),
+                groups: vec![o.clone()],
+                own_alternatives: Vec::new(),
+            }),
+            _ => None,
+        }
+    }
+
+    fn place_type(&self, place: &Place, scopes: &[BodyScope]) -> Option<Type> {
+        let mut ty = scopes
+            .iter()
+            .rev()
+            .find_map(|s| s.vars.get(&place.root).cloned())?
+            .deref_type()
+            .clone();
+        for step in &place.steps {
+            match step {
+                PlaceStep::Field(fname) => {
+                    let Type::Named(sname) = ty else {
+                        return None;
+                    };
+                    let st = self.structs.get(&sname)?;
+                    ty = st.fields.iter().find(|f| f.name == *fname)?.ty.clone();
+                }
+                PlaceStep::Index(_) => {
+                    let Type::Vector(elem) = ty else {
+                        return None;
+                    };
+                    ty = *elem;
+                }
+            }
+        }
+        Some(ty)
+    }
+
     fn expr_type(&self, expr: &Expr, scopes: &[BodyScope]) -> Option<Type> {
         match expr {
-            Expr::Integer(_) => None,
+            Expr::Integer(_) | Expr::EmptyMap => None,
             Expr::Boolean(_) => Some(Type::Bool),
-            Expr::Name(name) => scopes
+            Expr::String(_) => Some(Type::String),
+            Expr::Name(name) | Expr::Old(name) => scopes
                 .iter()
                 .rev()
-                .find_map(|scope| scope.vars.get(name).copied()),
+                .find_map(|scope| scope.vars.get(name).cloned()),
+            Expr::Move(inner) | Expr::Clone(inner) => self
+                .expr_type(inner, scopes)
+                .map(|t| t.deref_type().clone()),
+            Expr::Borrow(mode, inner) => self
+                .expr_type(inner, scopes)
+                .map(|t| Type::Ref(*mode, Box::new(t.deref_type().clone()))),
+            Expr::Len(_) => Some(Type::Int(IntType::Usize)),
+            Expr::Struct(name, _) => Some(Type::Named(name.clone())),
+            Expr::Variant(name, _, _) => Some(Type::Named(name.clone())),
+            Expr::Vector(items) => items
+                .iter()
+                .find_map(|i| self.expr_type(i, scopes))
+                .map(|t| Type::Vector(Box::new(t))),
+            Expr::Field(base, field) => {
+                if let Expr::Name(vname) = &**base
+                    && scopes.iter().all(|s| !s.vars.contains_key(vname))
+                    && self.variants.contains_key(vname)
+                {
+                    return Some(Type::Named(vname.clone()));
+                }
+                let base_ty = self.expr_type(base, scopes)?.deref_type().clone();
+                let Type::Named(sname) = base_ty else {
+                    return None;
+                };
+                self.structs
+                    .get(&sname)?
+                    .fields
+                    .iter()
+                    .find(|f| f.name == *field)
+                    .map(|f| f.ty.clone())
+            }
+            Expr::Index(base, _) => {
+                let base_ty = self.expr_type(base, scopes)?.deref_type().clone();
+                match base_ty {
+                    Type::Vector(elem) => Some(*elem),
+                    _ => None,
+                }
+            }
             Expr::Unary(Unary::Not, _) => Some(Type::Bool),
             Expr::Unary(Unary::Negate, inner) => self.expr_type(inner, scopes),
             Expr::Binary(op, left, right) => {
@@ -2873,7 +4287,504 @@ impl Elaborator {
                         .or_else(|| self.expr_type(right, scopes))
                 }
             }
-            Expr::Call(func, _) => self.functions.get(func).copied(),
+            Expr::Call(func, _) => {
+                if !self.functions.contains_key(func) && func == "trim" {
+                    return Some(Type::String);
+                }
+                self.functions.get(func).cloned()
+            }
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn resolve_builtin_call(
+        &self,
+        call: &SurfaceCall,
+        scopes: &[BodyScope],
+        line: u32,
+    ) -> Result<Option<(String, Vec<Expr>, ResolvedContract)>, Error> {
+        let single_alt = |name: &str, fields: Vec<Parameter>| ResolvedContract {
+            alternatives: vec![Alternative {
+                name: name.to_string(),
+                fields,
+                condition: None,
+            }],
+            groups: Vec::new(),
+            own_alternatives: vec![name.to_string()],
+        };
+        let two_alts = |a: (&str, Vec<Parameter>), b: (&str, Vec<Parameter>)| ResolvedContract {
+            alternatives: vec![
+                Alternative {
+                    name: a.0.to_string(),
+                    fields: a.1,
+                    condition: None,
+                },
+                Alternative {
+                    name: b.0.to_string(),
+                    fields: b.1,
+                    condition: None,
+                },
+            ],
+            groups: Vec::new(),
+            own_alternatives: vec![a.0.to_string(), b.0.to_string()],
+        };
+
+        match call {
+            SurfaceCall::Method {
+                receiver,
+                method,
+                arguments,
+            } => {
+                if self.controls.contains_key(method) {
+                    return fail(
+                        line,
+                        "U12",
+                        format!(
+                            "`{method}` is a control of this module and cannot be called in method form; call `{method}(…)` instead"
+                        ),
+                    );
+                }
+                let rec_ty = self
+                    .expr_type(receiver, scopes)
+                    .map(|t| t.deref_type().clone());
+                match (method.as_str(), rec_ty) {
+                    ("push", Some(Type::Vector(elem))) => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`push` takes 1 argument");
+                        }
+                        let val = self.check_arg(&arguments[0], &elem, scopes, line)?;
+                        Ok(Some((
+                            "push".to_string(),
+                            vec![
+                                Expr::Borrow(BorrowMode::Exclusive, Box::new(receiver.clone())),
+                                val,
+                            ],
+                            single_alt("done", Vec::new()),
+                        )))
+                    }
+                    ("pop", Some(Type::Vector(elem))) => {
+                        if !arguments.is_empty() {
+                            return fail(line, "C1", "`pop` takes 0 arguments");
+                        }
+                        Ok(Some((
+                            "pop".to_string(),
+                            vec![Expr::Borrow(
+                                BorrowMode::Exclusive,
+                                Box::new(receiver.clone()),
+                            )],
+                            two_alts(
+                                (
+                                    "item",
+                                    vec![Parameter {
+                                        name: "value".to_string(),
+                                        ty: *elem,
+                                    }],
+                                ),
+                                ("empty", Vec::new()),
+                            ),
+                        )))
+                    }
+                    ("take", Some(Type::Vector(elem))) => {
+                        if !arguments.is_empty() {
+                            return fail(line, "C1", "`take` takes 0 arguments");
+                        }
+                        let vec_ty = Type::Vector(elem.clone());
+                        Ok(Some((
+                            "take".to_string(),
+                            vec![receiver.clone()],
+                            two_alts(
+                                (
+                                    "item",
+                                    vec![
+                                        Parameter {
+                                            name: "head".to_string(),
+                                            ty: *elem,
+                                        },
+                                        Parameter {
+                                            name: "tail".to_string(),
+                                            ty: vec_ty,
+                                        },
+                                    ],
+                                ),
+                                ("empty", Vec::new()),
+                            ),
+                        )))
+                    }
+                    ("get", Some(Type::Map(k, v))) => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`get` takes 1 argument");
+                        }
+                        let k_ref = Type::Ref(BorrowMode::Shared, k);
+                        let key = self.check_arg(&arguments[0], &k_ref, scopes, line)?;
+                        Ok(Some((
+                            "get".to_string(),
+                            vec![
+                                Expr::Borrow(BorrowMode::Shared, Box::new(receiver.clone())),
+                                key,
+                            ],
+                            two_alts(
+                                (
+                                    "found",
+                                    vec![Parameter {
+                                        name: "value".to_string(),
+                                        ty: *v,
+                                    }],
+                                ),
+                                ("missing", Vec::new()),
+                            ),
+                        )))
+                    }
+                    ("insert", Some(Type::Map(k, v))) => {
+                        if arguments.len() != 2 {
+                            return fail(line, "C1", "`insert` takes 2 arguments");
+                        }
+                        let key = self.check_arg(&arguments[0], &k, scopes, line)?;
+                        let val = self.check_arg(&arguments[1], &v, scopes, line)?;
+                        Ok(Some((
+                            "insert".to_string(),
+                            vec![
+                                Expr::Borrow(BorrowMode::Exclusive, Box::new(receiver.clone())),
+                                key,
+                                val,
+                            ],
+                            two_alts(
+                                ("inserted", Vec::new()),
+                                (
+                                    "replaced",
+                                    vec![Parameter {
+                                        name: "previous".to_string(),
+                                        ty: *v,
+                                    }],
+                                ),
+                            ),
+                        )))
+                    }
+                    ("remove", Some(Type::Map(k, v))) => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`remove` takes 1 argument");
+                        }
+                        let k_ref = Type::Ref(BorrowMode::Shared, k);
+                        let key = self.check_arg(&arguments[0], &k_ref, scopes, line)?;
+                        Ok(Some((
+                            "remove".to_string(),
+                            vec![
+                                Expr::Borrow(BorrowMode::Exclusive, Box::new(receiver.clone())),
+                                key,
+                            ],
+                            two_alts(
+                                (
+                                    "removed",
+                                    vec![Parameter {
+                                        name: "previous".to_string(),
+                                        ty: *v,
+                                    }],
+                                ),
+                                ("missing", Vec::new()),
+                            ),
+                        )))
+                    }
+                    ("entry_at", Some(Type::Map(k, v))) => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`entry_at` takes 1 argument");
+                        }
+                        let pos = self.check_arg(
+                            &arguments[0],
+                            &Type::Int(IntType::Usize),
+                            scopes,
+                            line,
+                        )?;
+                        Ok(Some((
+                            "entry_at".to_string(),
+                            vec![
+                                Expr::Borrow(BorrowMode::Shared, Box::new(receiver.clone())),
+                                pos,
+                            ],
+                            two_alts(
+                                (
+                                    "item",
+                                    vec![
+                                        Parameter {
+                                            name: "key".to_string(),
+                                            ty: *k,
+                                        },
+                                        Parameter {
+                                            name: "value".to_string(),
+                                            ty: *v,
+                                        },
+                                        Parameter {
+                                            name: "next".to_string(),
+                                            ty: Type::Int(IntType::Usize),
+                                        },
+                                    ],
+                                ),
+                                ("finished", Vec::new()),
+                            ),
+                        )))
+                    }
+                    (_, other) => fail(
+                        line,
+                        "U12",
+                        format!(
+                            "`{method}` is not a built-in method of {}",
+                            other
+                                .map(|t| format!("`{t}`"))
+                                .unwrap_or_else(|| "this receiver".to_string())
+                        ),
+                    ),
+                }
+            }
+            SurfaceCall::Direct {
+                operation,
+                arguments,
+            } => {
+                if self.controls.contains_key(operation) {
+                    return Ok(None);
+                }
+                match operation.as_str() {
+                    "emit" => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`emit` takes 1 argument");
+                        }
+                        let s_ref = Type::Ref(BorrowMode::Shared, Box::new(Type::String));
+                        let text = self.check_arg(&arguments[0], &s_ref, scopes, line)?;
+                        Ok(Some((
+                            "emit".to_string(),
+                            vec![text],
+                            single_alt("done", Vec::new()),
+                        )))
+                    }
+                    "push" => {
+                        if arguments.len() != 2 {
+                            return fail(line, "C1", "`push` takes 2 arguments");
+                        }
+                        let Some(Type::Vector(elem)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`push` requires a vector place");
+                        };
+                        let rec = self.check_arg(
+                            &arguments[0],
+                            &Type::Ref(BorrowMode::Exclusive, Box::new(Type::Vector(elem.clone()))),
+                            scopes,
+                            line,
+                        )?;
+                        let val = self.check_arg(&arguments[1], &elem, scopes, line)?;
+                        Ok(Some((
+                            "push".to_string(),
+                            vec![rec, val],
+                            single_alt("done", Vec::new()),
+                        )))
+                    }
+                    "pop" => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`pop` takes 1 argument");
+                        }
+                        let Some(Type::Vector(elem)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`pop` requires a vector place");
+                        };
+                        let rec = self.check_arg(
+                            &arguments[0],
+                            &Type::Ref(BorrowMode::Exclusive, Box::new(Type::Vector(elem.clone()))),
+                            scopes,
+                            line,
+                        )?;
+                        Ok(Some((
+                            "pop".to_string(),
+                            vec![rec],
+                            two_alts(
+                                (
+                                    "item",
+                                    vec![Parameter {
+                                        name: "value".to_string(),
+                                        ty: *elem,
+                                    }],
+                                ),
+                                ("empty", Vec::new()),
+                            ),
+                        )))
+                    }
+                    "take" => {
+                        if arguments.len() != 1 {
+                            return fail(line, "C1", "`take` takes 1 argument");
+                        }
+                        let Some(Type::Vector(elem)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`take` requires a vector");
+                        };
+                        let vec_ty = Type::Vector(elem.clone());
+                        let rec = self.check_arg(&arguments[0], &vec_ty, scopes, line)?;
+                        Ok(Some((
+                            "take".to_string(),
+                            vec![rec],
+                            two_alts(
+                                (
+                                    "item",
+                                    vec![
+                                        Parameter {
+                                            name: "head".to_string(),
+                                            ty: *elem,
+                                        },
+                                        Parameter {
+                                            name: "tail".to_string(),
+                                            ty: vec_ty,
+                                        },
+                                    ],
+                                ),
+                                ("empty", Vec::new()),
+                            ),
+                        )))
+                    }
+                    "get" => {
+                        if arguments.len() != 2 {
+                            return fail(line, "C1", "`get` takes 2 arguments");
+                        }
+                        let Some(Type::Map(k, v)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`get` requires a map");
+                        };
+                        let map_ref = Type::Ref(
+                            BorrowMode::Shared,
+                            Box::new(Type::Map(k.clone(), v.clone())),
+                        );
+                        let k_ref = Type::Ref(BorrowMode::Shared, k);
+                        let m = self.check_arg(&arguments[0], &map_ref, scopes, line)?;
+                        let key = self.check_arg(&arguments[1], &k_ref, scopes, line)?;
+                        Ok(Some((
+                            "get".to_string(),
+                            vec![m, key],
+                            two_alts(
+                                (
+                                    "found",
+                                    vec![Parameter {
+                                        name: "value".to_string(),
+                                        ty: *v,
+                                    }],
+                                ),
+                                ("missing", Vec::new()),
+                            ),
+                        )))
+                    }
+                    "insert" => {
+                        if arguments.len() != 3 {
+                            return fail(line, "C1", "`insert` takes 3 arguments");
+                        }
+                        let Some(Type::Map(k, v)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`insert` requires a map place");
+                        };
+                        let map_ref = Type::Ref(
+                            BorrowMode::Exclusive,
+                            Box::new(Type::Map(k.clone(), v.clone())),
+                        );
+                        let m = self.check_arg(&arguments[0], &map_ref, scopes, line)?;
+                        let key = self.check_arg(&arguments[1], &k, scopes, line)?;
+                        let val = self.check_arg(&arguments[2], &v, scopes, line)?;
+                        Ok(Some((
+                            "insert".to_string(),
+                            vec![m, key, val],
+                            two_alts(
+                                ("inserted", Vec::new()),
+                                (
+                                    "replaced",
+                                    vec![Parameter {
+                                        name: "previous".to_string(),
+                                        ty: *v,
+                                    }],
+                                ),
+                            ),
+                        )))
+                    }
+                    "remove" => {
+                        if arguments.len() != 2 {
+                            return fail(line, "C1", "`remove` takes 2 arguments");
+                        }
+                        let Some(Type::Map(k, v)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`remove` requires a map place");
+                        };
+                        let map_ref = Type::Ref(
+                            BorrowMode::Exclusive,
+                            Box::new(Type::Map(k.clone(), v.clone())),
+                        );
+                        let k_ref = Type::Ref(BorrowMode::Shared, k);
+                        let m = self.check_arg(&arguments[0], &map_ref, scopes, line)?;
+                        let key = self.check_arg(&arguments[1], &k_ref, scopes, line)?;
+                        Ok(Some((
+                            "remove".to_string(),
+                            vec![m, key],
+                            two_alts(
+                                (
+                                    "removed",
+                                    vec![Parameter {
+                                        name: "previous".to_string(),
+                                        ty: *v,
+                                    }],
+                                ),
+                                ("missing", Vec::new()),
+                            ),
+                        )))
+                    }
+                    "entry_at" => {
+                        if arguments.len() != 2 {
+                            return fail(line, "C1", "`entry_at` takes 2 arguments");
+                        }
+                        let Some(Type::Map(k, v)) = self
+                            .expr_type(&arguments[0], scopes)
+                            .map(|t| t.deref_type().clone())
+                        else {
+                            return fail(line, "C1", "`entry_at` requires a map");
+                        };
+                        let map_ref = Type::Ref(
+                            BorrowMode::Shared,
+                            Box::new(Type::Map(k.clone(), v.clone())),
+                        );
+                        let m = self.check_arg(&arguments[0], &map_ref, scopes, line)?;
+                        let pos = self.check_arg(
+                            &arguments[1],
+                            &Type::Int(IntType::Usize),
+                            scopes,
+                            line,
+                        )?;
+                        Ok(Some((
+                            "entry_at".to_string(),
+                            vec![m, pos],
+                            two_alts(
+                                (
+                                    "item",
+                                    vec![
+                                        Parameter {
+                                            name: "key".to_string(),
+                                            ty: *k,
+                                        },
+                                        Parameter {
+                                            name: "value".to_string(),
+                                            ty: *v,
+                                        },
+                                        Parameter {
+                                            name: "next".to_string(),
+                                            ty: Type::Int(IntType::Usize),
+                                        },
+                                    ],
+                                ),
+                                ("finished", Vec::new()),
+                            ),
+                        )))
+                    }
+                    _ => Ok(None),
+                }
+            }
         }
     }
 
@@ -2908,6 +4819,8 @@ impl Elaborator {
                 name: control.name.clone(),
                 public: control.public,
                 external: true,
+                contingent: control.contingent,
+                faults: control.faults,
                 parameters: control.parameters.clone(),
                 precondition: control.precondition.clone(),
                 contract,
@@ -2922,9 +4835,10 @@ impl Elaborator {
             paths: Vec::new(),
             suppressed_defaults: HashSet::new(),
             vars: HashMap::new(),
+            captured_contracts: HashMap::new(),
         };
         for param in &control.parameters {
-            root_scope.vars.insert(param.name.clone(), param.ty);
+            root_scope.vars.insert(param.name.clone(), param.ty.clone());
         }
 
         let mut ctx = ControlElab {
@@ -2978,12 +4892,96 @@ impl Elaborator {
             name: control.name.clone(),
             public: control.public,
             external: false,
+            contingent: control.contingent,
+            faults: control.faults,
             parameters: control.parameters.clone(),
             precondition: control.precondition.clone(),
             contract,
             uses: control.uses.clone(),
             body: statements,
             line: control.line,
+        })
+    }
+
+    fn elaborate_boundary(
+        &mut self,
+        boundary: &SurfaceBoundaryDecl,
+    ) -> Result<BoundaryDecl, Error> {
+        let mut body_scope = BodyScope {
+            sites: Vec::new(),
+            paths: Vec::new(),
+            suppressed_defaults: HashSet::new(),
+            vars: HashMap::new(),
+            captured_contracts: HashMap::new(),
+        };
+        for param in &boundary.parameters {
+            body_scope.vars.insert(param.name.clone(), param.ty.clone());
+        }
+        let mut body_ctx = ControlElab {
+            control_name: boundary.name.clone(),
+            is_auto: false,
+            used_core_sites: HashSet::new(),
+            explicit_sites: HashSet::new(),
+            all_declared_sites: HashSet::new(),
+            all_declared_paths: HashSet::new(),
+            next_hidden: 0,
+            scopes: vec![body_scope],
+            auto_exits: Vec::new(),
+            auto_groups: Vec::new(),
+            declared_routes: Vec::new(),
+            used_unqualified_paths: HashSet::new(),
+        };
+        collect_declared_paths(
+            &boundary.body,
+            &mut body_ctx.all_declared_sites,
+            &mut body_ctx.all_declared_paths,
+        );
+        let body = self.elaborate_items(&boundary.body, &mut body_ctx)?;
+
+        let mut cont_scope = BodyScope {
+            sites: Vec::new(),
+            paths: Vec::new(),
+            suppressed_defaults: HashSet::new(),
+            vars: HashMap::new(),
+            captured_contracts: HashMap::new(),
+        };
+        for retained in &boundary.retains {
+            if let Some(param) = boundary.parameters.iter().find(|p| &p.name == retained) {
+                cont_scope.vars.insert(param.name.clone(), param.ty.clone());
+            }
+        }
+        cont_scope
+            .vars
+            .insert(boundary.message.name.clone(), boundary.message.ty.clone());
+        let mut cont_ctx = ControlElab {
+            control_name: format!("{}.contingency", boundary.name),
+            is_auto: false,
+            used_core_sites: HashSet::new(),
+            explicit_sites: HashSet::new(),
+            all_declared_sites: HashSet::new(),
+            all_declared_paths: HashSet::new(),
+            next_hidden: 0,
+            scopes: vec![cont_scope],
+            auto_exits: Vec::new(),
+            auto_groups: Vec::new(),
+            declared_routes: Vec::new(),
+            used_unqualified_paths: HashSet::new(),
+        };
+        collect_declared_paths(
+            &boundary.contingency,
+            &mut cont_ctx.all_declared_sites,
+            &mut cont_ctx.all_declared_paths,
+        );
+        let contingency = self.elaborate_items(&boundary.contingency, &mut cont_ctx)?;
+
+        Ok(BoundaryDecl {
+            name: boundary.name.clone(),
+            parameters: boundary.parameters.clone(),
+            retains: boundary.retains.clone(),
+            body,
+            message: boundary.message.name.clone(),
+            contingency,
+            line: boundary.line,
         })
     }
 
@@ -3029,7 +5027,7 @@ impl Elaborator {
             for field_idx in 0..arity {
                 let mut decided: Option<Type> = None;
                 for item in group {
-                    match (decided, item.field_types[field_idx]) {
+                    match (&decided, &item.field_types[field_idx]) {
                         (Some(a), Some(b)) if a != b => {
                             return fail(
                                 item.line,
@@ -3039,7 +5037,7 @@ impl Elaborator {
                                 ),
                             );
                         }
-                        (None, Some(b)) => decided = Some(b),
+                        (None, Some(b)) => decided = Some(b.clone()),
                         _ => {}
                     }
                 }
@@ -3342,8 +5340,14 @@ impl Elaborator {
                 ty,
                 value,
             } => {
+                let checked_value = if let Some(declared_ty) = ty {
+                    self.check_arg(value, declared_ty, &ctx.scopes, *line)?
+                } else {
+                    self.check_untyped_value(value, &ctx.scopes, *line)?
+                };
                 let inferred = ty
-                    .or_else(|| self.expr_type(value, &ctx.scopes))
+                    .clone()
+                    .or_else(|| self.expr_type(&checked_value, &ctx.scopes))
                     .unwrap_or(Type::Int(IntType::U32));
                 ctx.current_scope_mut().vars.insert(name.clone(), inferred);
                 out.push(Statement {
@@ -3351,18 +5355,126 @@ impl Elaborator {
                     command: Command::Bind {
                         mutable: *mutable,
                         name: name.clone(),
-                        ty: *ty,
-                        value: value.clone(),
+                        ty: ty.clone(),
+                        value: checked_value,
+                    },
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Unpack {
+                line,
+                struct_name,
+                names,
+                value,
+            } => {
+                let checked_value =
+                    self.check_arg(value, &Type::Named(struct_name.clone()), &ctx.scopes, *line)?;
+                if let Some(st) = self.structs.get(struct_name).cloned() {
+                    for (var_name, field) in names.iter().zip(&st.fields) {
+                        ctx.current_scope_mut()
+                            .vars
+                            .insert(var_name.clone(), field.ty.clone());
+                    }
+                }
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Unpack {
+                        struct_name: struct_name.clone(),
+                        names: names.clone(),
+                        value: checked_value,
+                    },
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Capture {
+                line,
+                mutable,
+                name,
+                ty,
+                call,
+            } => {
+                let (op_name, core_args, contract) = match call {
+                    SurfaceCall::Direct {
+                        operation,
+                        arguments,
+                    } if self.controls.contains_key(operation) => {
+                        let callee = self.ensure_contract(operation, *line)?;
+                        let param_types: Vec<Type> = self.controls[operation]
+                            .parameters
+                            .iter()
+                            .map(|p| p.ty.clone())
+                            .collect();
+                        let checked =
+                            self.check_args_against(arguments, &param_types, &ctx.scopes, *line)?;
+                        (operation.clone(), checked, callee)
+                    }
+                    other => {
+                        let Some(res) = self.resolve_builtin_call(other, &ctx.scopes, *line)?
+                        else {
+                            let SurfaceCall::Direct { operation, .. } = other else {
+                                unreachable!();
+                            };
+                            return fail(*line, "C1", format!("`{operation}` is not a control"));
+                        };
+                        res
+                    }
+                };
+                let outcome_ty = ty
+                    .clone()
+                    .unwrap_or_else(|| Type::OutcomeNamed(op_name.clone()));
+                ctx.current_scope_mut()
+                    .vars
+                    .insert(name.clone(), outcome_ty);
+                ctx.current_scope_mut()
+                    .captured_contracts
+                    .insert(name.clone(), contract);
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Capture {
+                        mutable: *mutable,
+                        name: name.clone(),
+                        ty: ty.clone(),
+                        operation: op_name,
+                        arguments: core_args,
                     },
                     line: *line,
                 });
             }
             SurfaceStmt::Assign { line, name, value } => {
+                let checked_value = if let Some(var_ty) = ctx
+                    .scopes
+                    .iter()
+                    .rev()
+                    .find_map(|s| s.vars.get(name).cloned())
+                {
+                    self.check_arg(value, var_ty.deref_type(), &ctx.scopes, *line)?
+                } else {
+                    self.check_untyped_value(value, &ctx.scopes, *line)?
+                };
                 out.push(Statement {
                     selector: selection.clone(),
                     command: Command::Assign {
                         name: name.clone(),
-                        value: value.clone(),
+                        value: checked_value,
+                    },
+                    line: *line,
+                });
+            }
+            SurfaceStmt::AssignPlace {
+                line,
+                target,
+                value,
+            } => {
+                let checked_value = if let Some(place_ty) = self.place_type(target, &ctx.scopes) {
+                    self.check_arg(value, &place_ty, &ctx.scopes, *line)?
+                } else {
+                    self.check_untyped_value(value, &ctx.scopes, *line)?
+                };
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::AssignPlace {
+                        target: target.clone(),
+                        value: checked_value,
                     },
                     line: *line,
                 });
@@ -3378,6 +5490,64 @@ impl Elaborator {
                 out.push(Statement {
                     selector: selection.clone(),
                     command: Command::Impossible,
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Fault {
+                line,
+                message,
+                assumed,
+            } => {
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Fault {
+                        message: message.clone(),
+                        assumed: *assumed,
+                    },
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Terminate { line, value } => {
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Terminate(value.clone()),
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Escalate { line } => {
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Escalate,
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Recover { line, loop_name } => {
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Recover {
+                        loop_name: loop_name.clone(),
+                    },
+                    line: *line,
+                });
+            }
+            SurfaceStmt::Supervise {
+                line,
+                boundary,
+                arguments,
+            } => {
+                let checked_args = if let Some(bdef) = self.boundaries.get(boundary) {
+                    let param_types: Vec<Type> =
+                        bdef.parameters.iter().map(|p| p.ty.clone()).collect();
+                    self.check_args_against(arguments, &param_types, &ctx.scopes, *line)?
+                } else {
+                    arguments.clone()
+                };
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Supervise {
+                        boundary: boundary.clone(),
+                        arguments: checked_args,
+                    },
                     line: *line,
                 });
             }
@@ -3401,7 +5571,10 @@ impl Elaborator {
                 outputs,
             } => {
                 let alt_name = alternative.clone().unwrap_or_default();
-                let payload = outputs.iter().map(|item| item.value.clone()).collect();
+                let mut payload = Vec::with_capacity(outputs.len());
+                for item in outputs {
+                    payload.push(self.check_untyped_value(&item.value, &ctx.scopes, *line)?);
+                }
                 out.push(Statement {
                     selector: selection.clone(),
                     command: Command::Leave {
@@ -3416,15 +5589,77 @@ impl Elaborator {
                 alternative,
                 payload,
             } => {
-                self.record_exit(ctx, *line, alternative, payload, None, None)?;
+                let checked_payload = if !ctx.is_auto
+                    && let Some(caller) = self.contracts.get(&ctx.control_name)
+                    && let Some(entry) = caller.alternatives.iter().find(|a| a.name == *alternative)
+                {
+                    let field_types: Vec<Type> =
+                        entry.fields.iter().map(|f| f.ty.clone()).collect();
+                    self.check_args_against(payload, &field_types, &ctx.scopes, *line)?
+                } else {
+                    let mut out_p = Vec::with_capacity(payload.len());
+                    for item in payload {
+                        out_p.push(self.check_untyped_value(item, &ctx.scopes, *line)?);
+                    }
+                    out_p
+                };
+                self.record_exit(ctx, *line, alternative, &checked_payload, None, None)?;
                 out.push(Statement {
                     selector: selection.clone(),
                     command: Command::Exit {
                         alternative: alternative.clone(),
-                        payload: payload.clone(),
+                        payload: checked_payload,
                     },
                     line: *line,
                 });
+            }
+            SurfaceStmt::ExitOutcome { line, name } => {
+                // [U14]: `■ ▾x` forwards a captured outcome under each alternative's own name.
+                let Some(callee) = self.lookup_captured_contract(name, &ctx.scopes) else {
+                    return fail(
+                        *line,
+                        "U14",
+                        format!("`{name}` is not a captured outcome here"),
+                    );
+                };
+                self.check_forward_compatibility(&format!("■ ▾{name}"), &callee, ctx, *line)?;
+                let core_site = ctx.allocate_site(None, name, *line)?;
+                let mut core_arms = Vec::new();
+                let mut exits = Vec::new();
+                for alt in &callee.alternatives {
+                    let vars: Vec<String> = (0..alt.fields.len())
+                        .map(|_| ctx.fresh_hidden_var())
+                        .collect();
+                    let payload: Vec<Expr> = vars.iter().cloned().map(Expr::Name).collect();
+                    let field_names = Some(alt.fields.iter().map(|f| f.name.clone()).collect());
+                    let field_types = Some(alt.fields.iter().map(|f| Some(f.ty.clone())).collect());
+                    self.record_exit(ctx, *line, &alt.name, &payload, field_names, field_types)?;
+                    core_arms.push(Arm {
+                        alternative: alt.name.clone(),
+                        names: vars,
+                    });
+                    exits.push((alt.name.clone(), payload));
+                }
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Decide {
+                        site: core_site.clone(),
+                        operation: "outcome".to_string(),
+                        arguments: vec![Expr::Name(name.clone())],
+                        arms: core_arms,
+                    },
+                    line: *line,
+                });
+                for (alt_name, payload) in exits {
+                    out.push(Statement {
+                        selector: Selector::Atom(core_site.clone(), alt_name.clone()),
+                        command: Command::Exit {
+                            alternative: alt_name,
+                            payload,
+                        },
+                        line: *line,
+                    });
+                }
             }
             SurfaceStmt::Test {
                 line,
@@ -3451,6 +5686,49 @@ impl Elaborator {
                     self.elaborate_stmt(child, &inner_sel, ctx, out)?;
                 }
             }
+            SurfaceStmt::MethodCall {
+                line,
+                receiver,
+                method,
+                arguments,
+            } => {
+                let call = SurfaceCall::Method {
+                    receiver: receiver.clone(),
+                    method: method.clone(),
+                    arguments: arguments.clone(),
+                };
+                let (op_name, core_args, contract) = self
+                    .resolve_builtin_call(&call, &ctx.scopes, *line)?
+                    .expect("method call resolves or errors");
+                if contract.alternatives.len() != 1 {
+                    return fail(
+                        *line,
+                        "U6",
+                        format!(
+                            "`{method}` has {} alternatives and must be decided with `Δ`",
+                            contract.alternatives.len()
+                        ),
+                    );
+                }
+                let single = &contract.alternatives[0];
+                let core_site = ctx.allocate_site(None, &op_name, *line)?;
+                let hidden_names: Vec<String> = (0..single.fields.len())
+                    .map(|_| ctx.fresh_hidden_var())
+                    .collect();
+                out.push(Statement {
+                    selector: selection.clone(),
+                    command: Command::Decide {
+                        site: core_site,
+                        operation: op_name,
+                        arguments: core_args,
+                        arms: vec![Arm {
+                            alternative: single.name.clone(),
+                            names: hidden_names,
+                        }],
+                    },
+                    line: *line,
+                });
+            }
             SurfaceStmt::Call {
                 line,
                 operation,
@@ -3458,7 +5736,28 @@ impl Elaborator {
             } => {
                 // [U6]: ω(ā) is a decision on an operation that has exactly one
                 // alternative, and its payload, if any, is dropped.
-                let contract = self.ensure_contract(operation, *line)?;
+                let (core_op, core_args, contract) = if self.controls.contains_key(operation) {
+                    let contract = self.ensure_contract(operation, *line)?;
+                    let param_types: Vec<Type> = self.controls[operation]
+                        .parameters
+                        .iter()
+                        .map(|p| p.ty.clone())
+                        .collect();
+                    let checked =
+                        self.check_args_against(arguments, &param_types, &ctx.scopes, *line)?;
+                    (operation.clone(), checked, contract)
+                } else if let Some(res) = self.resolve_builtin_call(
+                    &SurfaceCall::Direct {
+                        operation: operation.clone(),
+                        arguments: arguments.clone(),
+                    },
+                    &ctx.scopes,
+                    *line,
+                )? {
+                    res
+                } else {
+                    return fail(*line, "C1", format!("`{operation}` is not a control"));
+                };
                 if contract.alternatives.len() != 1 {
                     return fail(
                         *line,
@@ -3470,7 +5769,7 @@ impl Elaborator {
                     );
                 }
                 let single = &contract.alternatives[0];
-                let core_site = ctx.allocate_site(None, operation, *line)?;
+                let core_site = ctx.allocate_site(None, &core_op, *line)?;
                 let hidden_names: Vec<String> = (0..single.fields.len())
                     .map(|_| ctx.fresh_hidden_var())
                     .collect();
@@ -3478,8 +5777,8 @@ impl Elaborator {
                     selector: selection.clone(),
                     command: Command::Decide {
                         site: core_site,
-                        operation: operation.clone(),
-                        arguments: arguments.clone(),
+                        operation: core_op,
+                        arguments: core_args,
                         arms: vec![Arm {
                             alternative: single.name.clone(),
                             names: hidden_names,
@@ -3497,71 +5796,19 @@ impl Elaborator {
                 // contract (single alternative or group included by name) to be
                 // an entry of the caller's contract with the same payload types.
                 let callee = self.ensure_contract(operation, *line)?;
-                if ctx.is_auto {
-                    for group in &callee.groups {
-                        if !ctx.auto_groups.contains(group) {
-                            ctx.auto_groups.push(group.clone());
-                        }
-                    }
-                } else {
-                    let caller = &self.contracts[&ctx.control_name];
-                    for group in &callee.groups {
-                        if !caller.groups.contains(group) {
-                            return fail(
-                                *line,
-                                "U14",
-                                format!(
-                                    "`forward {operation}` requires `{}` to include the outcome group `…{group}`",
-                                    ctx.control_name
-                                ),
-                            );
-                        }
-                    }
-                    for own in &callee.own_alternatives {
-                        if !caller.own_alternatives.contains(own) {
-                            return fail(
-                                *line,
-                                "U14",
-                                format!(
-                                    "`forward {operation}` requires `{own}` to be an own entry of `{}`",
-                                    ctx.control_name
-                                ),
-                            );
-                        }
-                    }
-                    for callee_alt in &callee.alternatives {
-                        let Some(caller_alt) = caller
-                            .alternatives
-                            .iter()
-                            .find(|a| a.name == callee_alt.name)
-                        else {
-                            return fail(
-                                *line,
-                                "U14",
-                                format!(
-                                    "`{}` is not an alternative of `{}`",
-                                    callee_alt.name, ctx.control_name
-                                ),
-                            );
-                        };
-                        let same_types = caller_alt.fields.len() == callee_alt.fields.len()
-                            && caller_alt
-                                .fields
-                                .iter()
-                                .zip(&callee_alt.fields)
-                                .all(|(a, b)| a.ty == b.ty);
-                        if !same_types {
-                            return fail(
-                                *line,
-                                "U14",
-                                format!(
-                                    "the payload of `{}` in `{operation}` does not match `{}`",
-                                    callee_alt.name, ctx.control_name
-                                ),
-                            );
-                        }
-                    }
-                }
+                let param_types: Vec<Type> = self.controls[operation]
+                    .parameters
+                    .iter()
+                    .map(|p| p.ty.clone())
+                    .collect();
+                let checked_args =
+                    self.check_args_against(arguments, &param_types, &ctx.scopes, *line)?;
+                self.check_forward_compatibility(
+                    &format!("forward {operation}"),
+                    &callee,
+                    ctx,
+                    *line,
+                )?;
 
                 let core_site = ctx.allocate_site(None, operation, *line)?;
                 let mut core_arms = Vec::new();
@@ -3572,7 +5819,7 @@ impl Elaborator {
                         .collect();
                     let payload: Vec<Expr> = vars.iter().cloned().map(Expr::Name).collect();
                     let field_names = Some(alt.fields.iter().map(|f| f.name.clone()).collect());
-                    let field_types = Some(alt.fields.iter().map(|f| Some(f.ty)).collect());
+                    let field_types = Some(alt.fields.iter().map(|f| Some(f.ty.clone())).collect());
                     self.record_exit(ctx, *line, &alt.name, &payload, field_names, field_types)?;
                     core_arms.push(Arm {
                         alternative: alt.name.clone(),
@@ -3585,7 +5832,7 @@ impl Elaborator {
                     command: Command::Decide {
                         site: core_site.clone(),
                         operation: operation.clone(),
-                        arguments: arguments.clone(),
+                        arguments: checked_args,
                         arms: core_arms,
                     },
                     line: *line,
@@ -3608,38 +5855,171 @@ impl Elaborator {
                 operand,
                 arms,
                 ..
-            } => {
-                // Distinguish a control decision `Δ op(args)` from a Boolean
-                // decision `Δ bool_expr` ([U6]).
-                if let Expr::Call(op_name, arguments) = operand
-                    && self.controls.contains_key(op_name)
-                {
-                    self.elaborate_control_decision(
-                        *line,
-                        site.as_deref(),
-                        *adapter,
-                        op_name,
+            } => match operand {
+                SurfaceOperand::Call(call) => {
+                    if let SurfaceCall::Direct {
+                        operation,
                         arguments,
-                        arms,
-                        selection,
-                        ctx,
-                        out,
-                    )?;
-                } else {
-                    if *adapter {
-                        return fail(*line, "U13", "`■ Δ` requires a control call as its operand");
+                    } = call
+                        && self.controls.contains_key(operation)
+                    {
+                        let callee = self.ensure_contract(operation, *line)?;
+                        let param_types: Vec<Type> = self.controls[operation]
+                            .parameters
+                            .iter()
+                            .map(|p| p.ty.clone())
+                            .collect();
+                        let checked_args =
+                            self.check_args_against(arguments, &param_types, &ctx.scopes, *line)?;
+                        self.elaborate_resolved_decision(
+                            *line,
+                            site.as_deref(),
+                            *adapter,
+                            operation,
+                            operation,
+                            &checked_args,
+                            &callee,
+                            arms,
+                            selection,
+                            ctx,
+                            out,
+                        )?;
+                    } else if let Some((op_name, core_args, contract)) =
+                        self.resolve_builtin_call(call, &ctx.scopes, *line)?
+                    {
+                        self.elaborate_resolved_decision(
+                            *line,
+                            site.as_deref(),
+                            *adapter,
+                            &op_name,
+                            &op_name,
+                            &core_args,
+                            &contract,
+                            arms,
+                            selection,
+                            ctx,
+                            out,
+                        )?;
+                    } else if let SurfaceCall::Direct {
+                        operation,
+                        arguments,
+                    } = call
+                        && self.functions.contains_key(operation)
+                    {
+                        if *adapter {
+                            return fail(
+                                *line,
+                                "U13",
+                                "`■ Δ` requires a control or operation call as its operand",
+                            );
+                        }
+                        self.elaborate_bool_decision(
+                            *line,
+                            site.as_deref(),
+                            &Expr::Call(operation.clone(), arguments.clone()),
+                            arms,
+                            selection,
+                            ctx,
+                            out,
+                        )?;
+                    } else {
+                        let op_name = match call {
+                            SurfaceCall::Direct { operation, .. } => operation.as_str(),
+                            SurfaceCall::Method { method, .. } => method.as_str(),
+                        };
+                        return fail(*line, "C1", format!("`{op_name}` is not a control"));
                     }
-                    self.elaborate_bool_decision(
-                        *line,
-                        site.as_deref(),
-                        operand,
-                        arms,
-                        selection,
-                        ctx,
-                        out,
-                    )?;
                 }
-            }
+                SurfaceOperand::Expr(expr) => {
+                    // Check captured outcome (`Δ ▾x` [U6]) first.
+                    if let Expr::Move(inner) = expr
+                        && let Expr::Name(var_name) = &**inner
+                        && let Some(contract) = self.lookup_captured_contract(var_name, &ctx.scopes)
+                    {
+                        self.elaborate_resolved_decision(
+                            *line,
+                            site.as_deref(),
+                            *adapter,
+                            var_name,
+                            "outcome",
+                            &[Expr::Name(var_name.clone())],
+                            &contract,
+                            arms,
+                            selection,
+                            ctx,
+                            out,
+                        )?;
+                    } else if let Expr::Name(var_name) = expr
+                        && self
+                            .lookup_captured_contract(var_name, &ctx.scopes)
+                            .is_some()
+                    {
+                        return fail(
+                            *line,
+                            "U11",
+                            format!(
+                                "deciding on a captured outcome requires `▾` (`Δ ▾{var_name}`)"
+                            ),
+                        );
+                    } else if let Some(Type::Named(vname)) = self
+                        .expr_type(
+                            match expr {
+                                Expr::Move(inner) | Expr::Borrow(_, inner) => inner,
+                                other => other,
+                            },
+                            &ctx.scopes,
+                        )
+                        .map(|t| t.deref_type().clone())
+                        && let Some(ctors) = self.variants.get(&vname).cloned()
+                    {
+                        // Variant decision (`Δ p`, `Δ ~p`, `Δ ▾p` [U6]).
+                        let default_site =
+                            Self::place_last_name(expr).unwrap_or_else(|| vname.clone());
+                        let contract = ResolvedContract {
+                            alternatives: ctors
+                                .iter()
+                                .map(|c| Alternative {
+                                    name: c.name.clone(),
+                                    fields: c.fields.clone(),
+                                    condition: None,
+                                })
+                                .collect(),
+                            groups: Vec::new(),
+                            own_alternatives: ctors.iter().map(|c| c.name.clone()).collect(),
+                        };
+                        self.elaborate_resolved_decision(
+                            *line,
+                            site.as_deref(),
+                            *adapter,
+                            &default_site,
+                            &vname,
+                            std::slice::from_ref(expr),
+                            &contract,
+                            arms,
+                            selection,
+                            ctx,
+                            out,
+                        )?;
+                    } else {
+                        if *adapter {
+                            return fail(
+                                *line,
+                                "U13",
+                                "`■ Δ` requires a control, outcome or variant as its operand",
+                            );
+                        }
+                        self.elaborate_bool_decision(
+                            *line,
+                            site.as_deref(),
+                            expr,
+                            arms,
+                            selection,
+                            ctx,
+                            out,
+                        )?;
+                    }
+                }
+            },
             SurfaceStmt::Loop {
                 line,
                 name,
@@ -3657,6 +6037,14 @@ impl Elaborator {
                     ctx,
                     out,
                 )?;
+            }
+            SurfaceStmt::ForAll {
+                line,
+                var,
+                collection,
+                body,
+            } => {
+                self.elaborate_forall(*line, var, collection, body, selection, ctx, out)?;
             }
         }
         Ok(())
@@ -3780,22 +6168,99 @@ impl Elaborator {
         Ok(())
     }
 
+    fn check_forward_compatibility(
+        &self,
+        label: &str,
+        callee: &ResolvedContract,
+        ctx: &mut ControlElab,
+        line: u32,
+    ) -> Result<(), Error> {
+        if ctx.is_auto {
+            for group in &callee.groups {
+                if !ctx.auto_groups.contains(group) {
+                    ctx.auto_groups.push(group.clone());
+                }
+            }
+            return Ok(());
+        }
+        let caller = &self.contracts[&ctx.control_name];
+        for group in &callee.groups {
+            if !caller.groups.contains(group) {
+                return fail(
+                    line,
+                    "U14",
+                    format!(
+                        "`{label}` requires `{}` to include the outcome group `…{group}`",
+                        ctx.control_name
+                    ),
+                );
+            }
+        }
+        for own in &callee.own_alternatives {
+            if !caller.own_alternatives.contains(own) {
+                return fail(
+                    line,
+                    "U14",
+                    format!(
+                        "`{label}` requires `{own}` to be an own entry of `{}`",
+                        ctx.control_name
+                    ),
+                );
+            }
+        }
+        for callee_alt in &callee.alternatives {
+            let Some(caller_alt) = caller
+                .alternatives
+                .iter()
+                .find(|a| a.name == callee_alt.name)
+            else {
+                return fail(
+                    line,
+                    "U14",
+                    format!(
+                        "`{}` is not an alternative of `{}`",
+                        callee_alt.name, ctx.control_name
+                    ),
+                );
+            };
+            let same_types = caller_alt.fields.len() == callee_alt.fields.len()
+                && caller_alt
+                    .fields
+                    .iter()
+                    .zip(&callee_alt.fields)
+                    .all(|(a, b)| a.ty == b.ty);
+            if !same_types {
+                return fail(
+                    line,
+                    "U14",
+                    format!(
+                        "the payload of `{}` in `{label}` does not match `{}`",
+                        callee_alt.name, ctx.control_name
+                    ),
+                );
+            }
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
-    fn elaborate_control_decision(
+    fn elaborate_resolved_decision(
         &mut self,
         line: u32,
         explicit_site: Option<&str>,
         adapter: bool,
-        operation: &str,
+        default_site: &str,
+        core_operation: &str,
         arguments: &[Expr],
+        callee: &ResolvedContract,
         arms: &[SurfaceArm],
         selection: &Selector,
         ctx: &mut ControlElab,
         out: &mut Vec<Statement>,
     ) -> Result<(), Error> {
-        let callee = self.ensure_contract(operation, line)?;
-        let surface_site = explicit_site.unwrap_or(operation).to_string();
-        let core_site = ctx.allocate_site(explicit_site, operation, line)?;
+        let operation = default_site;
+        let surface_site = explicit_site.unwrap_or(default_site).to_string();
+        let core_site = ctx.allocate_site(explicit_site, default_site, line)?;
 
         // [U7] Acknowledgement: check explicit arms first, then expand group arms.
         let mut explicit_names = HashSet::new();
@@ -3934,8 +6399,8 @@ impl Elaborator {
                     );
                 }
                 for (pat, field) in patterns.iter().zip(&contract_alt.fields) {
-                    if let Some(written_ty) = pat.ty
-                        && written_ty != field.ty
+                    if let Some(written_ty) = &pat.ty
+                        && *written_ty != field.ty
                     {
                         return fail(
                             exp.line,
@@ -3948,11 +6413,11 @@ impl Elaborator {
                     }
                     ctx.current_scope_mut()
                         .vars
-                        .insert(pat.name.clone(), field.ty);
+                        .insert(pat.name.clone(), field.ty.clone());
                     if pat.mutable {
                         let raw = ctx.fresh_hidden_var();
                         arm_vars.push(raw.clone());
-                        mutable_rebinds.push((pat.name.clone(), field.ty, raw));
+                        mutable_rebinds.push((pat.name.clone(), field.ty.clone(), raw));
                     } else {
                         arm_vars.push(pat.name.clone());
                     }
@@ -3974,7 +6439,7 @@ impl Elaborator {
             selector: selection.clone(),
             command: Command::Decide {
                 site: core_site.clone(),
-                operation: operation.to_string(),
+                operation: core_operation.to_string(),
                 arguments: arguments.to_vec(),
                 arms: core_arms,
             },
@@ -4014,8 +6479,13 @@ impl Elaborator {
                         let payload: Vec<Expr> = arm_vars.iter().cloned().map(Expr::Name).collect();
                         let field_names =
                             Some(contract_alt.fields.iter().map(|f| f.name.clone()).collect());
-                        let field_types =
-                            Some(contract_alt.fields.iter().map(|f| Some(f.ty)).collect());
+                        let field_types = Some(
+                            contract_alt
+                                .fields
+                                .iter()
+                                .map(|f| Some(f.ty.clone()))
+                                .collect(),
+                        );
                         self.record_exit(
                             ctx,
                             exp.line,
@@ -4107,8 +6577,13 @@ impl Elaborator {
                     let payload: Vec<Expr> = arm_vars.iter().cloned().map(Expr::Name).collect();
                     let field_names =
                         Some(contract_alt.fields.iter().map(|f| f.name.clone()).collect());
-                    let field_types =
-                        Some(contract_alt.fields.iter().map(|f| Some(f.ty)).collect());
+                    let field_types = Some(
+                        contract_alt
+                            .fields
+                            .iter()
+                            .map(|f| Some(f.ty.clone()))
+                            .collect(),
+                    );
                     self.record_exit(
                         ctx,
                         exp.line,
@@ -4217,9 +6692,10 @@ impl Elaborator {
             paths: Vec::new(),
             suppressed_defaults: HashSet::new(),
             vars: HashMap::new(),
+            captured_contracts: HashMap::new(),
         };
         for param in parameters {
-            loop_scope.vars.insert(param.name.clone(), param.ty);
+            loop_scope.vars.insert(param.name.clone(), param.ty.clone());
         }
         ctx.scopes.push(loop_scope);
 
@@ -4255,7 +6731,7 @@ impl Elaborator {
             if let Some(alt_name) = alt {
                 let _ = alt_name;
                 for output in outputs {
-                    if let Some(ty) = finished_loop_scope.vars.get(&output.name).copied() {
+                    if let Some(ty) = finished_loop_scope.vars.get(&output.name).cloned() {
                         ctx.current_scope_mut().vars.insert(output.name.clone(), ty);
                     }
                 }
@@ -4315,6 +6791,200 @@ impl Elaborator {
                 name: name.to_string(),
                 parameters: core_params,
                 invariant: core_invariant,
+                body: core_body,
+                arms: core_arms,
+            },
+            line,
+        });
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn elaborate_forall(
+        &mut self,
+        line: u32,
+        var: &str,
+        collection: &Expr,
+        body: &[SurfaceItem],
+        selection: &Selector,
+        ctx: &mut ControlElab,
+        out: &mut Vec<Statement>,
+    ) -> Result<(), Error> {
+        // [U10]: `∀ x ∈ p {B}` elaborates into a loop over indices `0..len(p)`.
+        let elem_ty = match self
+            .expr_type(collection, &ctx.scopes)
+            .map(|t| t.deref_type().clone())
+        {
+            Some(Type::Vector(elem)) => *elem,
+            other => {
+                return fail(
+                    line,
+                    "U10",
+                    format!(
+                        "`∀ {var} ∈ …` requires a vector, found {}",
+                        other
+                            .map(|t| format!("`{t}`"))
+                            .unwrap_or_else(|| "an unknown type".to_string())
+                    ),
+                );
+            }
+        };
+
+        let loop_name = ctx.fresh_hidden_var();
+        let core_site = ctx.allocate_site(None, &loop_name, line)?;
+        let idx_var = ctx.fresh_hidden_var();
+        let end_site = ctx.fresh_test_site();
+        let done_alt = format!("_done_{}", ctx.next_hidden);
+        ctx.next_hidden += 1;
+
+        // Collect user `□` leaves in `body` so `B` may leave with named alternatives ([U10]).
+        let mut leaves = Vec::new();
+        collect_loop_leaves(body, &mut leaves);
+        let mut named_order: Vec<String> = Vec::new();
+        let mut named_fields: HashMap<String, Vec<String>> = HashMap::new();
+        for (leave_line, alt, outputs) in &leaves {
+            let Some(alt_name) = alt else {
+                return fail(
+                    *leave_line,
+                    "U10",
+                    "a `□` inside `∀` must name its alternative",
+                );
+            };
+            let field_names: Vec<String> = outputs.iter().map(|o| o.name.clone()).collect();
+            if let Some(existing) = named_fields.get(alt_name) {
+                if *existing != field_names {
+                    return fail(
+                        *leave_line,
+                        "U9",
+                        format!("all `□ {alt_name}` of `∀` must give the same field names"),
+                    );
+                }
+            } else {
+                named_order.push(alt_name.clone());
+                named_fields.insert(alt_name.clone(), field_names);
+            }
+        }
+
+        let mut loop_scope = BodyScope {
+            sites: Vec::new(),
+            paths: Vec::new(),
+            suppressed_defaults: HashSet::new(),
+            vars: HashMap::new(),
+            captured_contracts: HashMap::new(),
+        };
+        loop_scope
+            .vars
+            .insert(idx_var.clone(), Type::Int(IntType::Usize));
+        loop_scope.vars.insert(
+            var.to_string(),
+            Type::Ref(BorrowMode::Shared, Box::new(elem_ty)),
+        );
+        ctx.scopes.push(loop_scope);
+
+        let user_stmts = self.elaborate_items(body, ctx)?;
+        let finished_loop_scope = ctx.scopes.pop().expect("a forall loop scope");
+
+        let mut core_body = vec![
+            Statement {
+                selector: Selector::Top,
+                command: Command::Test {
+                    site: end_site.clone(),
+                    condition: Expr::Binary(
+                        Binary::Equal,
+                        Box::new(Expr::Name(idx_var.clone())),
+                        Box::new(Expr::Len(Box::new(collection.clone()))),
+                    ),
+                },
+                line,
+            },
+            Statement {
+                selector: Selector::Atom(end_site, "true".to_string()),
+                command: Command::Leave {
+                    alternative: done_alt.clone(),
+                    payload: Vec::new(),
+                },
+                line,
+            },
+            Statement {
+                selector: Selector::Top,
+                command: Command::Bind {
+                    mutable: false,
+                    name: var.to_string(),
+                    ty: None,
+                    value: Expr::Borrow(
+                        BorrowMode::Shared,
+                        Box::new(Expr::Index(
+                            Box::new(collection.clone()),
+                            Box::new(Expr::Name(idx_var.clone())),
+                        )),
+                    ),
+                },
+                line,
+            },
+        ];
+        core_body.extend(user_stmts);
+        core_body.push(Statement {
+            selector: Selector::Top,
+            command: Command::Again {
+                name: loop_name.clone(),
+                arguments: vec![Expr::Binary(
+                    Binary::Add,
+                    Box::new(Expr::Name(idx_var.clone())),
+                    Box::new(Expr::Integer(Int::from_u64(1))),
+                )],
+            },
+            line,
+        });
+
+        let mut core_arms = vec![Arm {
+            alternative: done_alt,
+            names: Vec::new(),
+        }];
+        for alt_name in &named_order {
+            core_arms.push(Arm {
+                alternative: alt_name.clone(),
+                names: named_fields[alt_name].clone(),
+            });
+            ctx.current_scope_mut().paths.push(PathEntry {
+                core_site: core_site.clone(),
+                alternative: alt_name.clone(),
+                path_name: alt_name.clone(),
+                is_route: false,
+            });
+        }
+        for (_, alt, outputs) in &leaves {
+            if alt.is_some() {
+                for output in outputs {
+                    if let Some(ty) = finished_loop_scope.vars.get(&output.name).cloned() {
+                        ctx.current_scope_mut().vars.insert(output.name.clone(), ty);
+                    }
+                }
+            }
+        }
+        if !named_order.is_empty() {
+            ctx.current_scope_mut().sites.push(SiteRecord {
+                surface_name: loop_name.clone(),
+                core_name: core_site.clone(),
+                alternatives: named_order,
+            });
+        }
+
+        out.push(Statement {
+            selector: selection.clone(),
+            command: Command::Loop {
+                site: core_site,
+                name: loop_name,
+                parameters: vec![LoopParameter {
+                    mutable: false,
+                    name: idx_var.clone(),
+                    ty: Type::Int(IntType::Usize),
+                    initial: Expr::Integer(Int::zero()),
+                }],
+                invariant: Some(Expr::Binary(
+                    Binary::LessEqual,
+                    Box::new(Expr::Name(idx_var)),
+                    Box::new(Expr::Len(Box::new(collection.clone()))),
+                )),
                 body: core_body,
                 arms: core_arms,
             },
@@ -4430,10 +7100,20 @@ fn collect_stmt_paths(
         } => {
             if let Some(s) = site {
                 sites.insert(s.clone());
-            } else if let Expr::Call(op, _) = operand {
-                sites.insert(op.clone());
-            } else if let Expr::Name(n) = operand {
-                sites.insert(n.clone());
+            } else {
+                match operand {
+                    SurfaceOperand::Call(SurfaceCall::Direct { operation, .. }) => {
+                        sites.insert(operation.clone());
+                    }
+                    SurfaceOperand::Call(SurfaceCall::Method { method, .. }) => {
+                        sites.insert(method.clone());
+                    }
+                    SurfaceOperand::Expr(expr) => {
+                        if let Some(n) = Elaborator::place_last_name(expr) {
+                            sites.insert(n);
+                        }
+                    }
+                }
             }
             for arm in arms {
                 match &arm.target {
@@ -4460,6 +7140,9 @@ fn collect_stmt_paths(
         }
         SurfaceStmt::Loop { name, body, .. } => {
             sites.insert(name.clone());
+            collect_declared_paths(body, sites, paths);
+        }
+        SurfaceStmt::ForAll { body, .. } => {
             collect_declared_paths(body, sites, paths);
         }
         SurfaceStmt::Leave {
@@ -4514,7 +7197,7 @@ fn collect_stmt_leaves(stmt: &SurfaceStmt, out: &mut Vec<(u32, Option<String>, V
             }
         }
         // Do not recurse into a nested loop: its `□` statements belong to it ([W3]).
-        SurfaceStmt::Loop { .. } => {}
+        SurfaceStmt::Loop { .. } | SurfaceStmt::ForAll { .. } => {}
         _ => {}
     }
 }
@@ -4556,18 +7239,26 @@ fn collect_inner_declarations(statements: &[Statement], out: &mut HashSet<String
 
 fn rename_expr(expr: &mut Expr, renames: &HashMap<String, String>) {
     match expr {
-        Expr::Integer(_) | Expr::Boolean(_) => {}
-        Expr::Name(name) => {
+        Expr::Integer(_) | Expr::Boolean(_) | Expr::String(_) | Expr::EmptyMap => {}
+        Expr::Name(name) | Expr::Old(name) => {
             if let Some(new_name) = renames.get(name) {
                 *name = new_name.clone();
             }
         }
-        Expr::Unary(_, inner) => rename_expr(inner, renames),
-        Expr::Binary(_, left, right) => {
+        Expr::Unary(_, inner)
+        | Expr::Move(inner)
+        | Expr::Borrow(_, inner)
+        | Expr::Field(inner, _)
+        | Expr::Len(inner)
+        | Expr::Clone(inner) => rename_expr(inner, renames),
+        Expr::Binary(_, left, right) | Expr::Index(left, right) => {
             rename_expr(left, renames);
             rename_expr(right, renames);
         }
-        Expr::Call(_, args) => {
+        Expr::Call(_, args)
+        | Expr::Struct(_, args)
+        | Expr::Variant(_, _, args)
+        | Expr::Vector(args) => {
             for arg in args {
                 rename_expr(arg, renames);
             }
@@ -4639,6 +7330,7 @@ fn rename_statements(statements: &mut [Statement], renames: &HashMap<String, Str
                 }
             }
             Command::Impossible => {}
+            _ => {}
         }
     }
 }
@@ -4648,6 +7340,10 @@ fn rename_statements(statements: &mut [Statement], renames: &HashMap<String, Str
 /// (`[U5]`, `[U17]`, `[U18]`).
 pub fn elaborate_with_warnings(source: &str) -> Result<Elaborated, Error> {
     let top_decls = parse_surface_file(source)?;
+    let mut structs = HashMap::new();
+    let mut variants = HashMap::new();
+    let mut resources = HashSet::new();
+    let mut boundaries = HashMap::new();
     let mut outcomes = HashMap::new();
     let mut functions = HashMap::new();
     let mut controls = HashMap::new();
@@ -4655,6 +7351,18 @@ pub fn elaborate_with_warnings(source: &str) -> Result<Elaborated, Error> {
     for decl in &top_decls {
         match decl {
             TopDecl::Blank | TopDecl::Comment(_) => {}
+            TopDecl::Struct(st) => {
+                structs.insert(st.name.clone(), st.clone());
+            }
+            TopDecl::Variant(var) => {
+                variants.insert(var.name.clone(), var.constructors.clone());
+            }
+            TopDecl::Resource(res) => {
+                resources.insert(res.name.clone());
+            }
+            TopDecl::Boundary(bnd) => {
+                boundaries.insert(bnd.name.clone(), bnd.clone());
+            }
             TopDecl::Outcome(outcome) => {
                 let mut seen = HashSet::new();
                 for oa in &outcome.alternatives {
@@ -4683,7 +7391,7 @@ pub fn elaborate_with_warnings(source: &str) -> Result<Elaborated, Error> {
                 }
             }
             TopDecl::Function(function) => {
-                functions.insert(function.name.clone(), function.result);
+                functions.insert(function.name.clone(), function.result.clone());
             }
             TopDecl::Control(control) => {
                 controls.insert(control.name.clone(), control.clone());
@@ -4692,6 +7400,10 @@ pub fn elaborate_with_warnings(source: &str) -> Result<Elaborated, Error> {
     }
 
     let mut elaborator = Elaborator {
+        structs,
+        variants,
+        resources,
+        boundaries,
         outcomes,
         functions,
         controls,
@@ -4715,7 +7427,33 @@ pub fn elaborate_with_warnings(source: &str) -> Result<Elaborated, Error> {
     let mut declarations = Vec::new();
     for decl in top_decls {
         match decl {
-            TopDecl::Blank | TopDecl::Comment(_) | TopDecl::Outcome(_) => {}
+            TopDecl::Blank | TopDecl::Comment(_) => {}
+            TopDecl::Struct(st) => {
+                declarations.push(Declaration::Struct(st));
+            }
+            TopDecl::Variant(var) => {
+                declarations.push(Declaration::Variant(VariantDecl {
+                    name: var.name,
+                    public: var.public,
+                    is_copy: var.is_copy,
+                    constructors: var.constructors,
+                    line: var.line,
+                }));
+            }
+            TopDecl::Resource(res) => {
+                declarations.push(Declaration::Resource(res));
+            }
+            TopDecl::Outcome(outcome) => {
+                declarations.push(Declaration::Outcome(CoreOutcomeDecl {
+                    name: outcome.name,
+                    public: outcome.public,
+                    alternatives: outcome.alternatives.into_iter().map(|oa| oa.alt).collect(),
+                    line: outcome.line,
+                }));
+            }
+            TopDecl::Boundary(bnd) => {
+                declarations.push(Declaration::Boundary(elaborator.elaborate_boundary(&bnd)?));
+            }
             TopDecl::Function(function) => {
                 declarations.push(Declaration::Function(function));
             }
@@ -4770,6 +7508,18 @@ pub fn format(source: &str) -> Result<String, Error> {
             TopDecl::Comment(c) => {
                 lines.push(c.clone());
             }
+            TopDecl::Struct(st) => {
+                format_struct(st, &mut lines);
+            }
+            TopDecl::Variant(var) => {
+                format_variant(var, &mut lines);
+            }
+            TopDecl::Resource(res) => {
+                format_resource(res, &mut lines);
+            }
+            TopDecl::Boundary(bnd) => {
+                format_boundary(bnd, &mut lines);
+            }
             TopDecl::Outcome(outcome) => {
                 format_outcome(outcome, &mut lines);
             }
@@ -4812,6 +7562,71 @@ fn format_outcome_alt(oa: &OutcomeAlt) -> String {
         s.push_str(&format!(" ↦ {status}"));
     }
     s
+}
+
+fn format_struct(st: &StructDecl, lines: &mut Vec<String>) {
+    let mut head = String::new();
+    if st.public {
+        head.push_str("pub ");
+    }
+    if st.is_copy {
+        head.push_str("copy ");
+    }
+    head.push_str(&format!(
+        "struct {} {{{}}}",
+        st.name,
+        format_params(&st.fields)
+    ));
+    lines.push(head);
+}
+
+fn format_variant(var: &SurfaceVariantDecl, lines: &mut Vec<String>) {
+    let mut prefix = String::new();
+    if var.public {
+        prefix.push_str("pub ");
+    }
+    if var.is_copy {
+        prefix.push_str("copy ");
+    }
+    let ctors: Vec<String> = var
+        .constructors
+        .iter()
+        .map(|c| format!("{}{}", c.name, format_fields(&c.fields)))
+        .collect();
+    let one_line = format!("{prefix}variant {}: {}", var.name, ctors.join(" │ "));
+    if !var.vertical && one_line.chars().count() <= 100 {
+        lines.push(one_line);
+    } else {
+        lines.push(format!("{prefix}variant {}", var.name));
+        for (idx, c) in ctors.iter().enumerate() {
+            let marker = if idx + 1 == ctors.len() { "└" } else { "├" };
+            lines.push(format!("{marker} {c}"));
+        }
+    }
+}
+
+fn format_resource(res: &ResourceDecl, lines: &mut Vec<String>) {
+    if res.on_fault_release {
+        lines.push(format!("extern resource {} on fault release", res.name));
+    } else {
+        lines.push(format!("extern resource {}", res.name));
+    }
+}
+
+fn format_boundary(bnd: &SurfaceBoundaryDecl, lines: &mut Vec<String>) {
+    let mut head = format!("boundary {}({})", bnd.name, format_params(&bnd.parameters));
+    if !bnd.retains.is_empty() {
+        head.push_str(&format!(" retains {}", bnd.retains.join(", ")));
+    }
+    lines.push(head);
+    format_items(&bnd.body, "│ ", false, lines);
+    lines.push("╵".to_string());
+    lines.push(format!(
+        "contingency ({}: {})",
+        bnd.message.name, bnd.message.ty
+    ));
+    format_items(&bnd.contingency, "│ ", false, lines);
+    lines.push("╵".to_string());
 }
 
 fn format_outcome(outcome: &OutcomeDecl, lines: &mut Vec<String>) {
@@ -4868,6 +7683,9 @@ fn format_control(control: &SurfaceControl, lines: &mut Vec<String>) {
     if control.external {
         head.push_str("extern ");
     }
+    if control.contingent {
+        head.push_str("contingent ");
+    }
     head.push_str(&format!(
         "control {}({})",
         control.name,
@@ -4875,10 +7693,17 @@ fn format_control(control: &SurfaceControl, lines: &mut Vec<String>) {
     ));
 
     let pre_part = control.precondition.as_ref().map(|pre| format!("⊢ {pre}"));
-    let uses_part = if control.uses.is_empty() {
+    let mut tail_parts = Vec::new();
+    if control.faults {
+        tail_parts.push("faults".to_string());
+    }
+    if !control.uses.is_empty() {
+        tail_parts.push(format!("uses {}", control.uses.join(", ")));
+    }
+    let uses_part = if tail_parts.is_empty() {
         None
     } else {
-        Some(format!("uses {}", control.uses.join(", ")))
+        Some(tail_parts.join(" "))
     };
 
     match &control.contract {
@@ -4997,7 +7822,7 @@ fn format_pattern(p: &Pattern) -> String {
         s.push('~');
     }
     s.push_str(&p.name);
-    if let Some(ty) = p.ty {
+    if let Some(ty) = &p.ty {
         s.push_str(&format!(": {ty}"));
     }
     s
@@ -5055,6 +7880,43 @@ fn format_arm_target_inline(target: &ArmTarget) -> Option<String> {
     }
 }
 
+fn format_surface_call(call: &SurfaceCall) -> String {
+    match call {
+        SurfaceCall::Direct {
+            operation,
+            arguments,
+        } => format!("{operation}({})", format_expr_list(arguments)),
+        SurfaceCall::Method {
+            receiver,
+            method,
+            arguments,
+        } => format!("{receiver}.{method}({})", format_expr_list(arguments)),
+    }
+}
+
+fn format_surface_operand(operand: &SurfaceOperand) -> String {
+    match operand {
+        SurfaceOperand::Call(call) => format_surface_call(call),
+        SurfaceOperand::Expr(expr) => expr.to_string(),
+    }
+}
+
+fn format_place_inline(place: &Place) -> String {
+    let mut s = place.root.clone();
+    for step in &place.steps {
+        match step {
+            PlaceStep::Field(f) => {
+                s.push('.');
+                s.push_str(f);
+            }
+            PlaceStep::Index(idx) => {
+                s.push_str(&format!("[{idx}]"));
+            }
+        }
+    }
+    s
+}
+
 fn format_simple_stmt_inline(stmt: &SurfaceStmt) -> String {
     match stmt {
         SurfaceStmt::Bind {
@@ -5075,7 +7937,34 @@ fn format_simple_stmt_inline(stmt: &SurfaceStmt) -> String {
             s.push_str(&format!(" := {value}"));
             s
         }
+        SurfaceStmt::Unpack {
+            struct_name,
+            names,
+            value,
+            ..
+        } => format!("{struct_name} {{{}}} := {value}", names.join(", ")),
+        SurfaceStmt::Capture {
+            mutable,
+            name,
+            ty,
+            call,
+            ..
+        } => {
+            let mut s = String::new();
+            if *mutable {
+                s.push('~');
+            }
+            s.push_str(name);
+            if let Some(ty) = ty {
+                s.push_str(&format!(": {ty}"));
+            }
+            s.push_str(&format!(" := capture {}", format_surface_call(call)));
+            s
+        }
         SurfaceStmt::Assign { name, value, .. } => format!("{name} ← {value}"),
+        SurfaceStmt::AssignPlace { target, value, .. } => {
+            format!("{} ← {value}", format_place_inline(target))
+        }
         SurfaceStmt::Oblige { formula, .. } => format!("⊢ {formula}"),
         SurfaceStmt::Forward {
             operation,
@@ -5087,6 +7976,17 @@ fn format_simple_stmt_inline(stmt: &SurfaceStmt) -> String {
             arguments,
             ..
         } => format!("{operation}({})", format_expr_list(arguments)),
+        SurfaceStmt::MethodCall {
+            receiver,
+            method,
+            arguments,
+            ..
+        } => format!("{receiver}.{method}({})", format_expr_list(arguments)),
+        SurfaceStmt::Supervise {
+            boundary,
+            arguments,
+            ..
+        } => format!("supervise {boundary}({})", format_expr_list(arguments)),
         SurfaceStmt::Again {
             name, arguments, ..
         } => {
@@ -5109,6 +8009,22 @@ fn format_simple_stmt_inline(stmt: &SurfaceStmt) -> String {
             payload,
             ..
         } => format!("■ {alternative}{}", format_payload(payload)),
+        SurfaceStmt::ExitOutcome { name, .. } => format!("■ ▾{name}"),
+        SurfaceStmt::Fault {
+            message, assumed, ..
+        } => {
+            if *assumed {
+                format!("assume ⊥ {message}")
+            } else {
+                format!("fault {message}")
+            }
+        }
+        SurfaceStmt::Terminate { value, .. } => match value {
+            Some(v) => format!("terminate {v}"),
+            None => "terminate".to_string(),
+        },
+        SurfaceStmt::Escalate { .. } => "escalate".to_string(),
+        SurfaceStmt::Recover { loop_name, .. } => format!("recover ↑ {loop_name}"),
         SurfaceStmt::Impossible { .. } => "⊥".to_string(),
         SurfaceStmt::Test {
             condition, body, ..
@@ -5129,7 +8045,7 @@ fn format_simple_stmt_inline(stmt: &SurfaceStmt) -> String {
             } else if let Some(s) = site {
                 head.push_str(&format!("{s}: "));
             }
-            head.push_str(&format!("Δ {operand}"));
+            head.push_str(&format!("Δ {}", format_surface_operand(operand)));
             let arm_strs: Vec<String> = arms
                 .iter()
                 .map(|arm| {
@@ -5143,7 +8059,10 @@ fn format_simple_stmt_inline(stmt: &SurfaceStmt) -> String {
                 .collect();
             format!("{head}: {}", arm_strs.join(" │ "))
         }
-        SurfaceStmt::Loop { .. } | SurfaceStmt::Blank | SurfaceStmt::Comment(_) => String::new(),
+        SurfaceStmt::Loop { .. }
+        | SurfaceStmt::ForAll { .. }
+        | SurfaceStmt::Blank
+        | SurfaceStmt::Comment(_) => String::new(),
     }
 }
 
@@ -5151,13 +8070,23 @@ fn is_short_inline_stmt(stmt: &SurfaceStmt) -> bool {
     matches!(
         stmt,
         SurfaceStmt::Bind { .. }
+            | SurfaceStmt::Unpack { .. }
+            | SurfaceStmt::Capture { .. }
             | SurfaceStmt::Assign { .. }
+            | SurfaceStmt::AssignPlace { .. }
             | SurfaceStmt::Oblige { .. }
             | SurfaceStmt::Forward { .. }
             | SurfaceStmt::Call { .. }
+            | SurfaceStmt::MethodCall { .. }
+            | SurfaceStmt::Supervise { .. }
             | SurfaceStmt::Again { .. }
             | SurfaceStmt::Leave { .. }
             | SurfaceStmt::Exit { .. }
+            | SurfaceStmt::ExitOutcome { .. }
+            | SurfaceStmt::Fault { .. }
+            | SurfaceStmt::Terminate { .. }
+            | SurfaceStmt::Escalate { .. }
+            | SurfaceStmt::Recover { .. }
             | SurfaceStmt::Impossible { .. }
     )
 }
@@ -5309,7 +8238,7 @@ fn format_stmt(stmt: &SurfaceStmt, prefix: &str, lines: &mut Vec<String>) {
             } else if let Some(s) = site {
                 head.push_str(&format!("{s}: "));
             }
-            head.push_str(&format!("Δ {operand}"));
+            head.push_str(&format!("Δ {}", format_surface_operand(operand)));
 
             let has_block = arms
                 .iter()
@@ -5395,6 +8324,16 @@ fn format_stmt(stmt: &SurfaceStmt, prefix: &str, lines: &mut Vec<String>) {
             }
             format_items(body, &loop_prefix, true, lines);
         }
+        SurfaceStmt::ForAll {
+            var,
+            collection,
+            body,
+            ..
+        } => {
+            lines.push(format!("{prefix}∀ {var} ∈ {collection}"));
+            let loop_prefix = format!("{prefix}║ ");
+            format_items(body, &loop_prefix, true, lines);
+        }
         other => {
             lines.push(format!("{prefix}{}", format_simple_stmt_inline(other)));
         }
@@ -5404,24 +8343,68 @@ fn format_stmt(stmt: &SurfaceStmt, prefix: &str, lines: &mut Vec<String>) {
 fn collect_called_operations(statements: &[Statement], callees: &mut Vec<String>) {
     for statement in statements {
         match &statement.command {
-            Command::Decide { operation, .. } => {
+            Command::Decide { operation, .. } | Command::Capture { operation, .. } => {
                 if !callees.contains(operation) {
                     callees.push(operation.clone());
                 }
             }
             Command::Loop { body, .. } => collect_called_operations(body, callees),
+            Command::Boundary {
+                body, contingency, ..
+            } => {
+                collect_called_operations(body, callees);
+                collect_called_operations(contingency, callees);
+            }
+            Command::Supervise { boundary, .. } => {
+                let tag = format!("@boundary:{boundary}");
+                if !callees.contains(&tag) {
+                    callees.push(tag);
+                }
+            }
             _ => {}
         }
     }
 }
 
 fn infer_private_effects(declarations: &mut [Declaration]) {
+    let mut boundary_callees: HashMap<String, Vec<String>> = HashMap::new();
+    for declaration in declarations.iter() {
+        if let Declaration::Boundary(bnd) = declaration {
+            let mut cs = Vec::new();
+            collect_called_operations(&bnd.body, &mut cs);
+            collect_called_operations(&bnd.contingency, &mut cs);
+            boundary_callees.insert(bnd.name.clone(), cs);
+        }
+    }
+    let declared_controls: HashSet<String> = declarations
+        .iter()
+        .filter_map(|d| match d {
+            Declaration::Control(c) => Some(c.name.clone()),
+            _ => None,
+        })
+        .collect();
     loop {
         let mut known_uses: HashMap<String, Vec<String>> = HashMap::new();
         for declaration in declarations.iter() {
             if let Declaration::Control(control) = declaration {
                 known_uses.insert(control.name.clone(), control.uses.clone());
             }
+        }
+        if !declared_controls.contains("emit") {
+            known_uses.insert("emit".to_string(), vec!["console.write".to_string()]);
+        }
+        for (bname, cs) in &boundary_callees {
+            let mut b_effects = Vec::new();
+            for c in cs {
+                if let Some(effs) = known_uses.get(c) {
+                    for e in effs {
+                        if !b_effects.contains(e) {
+                            b_effects.push(e.clone());
+                        }
+                    }
+                }
+            }
+            known_uses.insert(format!("@boundary:{bname}"), b_effects);
         }
         let mut changed = false;
         for declaration in declarations.iter_mut() {

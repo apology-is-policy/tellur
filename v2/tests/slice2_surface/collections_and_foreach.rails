@@ -1,0 +1,38 @@
+┄ Slice 2 Rails: vectors, maps, method form ([U12]), for-each ([U10]),
+┄ captured outcomes ([U6], [U14]), and move marks ([U11]).
+
+outcome lookup_res: hit {value: u32} │ miss
+
+control sum_vector(values: [u32]) ■ total {sum: u32}
+│ ~acc: u32 := 0
+│ ∀ item ∈ values
+│ ║ acc ← acc + item
+│ ■ total {acc}
+╵
+
+control find_gt(values: [u32], limit: u32) ■ lookup_res
+│ ∀ item ∈ values
+│ ║ ? item > limit → ■ hit {item}
+│ ■ miss
+╵
+
+control forward_captured(values: [u32], limit: u32) ■ lookup_res
+│ result := capture find_gt(values, limit)
+│ ■ ▾result
+╵
+
+control collect_and_map() ■ ok {sum: u32, count: usize, popped: u32}
+│ ~nums: [u32] := [10, 20]
+│ nums.push(30)
+│ Δ nums.pop(): item {last} │ empty → ⊥
+│ ~table: string ⇀ u32 := ∅
+│ Δ table.insert("k", last): inserted │ replaced {prev} → ⊥
+│ Δ table.get("k"): found {v} │ missing → ⊥
+│ Δ sum_vector(nums): total {s}
+│ ■ ok {s + v, len(table), last}
+╵
+
+//! run sum_vector([1, 2, 3, 4]) => done total {10}
+//! run forward_captured([2, 8, 5], 6) => done hit {8}
+//! run forward_captured([1, 2, 3], 10) => done miss
+//! run collect_and_map() => done ok {60, 1, 30}

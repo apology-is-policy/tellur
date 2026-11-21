@@ -1,0 +1,37 @@
+┄ Slice 2 Rails: named boundaries ([Y12], [G12]), `retains`, `contingent`,
+┄ `supervise`, `terminate`, `fault`, `assume ⊥`, and `on fault release`.
+
+extern resource conn on fault release
+
+extern control open_conn() ■ opened {c: conn} uses net
+extern control close_conn(c: conn) ■ closed uses net
+
+contingent control report_fault(tag: &string, msg: &string) ■ done uses console.write
+│ emit(tag)
+│ emit(msg)
+│ ■ done
+╵
+
+boundary worker(tag: string, fail_now: bool) retains tag
+│ Δ open_conn(): opened {c}
+│ ? fail_now → fault "worker crashed"
+│ close_conn(▾c)
+│ terminate
+╵
+contingency (m: string)
+│ report_fault(tag, m)
+│ terminate
+╵
+
+control run_worker(fail_now: bool) ■ done uses net, console.write
+│ supervise worker("job1", fail_now)
+│ ■ done
+╵
+
+control direct_fault() ■ ok faults
+│ assume ⊥ "invariant failed"
+╵
+
+//! run run_worker(false) with [open_conn -> opened {conn#1}; close_conn -> closed] => done done trace [open_conn() -> opened {conn#1}; close_conn(conn#1) -> closed]
+//! run run_worker(true) with [open_conn -> opened {conn#1}] => done done trace [open_conn() -> opened {conn#1}; conn.release(conn#1) -> released; emit("job1") -> done; emit("worker crashed") -> done]
+//! run direct_fault() => faulted "invariant failed"

@@ -1,0 +1,8 @@
+// [W6]: Borrow types cannot occur inside a struct or vector.
+struct bad_ref {r : &u32}
+
+control ok()
+    ■ { done {} }
+    1  ⊤ ▷ ■ done {}
+
+//! reject W6

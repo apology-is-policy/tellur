@@ -137,8 +137,8 @@ impl Coverage {
         *self.counts.entry(construct).or_insert(0) += 1;
     }
 
-    fn observe_type(&mut self, ty: Type) {
-        self.hit(match ty {
+    fn observe_type(&mut self, ty: &Type) {
+        let label = match ty {
             Type::Bool => "type-bool",
             Type::Int(IntType::U8) => "type-u8",
             Type::Int(IntType::U16) => "type-u16",
@@ -149,7 +149,9 @@ impl Coverage {
             Type::Int(IntType::I32) => "type-i32",
             Type::Int(IntType::I64) => "type-i64",
             Type::Int(IntType::Usize) => "type-usize",
-        });
+            _ => return,
+        };
+        self.hit(label);
     }
 
     fn observe_selector(&mut self, selector: &Selector) {
@@ -210,6 +212,7 @@ impl Coverage {
                 self.observe_expr(left);
                 self.observe_expr(right);
             }
+            _ => {}
         }
     }
 
@@ -226,7 +229,7 @@ impl Coverage {
                     }
                     if let Some(ty) = ty {
                         self.hit("bind-typed");
-                        self.observe_type(*ty);
+                        self.observe_type(ty);
                     } else {
                         self.hit("bind-inferred");
                     }
@@ -261,7 +264,7 @@ impl Coverage {
                         if parameter.mutable {
                             self.hit("loop-mutable-param");
                         }
-                        self.observe_type(parameter.ty);
+                        self.observe_type(&parameter.ty);
                         self.observe_expr(&parameter.initial);
                     }
                     if let Some(invariant) = invariant {
@@ -295,6 +298,7 @@ impl Coverage {
                     }
                 }
                 Command::Impossible => self.hit("impossible"),
+                _ => {}
             }
         }
     }
@@ -306,13 +310,13 @@ impl Coverage {
                 Declaration::Function(function) => {
                     self.hit("function");
                     for parameter in &function.parameters {
-                        self.observe_type(parameter.ty);
+                        self.observe_type(&parameter.ty);
                     }
                     if let Some(precondition) = &function.precondition {
                         self.hit("function-where");
                         self.observe_expr(precondition);
                     }
-                    self.observe_type(function.result);
+                    self.observe_type(&function.result);
                     self.observe_expr(&function.body);
                 }
                 Declaration::Control(control) => {
@@ -325,7 +329,7 @@ impl Coverage {
                         self.hit("pub-control");
                     }
                     for parameter in &control.parameters {
-                        self.observe_type(parameter.ty);
+                        self.observe_type(&parameter.ty);
                     }
                     if let Some(precondition) = &control.precondition {
                         self.hit("control-where");
@@ -337,7 +341,7 @@ impl Coverage {
                         } else {
                             self.hit("alt-payload");
                             for field in &alternative.fields {
-                                self.observe_type(field.ty);
+                                self.observe_type(&field.ty);
                             }
                         }
                         if let Some(condition) = &alternative.condition {
@@ -350,6 +354,7 @@ impl Coverage {
                     }
                     self.observe_statements(&control.body);
                 }
+                _ => {}
             }
         }
     }
@@ -523,6 +528,8 @@ pub fn valid(rng: &mut Rng) -> Program {
         name: "ext_pure".to_string(),
         public: false,
         external: true,
+        contingent: false,
+        faults: false,
         parameters: vec![Parameter {
             name: "a".to_string(),
             ty: Type::Int(int_ty),
@@ -557,6 +564,8 @@ pub fn valid(rng: &mut Rng) -> Program {
         name: "ext_io".to_string(),
         public: false,
         external: true,
+        contingent: false,
+        faults: false,
         parameters: vec![Parameter {
             name: "b".to_string(),
             ty: Type::Int(int_ty2),
@@ -591,6 +600,8 @@ pub fn valid(rng: &mut Rng) -> Program {
         name: "helper".to_string(),
         public: false,
         external: false,
+        contingent: false,
+        faults: false,
         parameters: vec![
             Parameter {
                 name: "x".to_string(),
@@ -1029,6 +1040,8 @@ pub fn valid(rng: &mut Rng) -> Program {
         name: "main".to_string(),
         public: true,
         external: false,
+        contingent: false,
+        faults: false,
         parameters: vec![
             Parameter {
                 name: "a".to_string(),
@@ -1118,7 +1131,7 @@ pub fn sample_runs(
                 let fits = candidate
                     .iter()
                     .zip(&control.parameters)
-                    .all(|(v, p)| config.fits(v, p.ty));
+                    .all(|(v, p)| config.fits(v, &p.ty));
                 if fits {
                     out.push((control.name.clone(), candidate));
                 }
@@ -1128,7 +1141,7 @@ pub fn sample_runs(
             let candidate: Vec<Value> = control
                 .parameters
                 .iter()
-                .map(|parameter| draw_value(rng, parameter.ty, &[], config))
+                .map(|parameter| draw_value(rng, &parameter.ty, &[], config))
                 .collect();
             let valid_entry = match &control.precondition {
                 None => true,
@@ -1176,14 +1189,14 @@ fn free_literal(rng: &mut Rng, ty: IntType) -> Expr {
 
 fn free_expr(
     rng: &mut Rng,
-    ty: Type,
+    ty: &Type,
     vars: &[VarInfo],
     functions: &[Function],
     depth: u8,
     need_typed: bool,
 ) -> Expr {
-    let matching_vars: Vec<&VarInfo> = vars.iter().filter(|var| var.ty == ty).collect();
-    let matching_fns: Vec<&Function> = functions.iter().filter(|f| f.result == ty).collect();
+    let matching_vars: Vec<&VarInfo> = vars.iter().filter(|var| &var.ty == ty).collect();
+    let matching_fns: Vec<&Function> = functions.iter().filter(|f| &f.result == ty).collect();
 
     if need_typed {
         if let Some(var) = matching_vars.first() {
@@ -1194,7 +1207,7 @@ fn free_expr(
             let args = func
                 .parameters
                 .iter()
-                .map(|p| free_expr(rng, p.ty, vars, functions, 0, false))
+                .map(|p| free_expr(rng, &p.ty, vars, functions, 0, false))
                 .collect();
             return Expr::Call(func.name.clone(), args);
         }
@@ -1206,7 +1219,8 @@ fn free_expr(
         }
         return match ty {
             Type::Bool => Expr::Boolean(rng.chance(1, 2)),
-            Type::Int(int_ty) => free_literal(rng, int_ty),
+            Type::Int(int_ty) => free_literal(rng, *int_ty),
+            _ => Expr::Integer(Int::zero()),
         };
     }
 
@@ -1218,7 +1232,7 @@ fn free_expr(
                 let args = func
                     .parameters
                     .iter()
-                    .map(|p| free_expr(rng, p.ty, vars, functions, depth - 1, false))
+                    .map(|p| free_expr(rng, &p.ty, vars, functions, depth - 1, false))
                     .collect();
                 Expr::Call(func.name.clone(), args)
             }
@@ -1226,7 +1240,7 @@ fn free_expr(
                 Unary::Not,
                 Box::new(free_expr(
                     rng,
-                    Type::Bool,
+                    &Type::Bool,
                     vars,
                     functions,
                     depth - 1,
@@ -1241,17 +1255,17 @@ fn free_expr(
                 };
                 bin(
                     op,
-                    free_expr(rng, Type::Bool, vars, functions, depth - 1, false),
-                    free_expr(rng, Type::Bool, vars, functions, depth - 1, false),
+                    free_expr(rng, &Type::Bool, vars, functions, depth - 1, false),
+                    free_expr(rng, &Type::Bool, vars, functions, depth - 1, false),
                 )
             }
             _ => {
                 // Pick an operand type for a comparison. If it is an integer type
                 // other than `u32`, at least one side must carry a typed variable
                 // or function call so `resolve` infers that type.
-                let available_types: Vec<Type> = vars.iter().map(|v| v.ty).collect();
+                let available_types: Vec<Type> = vars.iter().map(|v| v.ty.clone()).collect();
                 let operand_ty = if !available_types.is_empty() {
-                    *rng.pick(&available_types)
+                    rng.pick(&available_types).clone()
                 } else {
                     Type::Int(IntType::U32)
                 };
@@ -1265,8 +1279,8 @@ fn free_expr(
                     *rng.pick(&COMPARISONS)
                 };
                 let need = operand_ty != Type::Bool && operand_ty != Type::Int(IntType::U32);
-                let left = free_expr(rng, operand_ty, vars, functions, depth - 1, need);
-                let right = free_expr(rng, operand_ty, vars, functions, depth - 1, false);
+                let left = free_expr(rng, &operand_ty, vars, functions, depth - 1, need);
+                let right = free_expr(rng, &operand_ty, vars, functions, depth - 1, false);
                 bin(cmp, left, right)
             }
         },
@@ -1277,11 +1291,11 @@ fn free_expr(
                 let args = func
                     .parameters
                     .iter()
-                    .map(|p| free_expr(rng, p.ty, vars, functions, depth - 1, false))
+                    .map(|p| free_expr(rng, &p.ty, vars, functions, depth - 1, false))
                     .collect();
                 Expr::Call(func.name.clone(), args)
             }
-            2 if is_signed(int_ty) && !matching_vars.is_empty() => Expr::Unary(
+            2 if is_signed(*int_ty) && !matching_vars.is_empty() => Expr::Unary(
                 Unary::Negate,
                 Box::new(name(&rng.pick(&matching_vars).name)),
             ),
@@ -1292,6 +1306,7 @@ fn free_expr(
                 bin(op, left, right)
             }
         },
+        _ => Expr::Integer(Int::zero()),
     }
 }
 
@@ -1327,20 +1342,20 @@ pub fn free(rng: &mut Rng) -> Program {
     let mut functions = Vec::new();
     let fn_count = 1 + rng.index(2);
     for index in 0..fn_count {
-        let param_ty = *rng.pick(&TYPES);
-        let result_ty = *rng.pick(&TYPES);
+        let param_ty = rng.pick(&TYPES).clone();
+        let result_ty = rng.pick(&TYPES).clone();
         let param_name = "p0".to_string();
         let vars = vec![VarInfo {
             name: param_name.clone(),
-            ty: param_ty,
+            ty: param_ty.clone(),
             mutable: false,
         }];
         let precondition = if rng.chance(1, 2) {
-            Some(free_expr(rng, Type::Bool, &vars, &functions, 1, false))
+            Some(free_expr(rng, &Type::Bool, &vars, &functions, 1, false))
         } else {
             None
         };
-        let body = free_expr(rng, result_ty, &vars, &functions, 1, false);
+        let body = free_expr(rng, &result_ty, &vars, &functions, 1, false);
         functions.push(Function {
             name: format!("fn{index}"),
             parameters: vec![Parameter {
@@ -1356,17 +1371,17 @@ pub fn free(rng: &mut Rng) -> Program {
 
     let mut controls = Vec::new();
     // An extern control with two alternatives.
-    let ext_param_ty = *rng.pick(&TYPES);
-    let ext_field_ty = *rng.pick(&TYPES);
+    let ext_param_ty = rng.pick(&TYPES).clone();
+    let ext_field_ty = rng.pick(&TYPES).clone();
     let ext_vars = vec![
         VarInfo {
             name: "ep".to_string(),
-            ty: ext_param_ty,
+            ty: ext_param_ty.clone(),
             mutable: false,
         },
         VarInfo {
             name: "ef".to_string(),
-            ty: ext_field_ty,
+            ty: ext_field_ty.clone(),
             mutable: false,
         },
     ];
@@ -1374,14 +1389,16 @@ pub fn free(rng: &mut Rng) -> Program {
         name: "ext0".to_string(),
         public: false,
         external: true,
+        contingent: false,
+        faults: false,
         parameters: vec![Parameter {
             name: "ep".to_string(),
-            ty: ext_param_ty,
+            ty: ext_param_ty.clone(),
         }],
         precondition: if rng.chance(1, 2) {
             Some(free_expr(
                 rng,
-                Type::Bool,
+                &Type::Bool,
                 &ext_vars[..1],
                 &functions,
                 1,
@@ -1395,10 +1412,10 @@ pub fn free(rng: &mut Rng) -> Program {
                 name: "some".to_string(),
                 fields: vec![Parameter {
                     name: "ef".to_string(),
-                    ty: ext_field_ty,
+                    ty: ext_field_ty.clone(),
                 }],
                 condition: if rng.chance(1, 2) {
-                    Some(free_expr(rng, Type::Bool, &ext_vars, &functions, 1, false))
+                    Some(free_expr(rng, &Type::Bool, &ext_vars, &functions, 1, false))
                 } else {
                     None
                 },
@@ -1419,18 +1436,18 @@ pub fn free(rng: &mut Rng) -> Program {
     });
 
     // A defined control `entry`.
-    let p0_ty = *rng.pick(&TYPES);
-    let p1_ty = *rng.pick(&TYPES);
-    let out_ty = *rng.pick(&TYPES);
+    let p0_ty = rng.pick(&TYPES).clone();
+    let p1_ty = rng.pick(&TYPES).clone();
+    let out_ty = rng.pick(&TYPES).clone();
     let mut vars = vec![
         VarInfo {
             name: "a0".to_string(),
-            ty: p0_ty,
+            ty: p0_ty.clone(),
             mutable: false,
         },
         VarInfo {
             name: "a1".to_string(),
-            ty: p1_ty,
+            ty: p1_ty.clone(),
             mutable: false,
         },
     ];
@@ -1447,17 +1464,18 @@ pub fn free(rng: &mut Rng) -> Program {
                 let mutable = rng.chance(1, 2);
                 let inferred = rng.chance(1, 3);
                 let ty = if inferred {
-                    vars.first().map_or(Type::Int(IntType::U32), |v| v.ty)
+                    vars.first()
+                        .map_or(Type::Int(IntType::U32), |v| v.ty.clone())
                 } else {
-                    *rng.pick(&TYPES)
+                    rng.pick(&TYPES).clone()
                 };
                 let need = inferred && ty != Type::Bool && ty != Type::Int(IntType::U32);
-                let value = free_expr(rng, ty, &vars, &functions, 1, need);
+                let value = free_expr(rng, &ty, &vars, &functions, 1, need);
                 let var_name = format!("v{next_id}");
                 next_id += 1;
                 vars.push(VarInfo {
                     name: var_name.clone(),
-                    ty,
+                    ty: ty.clone(),
                     mutable,
                 });
                 statements.push(stmt(
@@ -1475,7 +1493,7 @@ pub fn free(rng: &mut Rng) -> Program {
                 let mutables: Vec<VarInfo> = vars.iter().filter(|v| v.mutable).cloned().collect();
                 if !mutables.is_empty() {
                     let chosen = rng.pick(&mutables);
-                    let value = free_expr(rng, chosen.ty, &vars, &functions, 1, false);
+                    let value = free_expr(rng, &chosen.ty, &vars, &functions, 1, false);
                     statements.push(stmt(
                         selector,
                         Command::Assign {
@@ -1486,20 +1504,20 @@ pub fn free(rng: &mut Rng) -> Program {
                 } else {
                     statements.push(stmt(
                         selector,
-                        Command::Oblige(free_expr(rng, Type::Bool, &vars, &functions, 1, false)),
+                        Command::Oblige(free_expr(rng, &Type::Bool, &vars, &functions, 1, false)),
                     ));
                 }
             }
             2 => {
                 statements.push(stmt(
                     selector,
-                    Command::Oblige(free_expr(rng, Type::Bool, &vars, &functions, 1, false)),
+                    Command::Oblige(free_expr(rng, &Type::Bool, &vars, &functions, 1, false)),
                 ));
             }
             3 => {
                 let site = format!("s{next_id}");
                 next_id += 1;
-                let condition = free_expr(rng, Type::Bool, &vars, &functions, 1, false);
+                let condition = free_expr(rng, &Type::Bool, &vars, &functions, 1, false);
                 sites.push(SiteInfo {
                     name: site.clone(),
                     alternatives: vec!["true".to_string(), "false".to_string()],
@@ -1511,12 +1529,12 @@ pub fn free(rng: &mut Rng) -> Program {
                 // can get stuck at X10.
                 let site = format!("s{next_id}");
                 next_id += 1;
-                let arg = free_expr(rng, ext_param_ty, &vars, &functions, 1, false);
+                let arg = free_expr(rng, &ext_param_ty, &vars, &functions, 1, false);
                 let payload_var = format!("v{next_id}");
                 next_id += 1;
                 vars.push(VarInfo {
                     name: payload_var.clone(),
-                    ty: ext_field_ty,
+                    ty: ext_field_ty.clone(),
                     mutable: false,
                 });
                 let mut arms = vec![Arm {
@@ -1552,19 +1570,19 @@ pub fn free(rng: &mut Rng) -> Program {
                 let lp_var = format!("lv{next_id}");
                 let out_var = format!("lo{next_id}");
                 next_id += 1;
-                let lp_ty = *rng.pick(&TYPES);
+                let lp_ty = rng.pick(&TYPES).clone();
                 let lp_mutable = rng.chance(1, 2);
-                let initial = free_expr(rng, lp_ty, &vars, &functions, 1, false);
+                let initial = free_expr(rng, &lp_ty, &vars, &functions, 1, false);
                 let mut inner_vars: Vec<VarInfo> = vars.clone();
                 inner_vars.push(VarInfo {
                     name: lp_var.clone(),
-                    ty: lp_ty,
+                    ty: lp_ty.clone(),
                     mutable: lp_mutable,
                 });
                 let invariant = if rng.chance(1, 2) {
                     Some(free_expr(
                         rng,
-                        Type::Bool,
+                        &Type::Bool,
                         &inner_vars,
                         &functions,
                         1,
@@ -1576,12 +1594,12 @@ pub fn free(rng: &mut Rng) -> Program {
                 let mut inner_sites = sites.clone();
                 let test_site = format!("ls{next_id}");
                 next_id += 1;
-                let cond = free_expr(rng, Type::Bool, &inner_vars, &functions, 1, false);
+                let cond = free_expr(rng, &Type::Bool, &inner_vars, &functions, 1, false);
                 inner_sites.push(SiteInfo {
                     name: test_site.clone(),
                     alternatives: vec!["true".to_string(), "false".to_string()],
                 });
-                let again_arg = free_expr(rng, lp_ty, &inner_vars, &functions, 1, false);
+                let again_arg = free_expr(rng, &lp_ty, &inner_vars, &functions, 1, false);
                 let body = vec![
                     stmt(
                         Selector::Top,
@@ -1608,7 +1626,7 @@ pub fn free(rng: &mut Rng) -> Program {
                 let _ = inner_vars;
                 vars.push(VarInfo {
                     name: out_var.clone(),
-                    ty: lp_ty,
+                    ty: lp_ty.clone(),
                     mutable: false,
                 });
                 sites.push(SiteInfo {
@@ -1640,7 +1658,7 @@ pub fn free(rng: &mut Rng) -> Program {
             }
             _ => {
                 if rng.chance(1, 2) {
-                    let payload = free_expr(rng, out_ty, &vars, &functions, 1, false);
+                    let payload = free_expr(rng, &out_ty, &vars, &functions, 1, false);
                     statements.push(stmt(
                         selector,
                         Command::Exit {
@@ -1661,7 +1679,7 @@ pub fn free(rng: &mut Rng) -> Program {
         }
     }
     if rng.chance(1, 2) {
-        let payload = free_expr(rng, out_ty, &vars, &functions, 1, false);
+        let payload = free_expr(rng, &out_ty, &vars, &functions, 1, false);
         statements.push(stmt(
             free_selector(rng, &sites, 1),
             Command::Exit {
@@ -1674,17 +1692,17 @@ pub fn free(rng: &mut Rng) -> Program {
     let sig_vars = vec![
         VarInfo {
             name: "a0".to_string(),
-            ty: p0_ty,
+            ty: p0_ty.clone(),
             mutable: false,
         },
         VarInfo {
             name: "a1".to_string(),
-            ty: p1_ty,
+            ty: p1_ty.clone(),
             mutable: false,
         },
         VarInfo {
             name: "res".to_string(),
-            ty: out_ty,
+            ty: out_ty.clone(),
             mutable: false,
         },
     ];
@@ -1692,6 +1710,8 @@ pub fn free(rng: &mut Rng) -> Program {
         name: "entry".to_string(),
         public: rng.chance(1, 2),
         external: false,
+        contingent: false,
+        faults: false,
         parameters: vec![
             Parameter {
                 name: "a0".to_string(),
@@ -1705,7 +1725,7 @@ pub fn free(rng: &mut Rng) -> Program {
         precondition: if rng.chance(1, 3) {
             Some(free_expr(
                 rng,
-                Type::Bool,
+                &Type::Bool,
                 &sig_vars[..2],
                 &functions,
                 1,
@@ -1722,7 +1742,7 @@ pub fn free(rng: &mut Rng) -> Program {
                     ty: out_ty,
                 }],
                 condition: if rng.chance(1, 2) {
-                    Some(free_expr(rng, Type::Bool, &sig_vars, &functions, 1, false))
+                    Some(free_expr(rng, &Type::Bool, &sig_vars, &functions, 1, false))
                 } else {
                     None
                 },

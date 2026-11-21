@@ -139,6 +139,7 @@ fn unfold_functions(program: &Program, expr: &Expr) -> Expr {
             let body = subst_parameters(&program.functions[*fn_id].body, &unfolded_args);
             unfold_functions(program, &body)
         }
+        other => other.clone(),
     }
 }
 
@@ -174,8 +175,9 @@ fn subst_parameters(expr: &Expr, args: &[Expr]) -> Expr {
                 .iter()
                 .map(|a| subst_parameters(a, args))
                 .collect(),
-            *ty,
+            ty.clone(),
         ),
+        other => other.clone(),
     }
 }
 
@@ -555,8 +557,18 @@ fn check_expr_obligations(
     certificates: &mut Vec<(String, u32, &'static str, Certificate)>,
 ) -> Result<(), Error> {
     match expr {
-        Expr::Boolean(_) | Expr::Integer(_, _) | Expr::Var(_, _) => Ok(()),
-        Expr::Not(inner) => check_expr_obligations(
+        Expr::Boolean(_)
+        | Expr::Integer(_, _)
+        | Expr::String(_)
+        | Expr::Var(_, _)
+        | Expr::Old(_, _)
+        | Expr::EmptyMap(_) => Ok(()),
+        Expr::Move(inner, _)
+        | Expr::Field(inner, _, _, _)
+        | Expr::Len(inner)
+        | Expr::Clone(inner, _)
+        | Expr::Trim(inner)
+        | Expr::Not(inner) => check_expr_obligations(
             program,
             solver,
             inner,
@@ -568,6 +580,50 @@ fn check_expr_obligations(
             in_loop,
             certificates,
         ),
+        Expr::Borrow(_, _, _) => Ok(()),
+        Expr::Index(base, idx, _) => {
+            check_expr_obligations(
+                program,
+                solver,
+                base,
+                guard,
+                env,
+                control,
+                line,
+                visible_vars,
+                in_loop,
+                certificates,
+            )?;
+            check_expr_obligations(
+                program,
+                solver,
+                idx,
+                guard,
+                env,
+                control,
+                line,
+                visible_vars,
+                in_loop,
+                certificates,
+            )
+        }
+        Expr::Struct(_, items, _) | Expr::Variant(_, _, items, _) | Expr::Vector(items, _) => {
+            for item in items {
+                check_expr_obligations(
+                    program,
+                    solver,
+                    item,
+                    guard,
+                    env,
+                    control,
+                    line,
+                    visible_vars,
+                    in_loop,
+                    certificates,
+                )?;
+            }
+            Ok(())
+        }
         Expr::Negate(inner, ty) => {
             check_expr_obligations(
                 program,
@@ -812,6 +868,7 @@ fn check_function(
                 solver.add_structure(both);
                 id
             }
+            _ => solver.fresh_var(param.name.clone(), None, false),
         };
         param_terms.push(LinearTerm::var(term_id));
         visible_vars.push((param.name.clone(), term_id, param.ty == Type::Bool));
@@ -845,22 +902,46 @@ fn check_function(
 
 fn collect_read_vars(expr: &Expr, out: &mut Vec<VarId>) {
     match expr {
-        Expr::Boolean(_) | Expr::Integer(_, _) => {}
+        Expr::Boolean(_)
+        | Expr::Integer(_, _)
+        | Expr::String(_)
+        | Expr::Old(_, _)
+        | Expr::EmptyMap(_) => {}
         Expr::Var(VarRef::Local(id), _) => {
             if !out.contains(id) {
                 out.push(*id);
             }
         }
         Expr::Var(_, _) => {}
-        Expr::Negate(inner, _) | Expr::Not(inner) => collect_read_vars(inner, out),
-        Expr::Arithmetic(_, l, r, _)
+        Expr::Borrow(_, place, _) => {
+            if !out.contains(&place.root) {
+                out.push(place.root);
+            }
+            for step in &place.steps {
+                if let crate::typed::PlaceStep::Index(idx, _) = step {
+                    collect_read_vars(idx, out);
+                }
+            }
+        }
+        Expr::Move(inner, _)
+        | Expr::Field(inner, _, _, _)
+        | Expr::Len(inner)
+        | Expr::Clone(inner, _)
+        | Expr::Trim(inner)
+        | Expr::Negate(inner, _)
+        | Expr::Not(inner) => collect_read_vars(inner, out),
+        Expr::Index(l, r, _)
+        | Expr::Arithmetic(_, l, r, _)
         | Expr::Compare(_, l, r)
         | Expr::And(l, r)
         | Expr::Or(l, r) => {
             collect_read_vars(l, out);
             collect_read_vars(r, out);
         }
-        Expr::Call(_, args, _) => {
+        Expr::Struct(_, args, _)
+        | Expr::Variant(_, _, args, _)
+        | Expr::Vector(args, _)
+        | Expr::Call(_, args, _) => {
             for arg in args {
                 collect_read_vars(arg, out);
             }
@@ -945,7 +1026,7 @@ fn find_constant_locals(program: &Program, body: &ControlBody) -> HashMap<VarId,
                         let (lo, hi) = int_ty.literal_bounds();
                         val >= lo && val <= hi
                     }
-                    Type::Bool => false,
+                    _ => false,
                 };
                 if fits {
                     constants.insert(var, val);
@@ -1016,6 +1097,7 @@ impl<'a> BodyChecker<'a> {
                 self.solver.add_fact(bdd::TRUE, both);
                 id
             }
+            _ => self.solver.fresh_var(info.name.clone(), None, false),
         }
     }
 
@@ -1118,6 +1200,7 @@ impl<'a> BodyChecker<'a> {
                 let phi = translate_formula(self.program, &mut self.solver, expr, env);
                 self.solver.add_def_bool(r_i, term_id, phi);
             }
+            _ => {}
         }
         self.set_version(var, r_i, term_id);
         term_id
@@ -1264,6 +1347,7 @@ impl<'a> BodyChecker<'a> {
                 Command::Decide {
                     site,
                     operation,
+                    op_kind: _,
                     arguments,
                     arms,
                 } => {
@@ -1828,6 +1912,9 @@ impl<'a> BodyChecker<'a> {
                     )?;
                     // [K3]: Lᵢ₊₁ = Lᵢ ∧ ¬gᵢ
                     live = self.solver.bdd.minus(live, g_i);
+                }
+                _ => {
+                    // Slice 2 commands will be checked in Slice 2 Checkpoint 2.
                 }
             }
         }

@@ -1,0 +1,6 @@
+// [W7]: `old(x)` requires an `&~` parameter.
+control bad(x : u32)
+    ■ { ok {} ⇐ old(x) = 0 }
+    1  ⊤ ▷ ■ ok {}
+
+//! reject W7

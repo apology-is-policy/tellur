@@ -60,6 +60,7 @@ pub fn expand(program: &Program) -> Result<Program, resolve::Error> {
             Declaration::Control(c) => {
                 declarations.push(Declaration::Control(controls_by_name[&c.name].clone()));
             }
+            other => declarations.push(other.clone()),
         }
     }
     Ok(Program { declarations })
@@ -221,7 +222,7 @@ fn inline_callee(
             command: Command::Bind {
                 mutable: false,
                 name: var_map[&param.name].clone(),
-                ty: Some(param.ty),
+                ty: Some(param.ty.clone()),
                 value: arg_expr.clone(),
             },
             line: call_line,
@@ -290,7 +291,7 @@ fn inline_callee(
                         command: Command::Bind {
                             mutable: false,
                             name: y_name.clone(),
-                            ty: Some(field_param.ty),
+                            ty: Some(field_param.ty.clone()),
                             value: val_expr.clone(),
                         },
                         line: call_line,
@@ -362,8 +363,8 @@ fn inline_callee(
                         command: Command::Bind {
                             mutable: false,
                             name: y_name.clone(),
-                            ty: Some(field_param.ty),
-                            value: default_expr(field_param.ty),
+                            ty: Some(field_param.ty.clone()),
+                            value: default_expr(&field_param.ty),
                         },
                         line: call_line,
                     });
@@ -381,7 +382,7 @@ fn inline_callee(
     (out, alt_selectors)
 }
 
-fn default_expr(ty: Type) -> Expr {
+fn default_expr(ty: &Type) -> Expr {
     match ty {
         Type::Bool => Expr::Boolean(false),
         Type::Int(IntType::U8)
@@ -393,6 +394,10 @@ fn default_expr(ty: Type) -> Expr {
         | Type::Int(IntType::I32)
         | Type::Int(IntType::I64)
         | Type::Int(IntType::Usize) => Expr::Integer(Int::from_u64(0)),
+        Type::String => Expr::String(String::new()),
+        Type::Vector(_) => Expr::Vector(Vec::new()),
+        Type::Map(_, _) => Expr::EmptyMap,
+        _ => Expr::Integer(Int::from_u64(0)),
     }
 }
 
@@ -446,7 +451,7 @@ fn lift_exits_in_body(
                                 command: Command::Bind {
                                     mutable: false,
                                     name: val_name.clone(),
-                                    ty: Some(field_param.ty),
+                                    ty: Some(field_param.ty.clone()),
                                     value: expr,
                                 },
                                 line: inner_stmt.line,
@@ -591,18 +596,26 @@ fn rename_selector(selector: &mut Selector, site_map: &HashMap<String, String>) 
 
 fn rename_expr(expr: &mut Expr, var_map: &HashMap<String, String>) {
     match expr {
-        Expr::Integer(_) | Expr::Boolean(_) => {}
-        Expr::Name(name) => {
+        Expr::Integer(_) | Expr::Boolean(_) | Expr::String(_) | Expr::EmptyMap => {}
+        Expr::Name(name) | Expr::Old(name) => {
             if let Some(new_name) = var_map.get(name) {
                 *name = new_name.clone();
             }
         }
-        Expr::Unary(_, inner) => rename_expr(inner, var_map),
-        Expr::Binary(_, l, r) => {
+        Expr::Unary(_, inner)
+        | Expr::Move(inner)
+        | Expr::Borrow(_, inner)
+        | Expr::Field(inner, _)
+        | Expr::Len(inner)
+        | Expr::Clone(inner) => rename_expr(inner, var_map),
+        Expr::Binary(_, l, r) | Expr::Index(l, r) => {
             rename_expr(l, var_map);
             rename_expr(r, var_map);
         }
-        Expr::Call(_, args) => {
+        Expr::Call(_, args)
+        | Expr::Struct(_, args)
+        | Expr::Variant(_, _, args)
+        | Expr::Vector(args) => {
             for arg in args {
                 rename_expr(arg, var_map);
             }
@@ -628,7 +641,7 @@ fn rename_command(
             Command::Bind {
                 mutable: *mutable,
                 name: var_map.get(name).cloned().unwrap_or_else(|| name.clone()),
-                ty: *ty,
+                ty: ty.clone(),
                 value: v,
             }
         }
@@ -704,7 +717,7 @@ fn rename_command(
                             .get(&p.name)
                             .cloned()
                             .unwrap_or_else(|| p.name.clone()),
-                        ty: p.ty,
+                        ty: p.ty.clone(),
                         initial: init,
                     }
                 })
@@ -795,6 +808,7 @@ fn rename_command(
             }
         }
         Command::Impossible => Command::Impossible,
+        other => other.clone(),
     }
 }
 

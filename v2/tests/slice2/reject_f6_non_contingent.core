@@ -1,0 +1,17 @@
+// [F6]: Only `contingent` controls may be called inside a `contingency` block.
+extern control notify(m : &string)
+    ■ { done {} }
+    uses console.write
+
+boundary work() {
+    1  ⊤ ▷ fault "err"
+} contingency (m : string) {
+    1  ⊤ ▷ n : Δ notify(&m) ▸ done {}
+    2  ⊤ ▷ terminate
+}
+
+control ok()
+    ■ { done {} }
+    1  ⊤ ▷ ■ done {}
+
+//! reject F6
